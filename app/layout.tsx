@@ -4,6 +4,7 @@ import { Jost } from "next/font/google";
 import Cursor from "@/components/Cursor";
 import Footer from "@/components/Footer";
 import Header from "@/components/Header";
+import HeaderFade from "@/components/HeaderFade";
 import { site } from "@/lib/site";
 
 import "./globals.css";
@@ -92,6 +93,7 @@ export default function RootLayout({
           Skip to content
         </a>
         <Header />
+        <HeaderFade />
         <main id="main">{children}</main>
         <Footer />
         <Cursor />

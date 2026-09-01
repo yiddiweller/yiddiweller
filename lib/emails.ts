@@ -43,21 +43,24 @@ ${inner}
 /** The wordmark, set as type so it renders even with images blocked. */
 const MARK = `<tr><td style="font-family:${FONT};font-size:12px;letter-spacing:0.3em;color:${MUTED};text-transform:uppercase;padding:0 0 56px;">Yiddi&nbsp;Weller</td></tr>`;
 
+/* Grey so the mark holds up whether a client renders on black or forces
+   white, and small enough that a blocked image costs nothing. */
 const FOOTER = `<tr><td style="padding:56px 0 0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="height:1px;line-height:1px;font-size:0;background:${RULE};">&nbsp;</td></tr></table></td></tr>
-<tr><td style="font-family:${FONT};font-size:12px;letter-spacing:0.04em;color:${FAINT};padding:20px 0 0;"><a href="${site.url}" style="color:${FAINT};text-decoration:none;">yiddiweller.com</a></td></tr>`;
+<tr><td style="padding:24px 0 0;"><img src="${site.url}/email-mark.png" width="72" height="27" alt="Yiddi Weller" style="display:block;width:72px;height:27px;border:0;outline:none;text-decoration:none;"></td></tr>
+<tr><td style="font-family:${FONT};font-size:12px;letter-spacing:0.04em;color:${FAINT};padding:16px 0 0;"><a href="${site.url}" style="color:${FAINT};text-decoration:none;">yiddiweller.com</a></td></tr>`;
 
 /** Auto-reply to the person who wrote in. */
 export function visitorEmail() {
   const html = shell(`${MARK}
 <tr><td style="font-family:${FONT};font-size:30px;line-height:1.25;font-weight:300;letter-spacing:-0.01em;color:${WHITE};padding:0 0 20px;">Thank you.</td></tr>
-<tr><td style="font-family:${FONT};font-size:15px;line-height:1.65;color:${MUTED};">Your message has arrived. I&rsquo;ll reply shortly.</td></tr>
+<tr><td style="font-family:${FONT};font-size:15px;line-height:1.65;color:${MUTED};">Your message has arrived. We&rsquo;ll reply shortly.</td></tr>
 ${FOOTER}`);
 
   const text = `YIDDI WELLER
 
 Thank you.
 
-Your message has arrived. I'll reply shortly.
+Your message has arrived. We'll reply shortly.
 
 ${site.url}`;
 

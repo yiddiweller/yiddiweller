@@ -79,6 +79,8 @@ body {
 
 body {
   min-height: 100svh;
+  /* Reserves the fixed header's space, so the first screen is unchanged. */
+  padding-top: var(--header-h);
   display: flex;
   flex-direction: column;
   color: var(--white);

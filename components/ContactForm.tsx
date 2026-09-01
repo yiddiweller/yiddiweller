@@ -170,7 +170,7 @@ function Sent({ onReset }: { onReset: () => void }) {
   return (
     <div className={styles.sent} ref={ref} tabIndex={-1} role="status">
       <p className={styles.sentTitle}>Message sent.</p>
-      <p className={styles.sentBody}>Thank you. I&rsquo;ll reply shortly.</p>
+      <p className={styles.sentBody}>Thank you. We&rsquo;ll reply shortly.</p>
       <button type="button" className={styles.again} onClick={onReset}>
         Send another
       </button>

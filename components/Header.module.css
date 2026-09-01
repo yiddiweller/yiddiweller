@@ -1,9 +1,22 @@
 .header {
+  position: fixed;
+  top: 0;
+  right: 0;
+  left: 0;
+  z-index: 50;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 24px;
   height: var(--header-h);
+  /* Tracks scroll directly — a transition here would lag behind the page. */
+  opacity: var(--header-fade, 1);
+}
+
+/* Fully faded: no longer clickable, no longer focusable. */
+:global(html[data-header="hidden"]) .header {
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .brand {

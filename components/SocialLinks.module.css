@@ -1,0 +1,48 @@
+.list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  list-style: none;
+}
+
+.link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--rule);
+  border-radius: 50%;
+  color: var(--w-72);
+  transition:
+    background-color var(--dur) var(--ease),
+    border-color var(--dur) var(--ease),
+    color var(--dur) var(--ease);
+}
+
+.link:hover {
+  background: var(--white);
+  border-color: var(--white);
+  color: var(--black);
+}
+
+.icon {
+  width: 13px;
+  height: 13px;
+}
+
+@media (min-width: 640px) {
+  .list {
+    gap: 12px;
+  }
+
+  .link {
+    width: 34px;
+    height: 34px;
+  }
+
+  .icon {
+    width: 15px;
+    height: 15px;
+  }
+}

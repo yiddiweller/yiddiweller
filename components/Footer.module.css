@@ -1,6 +1,10 @@
 .footer {
   flex-shrink: 0;
-  padding-block: var(--page-y);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: clamp(18px, 2.4vw, 26px);
+  padding-block: var(--page-y) calc(var(--page-y) + 4px);
 }
 
 .line {

@@ -1,5 +1,7 @@
-/* Outer node carries position only, so the scale transition below can never
-   interpolate the pointer position and introduce lag. */
+/* Outer node carries position AND the blend. `will-change` below creates a
+   stacking context, which would isolate a blend set on the child and leave
+   the dot painting flat white — so the blend has to live here, where its
+   backdrop is the page itself. */
 .cursor {
   position: fixed;
   top: 0;
@@ -8,12 +10,15 @@
   pointer-events: none;
   opacity: 0;
   will-change: transform;
+  mix-blend-mode: difference;
 }
 
 .cursor[data-visible="true"] {
   opacity: 1;
 }
 
+/* Scale lives on the inner node so the transition can never interpolate the
+   pointer position and introduce lag. */
 .dot {
   display: block;
   width: 14px;
@@ -21,9 +26,6 @@
   margin: -7px 0 0 -7px;
   border-radius: 50%;
   background: var(--white);
-  /* Inverts against whatever is underneath, so the dot stays visible on the
-     reversed (white) button states without a glow or outline. */
-  mix-blend-mode: difference;
   transition: transform 180ms var(--ease);
 }
 

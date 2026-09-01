@@ -9,6 +9,13 @@ const RULE = "#262626";
 const FONT =
   "-apple-system,BlinkMacSystemFont,'Helvetica Neue',Helvetica,Arial,sans-serif";
 
+/** Subject lines must stay a single line: strip control characters and
+    collapse whitespace. Resend sends JSON so this cannot inject headers,
+    but a multi-line subject renders badly and reads as spoofed. */
+function oneLine(value: string): string {
+  return value.replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, "&amp;")
@@ -86,5 +93,5 @@ ${FOOTER}`);
 
   const text = `Name: ${fields.name}\nEmail: ${fields.email}\n\nMessage:\n${fields.message}`;
 
-  return { subject: `New message from ${fields.name}`, html, text };
+  return { subject: `New message from ${oneLine(fields.name)}`, html, text };
 }

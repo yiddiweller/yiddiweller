@@ -30,7 +30,7 @@ export default function Home() {
 
         <Reveal delay={120}>
           <Link href="/work" className={styles.cta}>
-            View work
+            Work
             <span aria-hidden="true" className={styles.arrow}>
               →
             </span>

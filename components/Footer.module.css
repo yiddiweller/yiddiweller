@@ -3,11 +3,19 @@
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: clamp(18px, 2.4vw, 26px);
   padding-block: var(--page-y) calc(var(--page-y) + 4px);
 }
 
+.follow {
+  margin-bottom: 16px;
+  font-size: var(--fs-label);
+  letter-spacing: 0.06em;
+  color: var(--w-30);
+}
+
 .line {
+  /* Deliberately wide: the copyright sits apart from the icon row. */
+  margin-top: clamp(48px, 7vw, 88px);
   font-size: var(--fs-label);
   letter-spacing: var(--track-label);
   text-transform: uppercase;

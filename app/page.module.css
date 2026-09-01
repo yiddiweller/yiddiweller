@@ -18,17 +18,24 @@
   font-weight: 300;
   line-height: 0.94;
   letter-spacing: var(--track-tight);
-  /* Optical alignment: pulls the glyph edge flush to the gutter. */
-  margin-left: -0.045em;
 }
 
+/* Optical alignment: each line overhangs by a fraction of its own size, so
+   the small caption is not dragged left by the display line's correction. */
 .name {
   display: block;
+  margin-left: -0.045em;
 }
 
 .role {
   display: block;
-  color: var(--w-36);
+  /* A quiet caption under the name rather than a second display line. */
+  margin-top: clamp(14px, 1.6vw, 22px);
+  margin-left: -0.03em;
+  font-size: clamp(1.125rem, 2.3vw, 2rem);
+  line-height: 1.1;
+  letter-spacing: 0.005em;
+  color: var(--w-45);
 }
 
 .statement {

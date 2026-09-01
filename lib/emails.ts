@@ -9,7 +9,7 @@ const RULE = "#262626";
 const FONT =
   "-apple-system,BlinkMacSystemFont,'Helvetica Neue',Helvetica,Arial,sans-serif";
 
-export function escapeHtml(value: string): string {
+function escapeHtml(value: string): string {
   return value
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
@@ -46,7 +46,7 @@ const MARK = `<tr><td style="font-family:${FONT};font-size:12px;letter-spacing:0
 /* Grey so the mark holds up whether a client renders on black or forces
    white, and small enough that a blocked image costs nothing. */
 const FOOTER = `<tr><td style="padding:56px 0 0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="height:1px;line-height:1px;font-size:0;background:${RULE};">&nbsp;</td></tr></table></td></tr>
-<tr><td style="padding:24px 0 0;"><img src="${site.url}/email-mark.png" width="72" height="27" alt="Yiddi Weller" style="display:block;width:72px;height:27px;border:0;outline:none;text-decoration:none;"></td></tr>
+<tr><td style="padding:24px 0 0;"><img src="${site.url}/email-mark.png" width="44" height="16" alt="Yiddi Weller" style="display:block;width:44px;height:16px;border:0;outline:none;text-decoration:none;"></td></tr>
 <tr><td style="font-family:${FONT};font-size:12px;letter-spacing:0.04em;color:${FAINT};padding:16px 0 0;"><a href="${site.url}" style="color:${FAINT};text-decoration:none;">yiddiweller.com</a></td></tr>`;
 
 /** Auto-reply to the person who wrote in. */

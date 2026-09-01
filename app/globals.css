@@ -39,7 +39,6 @@ textarea {
   /* Secondary tone is always white at reduced opacity, never a grey value. */
   --w-72: rgba(255, 255, 255, 0.72);
   --w-45: rgba(255, 255, 255, 0.45);
-  --w-36: rgba(255, 255, 255, 0.36);
   --w-30: rgba(255, 255, 255, 0.3);
   --rule: rgba(255, 255, 255, 0.18);
   --rule-faint: rgba(255, 255, 255, 0.1);

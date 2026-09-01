@@ -65,8 +65,12 @@ export async function POST(request: Request) {
 
   const payload = (body ?? {}) as Record<string, unknown>;
 
-  // Honeypot: only a bot fills a field no human can see. Answer as if sent.
-  if (asString(payload.company).trim()) {
+  // Honeypot: only a bot fills a field no human can see. Answer as if sent,
+  // but log it — this is the one path that reports success without sending,
+  // so it must never fail silently.
+  const trap = asString(payload.reference).trim();
+  if (trap) {
+    console.warn(`Contact form: honeypot triggered, message discarded. Value: ${JSON.stringify(trap.slice(0, 40))}`);
     return NextResponse.json({ ok: true });
   }
 

@@ -43,7 +43,7 @@ export default function ContactForm() {
       const response = await fetch("/api/contact", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...fields, company: honeypot.current?.value ?? "" }),
+        body: JSON.stringify({ ...fields, reference: honeypot.current?.value ?? "" }),
       });
       const data = await response.json().catch(() => ({}));
 
@@ -131,13 +131,16 @@ export default function ContactForm() {
         ) : null}
       </div>
 
-      {/* Honeypot — off-screen, never focusable, ignored by assistive tech. */}
+      {/* Honeypot — off-screen, never focusable, ignored by assistive tech.
+          Deliberately NOT named company/organization/address/phone: browsers
+          autofill those even with autocomplete="off", which would make a real
+          submission look like a bot and be silently discarded. */}
       <div className={styles.honeypot} aria-hidden="true">
-        <label htmlFor={`${id}-company`}>Company</label>
+        <label htmlFor={`${id}-reference`}>Reference</label>
         <input
           ref={honeypot}
-          id={`${id}-company`}
-          name="company"
+          id={`${id}-reference`}
+          name="reference"
           type="text"
           tabIndex={-1}
           autoComplete="off"

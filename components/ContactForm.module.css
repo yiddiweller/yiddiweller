@@ -121,10 +121,6 @@
 
 .status {
   font-size: var(--fs-ui);
-  color: var(--white);
-}
-
-.status[data-tone="error"] {
   color: var(--w-72);
 }
 
@@ -132,4 +128,76 @@
 .status:empty::before {
   content: "";
   display: inline-block;
+}
+
+/* ------------------------------------------------------------ sent state */
+
+/* Replaces the form outright: once the message is gone, the fields are noise. */
+.sent {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  max-width: 46rem;
+  animation: rise 700ms var(--ease) both;
+}
+
+/* Focused programmatically to announce the change, so no ring is wanted. */
+.sent:focus {
+  outline: none;
+}
+
+.sentTitle {
+  font-size: clamp(1.75rem, 4.2vw, 3rem);
+  font-weight: 300;
+  line-height: 1.05;
+  letter-spacing: var(--track-tight);
+  margin-left: -0.03em;
+}
+
+.sentBody {
+  margin-top: clamp(14px, 1.8vw, 20px);
+  font-size: var(--fs-lead);
+  font-weight: 300;
+  color: var(--w-45);
+}
+
+.again {
+  position: relative;
+  margin-top: clamp(40px, 6vh, 64px);
+  font-size: var(--fs-ui);
+  color: var(--w-45);
+  cursor: pointer;
+  transition: color var(--dur) var(--ease);
+}
+
+.again::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: -3px;
+  width: 100%;
+  height: 1px;
+  background: currentColor;
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform var(--dur) var(--ease);
+}
+
+.again:hover {
+  color: var(--white);
+}
+
+.again:hover::after {
+  transform: scaleX(1);
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }

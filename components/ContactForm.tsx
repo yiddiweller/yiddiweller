@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 import { LIMITS, validate, type ContactFields, type FieldErrors } from "@/lib/contact";
 
@@ -56,11 +56,14 @@ export default function ContactForm() {
 
       setFields(EMPTY);
       setStatus("sent");
-      setMessage("Message sent.");
     } catch {
       setStatus("error");
       setMessage("The message could not be sent. Please try again.");
     }
+  }
+
+  if (status === "sent") {
+    return <Sent onReset={() => setStatus("idle")} />;
   }
 
   const fieldProps = (key: keyof ContactFields) => ({
@@ -149,15 +152,28 @@ export default function ContactForm() {
           </span>
         </button>
 
-        <p
-          className={styles.status}
-          data-tone={status === "error" ? "error" : "ok"}
-          role="status"
-          aria-live="polite"
-        >
+        <p className={styles.status} role="status" aria-live="polite">
           {message}
         </p>
       </div>
     </form>
+  );
+}
+
+function Sent({ onReset }: { onReset: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    ref.current?.focus();
+  }, []);
+
+  return (
+    <div className={styles.sent} ref={ref} tabIndex={-1} role="status">
+      <p className={styles.sentTitle}>Message sent.</p>
+      <p className={styles.sentBody}>Thank you. I&rsquo;ll reply shortly.</p>
+      <button type="button" className={styles.again} onClick={onReset}>
+        Send another
+      </button>
+    </div>
   );
 }

@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { Resend } from "resend";
 
 import { validate, type ContactFields } from "@/lib/contact";
+import { ownerEmail, visitorEmail } from "@/lib/emails";
+import { site } from "@/lib/site";
 
 export const runtime = "nodejs";
 
@@ -25,14 +27,6 @@ function rateLimited(ip: string): boolean {
 
   entry.count += 1;
   return entry.count > MAX_PER_WINDOW;
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
 }
 
 function asString(value: unknown): string {
@@ -90,23 +84,22 @@ export async function POST(request: Request) {
     );
   }
 
-  const text = `Name: ${fields.name}\nEmail: ${fields.email}\n\nMessage:\n${fields.message}`;
-  const html = `<table cellpadding="0" cellspacing="0" style="font:16px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#111">
-<tr><td style="padding:0 0 6px"><strong>Name:</strong> ${escapeHtml(fields.name)}</td></tr>
-<tr><td style="padding:0 0 6px"><strong>Email:</strong> ${escapeHtml(fields.email)}</td></tr>
-<tr><td style="padding:18px 0 0"><strong>Message:</strong></td></tr>
-<tr><td style="padding:6px 0 0;white-space:pre-wrap">${escapeHtml(fields.message)}</td></tr>
-</table>`;
+  // Show the name rather than a bare address in the recipient's inbox.
+  const from = RESEND_FROM_EMAIL.includes("<")
+    ? RESEND_FROM_EMAIL
+    : `${site.name} <${RESEND_FROM_EMAIL}>`;
+
+  const resend = new Resend(RESEND_API_KEY);
+  const owner = ownerEmail(fields);
 
   try {
-    const resend = new Resend(RESEND_API_KEY);
     const { error } = await resend.emails.send({
-      from: RESEND_FROM_EMAIL,
+      from,
       to: CONTACT_EMAIL,
       replyTo: fields.email,
-      subject: `New message from ${fields.name}`,
-      text,
-      html,
+      subject: owner.subject,
+      text: owner.text,
+      html: owner.html,
     });
 
     if (error) {
@@ -122,6 +115,23 @@ export async function POST(request: Request) {
       { error: "The message could not be sent. Please try again." },
       { status: 500 },
     );
+  }
+
+  // The visitor's receipt is a courtesy. Their message is already delivered,
+  // so a failure here must never be reported back as a failed submission.
+  try {
+    const receipt = visitorEmail();
+    const { error } = await resend.emails.send({
+      from,
+      to: fields.email,
+      replyTo: CONTACT_EMAIL,
+      subject: receipt.subject,
+      text: receipt.text,
+      html: receipt.html,
+    });
+    if (error) console.error("Auto-reply rejected:", error);
+  } catch (cause) {
+    console.error("Auto-reply failed:", cause);
   }
 
   return NextResponse.json({ ok: true });

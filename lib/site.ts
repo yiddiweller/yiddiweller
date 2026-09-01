@@ -3,9 +3,10 @@ export const site = {
   role: "Designer",
   url: "https://yiddiweller.com",
   handle: "@yiddiweller",
-  title: "Yiddi Weller — Designer",
-  description:
-    "Independent designer working across digital, physical and spatial design.",
+  /* Search headline and browser tab: the name alone. */
+  title: "Yiddi Weller",
+  /* Snippet text under the Google result: the name alone. */
+  description: "Yiddi Weller",
 } as const;
 
 /** Work is reached from the homepage, so the header carries Contact only. */

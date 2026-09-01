@@ -1,0 +1,202 @@
+/* ------------------------------------------------------------------ reset */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+img,
+svg {
+  display: block;
+  max-width: 100%;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+}
+
+/* ----------------------------------------------------------------- tokens */
+
+:root {
+  --black: #000000;
+  --white: #ffffff;
+
+  /* Secondary tone is always white at reduced opacity, never a grey value. */
+  --w-72: rgba(255, 255, 255, 0.72);
+  --w-45: rgba(255, 255, 255, 0.45);
+  --w-36: rgba(255, 255, 255, 0.36);
+  --w-30: rgba(255, 255, 255, 0.3);
+  --rule: rgba(255, 255, 255, 0.18);
+  --rule-faint: rgba(255, 255, 255, 0.1);
+
+  /* One page gutter, shared by every element on every page. */
+  --page-x: clamp(20px, 4.2vw, 56px);
+  --page-y: clamp(22px, 2.6vw, 38px);
+
+  /* Fixed on the header so the hero can subtract it and land exactly on the
+     fold. Tracks what the header's own padding would have produced. */
+  --header-h: clamp(76px, calc(5.2vw + 34px), 112px);
+
+  --fs-display: clamp(3.4rem, 12.5vw, 15rem);
+  --fs-statement: clamp(1.875rem, 6vw, 5rem);
+  --fs-title: clamp(2rem, 6vw, 4rem);
+  --fs-lead: clamp(1.125rem, 2.2vw, 1.5rem);
+  --fs-body: 1rem;
+  --fs-ui: 0.875rem;
+  --fs-label: 0.6875rem;
+
+  --track-tight: -0.03em;
+  --track-ui: 0.005em;
+  --track-label: 0.14em;
+
+  --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --dur: 240ms;
+
+  color-scheme: dark;
+}
+
+/* ------------------------------------------------------------------- base */
+
+html,
+body {
+  background: var(--black);
+}
+
+body {
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+  color: var(--white);
+  font-family: var(--font-jost), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: var(--fs-body);
+  font-weight: 400;
+  line-height: 1.5;
+  letter-spacing: var(--track-ui);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+main {
+  flex: 1 0 auto;
+  display: flex;
+  flex-direction: column;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+::selection {
+  background: var(--white);
+  color: var(--black);
+}
+
+/* --------------------------------------------------------------- a11y */
+
+:focus-visible {
+  outline: 1px solid var(--white);
+  outline-offset: 5px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Skip link — visible only once focused. */
+.skip {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 100;
+  padding: 12px 18px;
+  font-size: var(--fs-ui);
+  background: var(--white);
+  color: var(--black);
+  transform: translateY(-110%);
+}
+
+.skip:focus-visible {
+  transform: translateY(0);
+  outline-offset: -5px;
+}
+
+/* -------------------------------------------------------------- utilities */
+
+.page {
+  padding-inline: var(--page-x);
+}
+
+.rule {
+  height: 1px;
+  border: 0;
+  background: var(--rule);
+}
+
+/* --------------------------------------------------------------- motion */
+
+/* Content enters once, quietly. Held back only when JS is present, so the
+   page stays readable if the script never runs. */
+.js [data-reveal] {
+  opacity: 0;
+  transform: translateY(14px);
+}
+
+.js [data-reveal][data-shown="true"] {
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity 700ms var(--ease),
+    transform 700ms var(--ease);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .js [data-reveal] {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* --------------------------------------------------------------- cursor */
+
+/* The native cursor is only surrendered once the custom one is mounted and
+   the device actually has a fine pointer. */
+@media (hover: hover) and (pointer: fine) {
+  html[data-cursor="on"],
+  html[data-cursor="on"] * {
+    cursor: none !important;
+  }
+}

@@ -1,0 +1,80 @@
+/* Hero claims whatever height the header and footer leave, so the name always
+   sits on the fold regardless of viewport. */
+/* Exactly the viewport less the header, so the name always lands on the fold
+   and the rule below closes the first screen. */
+.hero {
+  flex: 1;
+  min-height: calc(100svh - var(--header-h));
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding-block: clamp(64px, 14vh, 160px) clamp(40px, 9vh, 110px);
+}
+
+.title {
+  display: flex;
+  flex-direction: column;
+  font-size: var(--fs-display);
+  font-weight: 300;
+  line-height: 0.94;
+  letter-spacing: var(--track-tight);
+  /* Optical alignment: pulls the glyph edge flush to the gutter. */
+  margin-left: -0.045em;
+}
+
+.name {
+  display: block;
+}
+
+.role {
+  display: block;
+  color: var(--w-36);
+}
+
+.statement {
+  padding-block: clamp(96px, 20vh, 220px);
+  display: flex;
+  flex-direction: column;
+  gap: clamp(48px, 9vh, 96px);
+  align-items: flex-start;
+}
+
+.disciplines {
+  display: flex;
+  flex-direction: column;
+  font-size: var(--fs-statement);
+  font-weight: 300;
+  line-height: 1.06;
+  letter-spacing: var(--track-tight);
+  margin-left: -0.035em;
+}
+
+.cta {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.6em;
+  font-size: var(--fs-ui);
+  color: var(--w-72);
+  transition: color var(--dur) var(--ease);
+}
+
+.cta:hover {
+  color: var(--white);
+}
+
+.arrow {
+  display: inline-block;
+  transition: transform var(--dur) var(--ease);
+}
+
+.cta:hover .arrow {
+  transform: translateX(6px);
+}
+
+/* Below the fold the disciplines read better on one line at wider sizes. */
+@media (min-width: 900px) {
+  .disciplines {
+    flex-direction: row;
+    gap: 0.4em;
+  }
+}

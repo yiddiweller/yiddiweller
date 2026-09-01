@@ -1,0 +1,67 @@
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  height: var(--header-h);
+}
+
+.brand {
+  display: block;
+  /* Keeps the mark optically flush with the page gutter. */
+  margin-left: -2px;
+}
+
+.mark {
+  width: 78px;
+  height: auto;
+  opacity: 0.92;
+  transition: opacity var(--dur) var(--ease);
+}
+
+.brand:hover .mark {
+  opacity: 1;
+}
+
+.nav {
+  display: flex;
+  align-items: center;
+  gap: clamp(20px, 3vw, 40px);
+  list-style: none;
+}
+
+.link {
+  position: relative;
+  display: inline-block;
+  font-size: var(--fs-ui);
+  color: var(--w-72);
+  transition: color var(--dur) var(--ease);
+}
+
+/* Underline grows from the left rather than fading in. */
+.link::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: -3px;
+  width: 100%;
+  height: 1px;
+  background: currentColor;
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform var(--dur) var(--ease);
+}
+
+.link:hover {
+  color: var(--white);
+}
+
+.link:hover::after {
+  transform: scaleX(1);
+}
+
+@media (min-width: 640px) {
+  .mark {
+    width: 88px;
+  }
+}

@@ -1,0 +1,11 @@
+.footer {
+  flex-shrink: 0;
+  padding-block: var(--page-y);
+}
+
+.line {
+  font-size: var(--fs-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--w-30);
+}

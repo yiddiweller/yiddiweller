@@ -1,0 +1,39 @@
+/* Outer node carries position only, so the scale transition below can never
+   interpolate the pointer position and introduce lag. */
+.cursor {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 90;
+  pointer-events: none;
+  opacity: 0;
+  will-change: transform;
+}
+
+.cursor[data-visible="true"] {
+  opacity: 1;
+}
+
+.dot {
+  display: block;
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
+  border-radius: 50%;
+  background: var(--white);
+  /* Inverts against whatever is underneath, so the dot stays visible on the
+     reversed (white) button states without a glow or outline. */
+  mix-blend-mode: difference;
+  transition: transform 180ms var(--ease);
+}
+
+.cursor[data-interactive="true"] .dot {
+  transform: scale(1.7);
+}
+
+/* Never take the pointer away from a device that has no fine pointer. */
+@media (hover: none), (pointer: coarse) {
+  .cursor {
+    display: none;
+  }
+}

@@ -1,0 +1,21 @@
+.section {
+  flex: 1;
+  padding-block: clamp(56px, 12vh, 140px) clamp(80px, 18vh, 200px);
+}
+
+.heading {
+  font-size: var(--fs-title);
+  font-weight: 300;
+  line-height: 1;
+  letter-spacing: var(--track-tight);
+  margin-left: -0.035em;
+  margin-bottom: clamp(48px, 10vh, 120px);
+}
+
+.empty {
+  padding-top: clamp(28px, 4vw, 40px);
+  border-top: 1px solid var(--rule);
+  font-size: var(--fs-lead);
+  font-weight: 300;
+  color: var(--w-45);
+}

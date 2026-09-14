@@ -1,19 +1,13 @@
 import type { Metadata, Viewport } from "next";
-import { Jost } from "next/font/google";
 
 import Cursor from "@/components/Cursor";
 import Footer from "@/components/Footer";
 import Header from "@/components/Header";
 import HeaderFade from "@/components/HeaderFade";
+import { isPreview } from "@/lib/env";
 import { site } from "@/lib/site";
 
 import "./globals.css";
-
-const jost = Jost({
-  subsets: ["latin"],
-  display: "swap",
-  variable: "--font-jost",
-});
 
 export const metadata: Metadata = {
   metadataBase: new URL(site.url),
@@ -48,11 +42,14 @@ export const metadata: Metadata = {
     ],
     apple: [{ url: "/apple-touch-icon.png", sizes: "180x180" }],
   },
-  robots: {
-    index: true,
-    follow: true,
-    googleBot: { index: true, follow: true, "max-image-preview": "large" },
-  },
+  /* Second layer over robots.txt, for crawlers that ignore it. */
+  robots: isPreview
+    ? { index: false, follow: false, nocache: true }
+    : {
+        index: true,
+        follow: true,
+        googleBot: { index: true, follow: true, "max-image-preview": "large" },
+      },
 };
 
 export const viewport: Viewport = {
@@ -74,7 +71,7 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={jost.variable} suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning>
       <head>
         {/* Marks the document before first paint so revealed content can start
             hidden without ever flashing, and stays visible when JS is off. */}

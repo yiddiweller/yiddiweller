@@ -72,13 +72,33 @@ store.
 
 ### GitHub
 
-`main` is the deployment branch. Railway watches it and redeploys on every push.
+Two branches, each with its own Railway service.
+
+| Branch | Watched by                | Public at              |
+| ------ | ------------------------- | ---------------------- |
+| `main` | the production service    | `yiddiweller.com`      |
+| `beta` | the preview service       | `beta.yiddiweller.com` |
+
+Work lands on `beta` first, is reviewed on the preview domain, then merges into
+`main` to go live.
 
 ```bash
-git add -A
-git commit -m "…"
-git push origin main
+git push origin beta          # publishes to beta.yiddiweller.com
+
+git checkout main             # once the preview is approved
+git merge --ff-only beta
+git push origin main          # publishes to yiddiweller.com
 ```
+
+Reset `beta` from `main` before starting new work, so the two never drift:
+
+```bash
+git fetch origin main && git checkout -B beta origin/main
+```
+
+The preview service must set `SITE_ENV=preview` in its Railway variables. That
+single variable is what tells `robots.ts` to block all crawlers, so the preview
+can never compete with the live site in search results.
 
 ### Railway
 
@@ -173,9 +193,12 @@ brand/                  Source logo artwork (not served)
 
 - **Colour** is only `#000000` and `#ffffff`; every secondary tone is white at
   reduced opacity, defined as a token in `globals.css`. There are no greys.
-- **Type** is [Jost](https://fonts.google.com/specimen/Jost), self-hosted at
-  build time by `next/font` — no runtime request to Google. It was chosen to sit
-  with the existing `YIDDI WELLER` wordmark, which is also a geometric sans.
+- **Type** is the reader's own system typeface, set once as `--font-sans` in
+  `globals.css`: SF Pro on macOS and iOS, Segoe UI on Windows, Roboto on
+  Android. Nothing is downloaded, so text paints on the first frame, never
+  reflows, and the site reads as native on whatever device it is opened on.
+  Weight 300 exists in all three families, so the light display setting holds
+  everywhere.
 - **Spacing** comes from two tokens, `--page-x` and `--page-y`, used by every
   page, so the gutter is identical everywhere.
 - **The cursor** replaces the pointer only where `(hover: hover) and

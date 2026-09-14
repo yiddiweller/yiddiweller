@@ -102,14 +102,33 @@ can never compete with the live site in search results.
 
 ### Railway
 
+One Railway service per branch. Both are created the same way.
+
 1. **New Project → Deploy from GitHub repo** → pick this repository.
-2. Railway detects Next.js via Nixpacks; `railway.json` pins the commands
+2. **Settings → Source → Branch.** Set this before the first deploy. The
+   production service watches `main`; the preview service watches `beta`.
+3. Railway detects Next.js via Nixpacks; `railway.json` pins the commands
    (`npm run build`, then `npm run start`).
-3. **Variables** → add `RESEND_API_KEY`, `RESEND_FROM_EMAIL` and
-   `CONTACT_EMAIL`.
-4. Deploy. Do **not** set a `PORT` variable — Railway injects it and
+4. **Variables** → add `RESEND_API_KEY`, `RESEND_FROM_EMAIL` and
+   `CONTACT_EMAIL`. On the preview service add `SITE_ENV=preview` as well.
+5. Deploy. Do **not** set a `PORT` variable — Railway injects it and
    `next start` reads it automatically. Nothing in this repo hardcodes a port
    or a hostname.
+
+> **Step 2 is the one that bites.** A Railway service's branch is a copy of the
+> repository's default branch taken when the service was created, not a live
+> link to it. The two then drift apart silently. Changing the default branch on
+> GitHub does **not** move an existing service, and a service left on its
+> inherited default will keep serving stale code while pushes to the branch you
+> believe is deploying do nothing at all. A mismatch here stays invisible for as
+> long as the two branches happen to point at the same commit, and only surfaces
+> the first time they diverge, which is the worst moment to discover it.
+>
+> So: read **Settings → Source** on every service after creating it, and again
+> after any change to the default branch. Confirm the production service says
+> `main` and the preview service says `beta`. If a preview service is left on
+> `main`, `beta.yiddiweller.com` mirrors production instead of previewing
+> anything, which looks like it is working and is not.
 
 ### Custom domain — yiddiweller.com
 

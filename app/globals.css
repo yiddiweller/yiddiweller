@@ -36,10 +36,16 @@ textarea {
   --black: #000000;
   --white: #ffffff;
 
-  /* Secondary tone is always white at reduced opacity, never a grey value. */
+  /* Secondary tone is always white at reduced opacity, never a grey value.
+     The opacities are set by contrast, not by the token names, which are
+     historical: every one of these is used for text at 11px or above, so each
+     must clear WCAG AA's 4.5:1 against the black ground. Measured ratios:
+     --w-72 10.54:1, --w-45 4.92:1, --w-30 4.58:1. The minimum opacity that
+     reaches 4.5:1 is 0.4553, so nothing here may be lowered.
+     Renaming these to semantic names belongs to the public refinement phase. */
   --w-72: rgba(255, 255, 255, 0.72);
-  --w-45: rgba(255, 255, 255, 0.45);
-  --w-30: rgba(255, 255, 255, 0.3);
+  --w-45: rgba(255, 255, 255, 0.48);
+  --w-30: rgba(255, 255, 255, 0.46);
   --rule: rgba(255, 255, 255, 0.18);
   --rule-faint: rgba(255, 255, 255, 0.1);
 

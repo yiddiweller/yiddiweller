@@ -6,6 +6,9 @@
     "skipLibCheck": true,
     "strict": true,
     "noEmit": true,
+    /* Relative imports inside lib/ carry .ts so the same modules load
+       unchanged under `node --test`, which resolves ESM strictly. */
+    "allowImportingTsExtensions": true,
     "esModuleInterop": true,
     "module": "esnext",
     "moduleResolution": "bundler",

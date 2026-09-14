@@ -23,24 +23,39 @@ Open http://localhost:3000.
 | `npm run start`     | Serve the production build                  |
 | `npm run lint`      | ESLint                                      |
 | `npm run typecheck` | TypeScript, no emit                         |
+| `npm test`          | Unit and database tests (`node:test`)       |
+| `npm run db:generate` | Generate a migration from the schema      |
+| `npm run db:migrate`  | Apply pending migrations                  |
+| `npm run env:check`   | Report missing server variables by name   |
 
-Requires Node 20 or newer (see `.nvmrc`).
+Requires Node 22 or newer (see `.nvmrc`). Database setup is in
+[`docs/database.md`](docs/database.md); the wider architecture, including the
+Public / Client / Studio boundaries, is in
+[`docs/architecture.md`](docs/architecture.md).
 
 ---
 
 ## Environment variables
 
-All three are required for the contact form. Without them the form returns a
-clear "not configured yet" message instead of failing silently — the rest of
-the site works regardless.
+Every variable below is server-only. None may be given a `NEXT_PUBLIC_` prefix,
+which would publish it to the browser. `.env*` is git-ignored; never commit real
+values. Start from `.env.example`.
 
 | Variable            | Description                                                              |
 | ------------------- | ------------------------------------------------------------------------ |
+| `DATABASE_URL`      | PostgreSQL connection string. Inquiries are persisted here.               |
 | `RESEND_API_KEY`    | Resend API key. Server-side only — never exposed to the browser.          |
 | `RESEND_FROM_EMAIL` | Address mail is sent **from**. Must be on a domain verified in Resend.    |
 | `CONTACT_EMAIL`     | Address mail is delivered **to**. Any inbox you read.                     |
+| `SITE_ENV`          | Set to `preview` on the beta service only. Blocks all search indexing.    |
 
-`.env*` is git-ignored. Never commit real keys.
+An inquiry needs somewhere to go: a database that keeps it, or an inbox that
+receives it. With either configured the form works; only when **neither** is
+present does it return a clear "not configured yet" message. The rest of the
+site works regardless.
+
+Run `npm run env:check` against a service to list anything missing. It reports
+names only and never prints a value.
 
 ---
 
@@ -204,6 +219,12 @@ components/             Header, Footer, Cursor, ContactForm, ProjectList,
 data/projects.ts        The only file to edit when adding work
 lib/site.ts             Name, role, canonical URL, description
 lib/contact.ts          Validation shared by the form and the API route
+lib/db/                 Server-only data layer: connection, schema, domains
+lib/env.ts  lib/log.ts  Validated server config; structured JSON logging
+drizzle/                Committed SQL migrations
+scripts/                migrate.mjs (runs on deploy), check-env.mjs
+tests/                  node:test — no test framework dependency
+docs/                   Architecture and database documentation
 public/                 Icons served at the root
 brand/                  Source logo artwork (not served)
 ```
@@ -212,6 +233,11 @@ brand/                  Source logo artwork (not served)
 
 - **Colour** is only `#000000` and `#ffffff`; every secondary tone is white at
   reduced opacity, defined as a token in `globals.css`. There are no greys.
+  The opacities are set by contrast rather than by the token names, which are
+  historical: each is used for text at 11px or above, so each must clear WCAG
+  AA's 4.5:1 against black. Measured: `--w-72` 10.54:1, `--w-45` 4.92:1,
+  `--w-30` 4.58:1. The minimum opacity reaching 4.5:1 is 0.4553, so none of
+  them may be lowered.
 - **Type** is the reader's own system typeface, set once as `--font-sans` in
   `globals.css`: SF Pro on macOS and iOS, Segoe UI on Windows, Roboto on
   Android. Nothing is downloaded, so text paints on the first frame, never

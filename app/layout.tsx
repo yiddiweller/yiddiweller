@@ -1,10 +1,5 @@
 import type { Metadata, Viewport } from "next";
 
-import Cursor from "@/components/Cursor";
-import Footer from "@/components/Footer";
-import Header from "@/components/Header";
-import HeaderFade from "@/components/HeaderFade";
-import { isPreview } from "@/lib/env";
 import { site } from "@/lib/site";
 
 import "./globals.css";
@@ -19,20 +14,6 @@ export const metadata: Metadata = {
   applicationName: site.name,
   authors: [{ name: site.name, url: site.url }],
   creator: site.name,
-  alternates: { canonical: "/" },
-  openGraph: {
-    type: "website",
-    siteName: site.name,
-    title: site.title,
-    description: site.description,
-    url: site.url,
-    locale: "en_US",
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: site.title,
-    description: site.description,
-  },
   icons: {
     icon: [
       { url: "/icon.svg", type: "image/svg+xml" },
@@ -42,14 +23,6 @@ export const metadata: Metadata = {
     ],
     apple: [{ url: "/apple-touch-icon.png", sizes: "180x180" }],
   },
-  /* Second layer over robots.txt, for crawlers that ignore it. */
-  robots: isPreview
-    ? { index: false, follow: false, nocache: true }
-    : {
-        index: true,
-        follow: true,
-        googleBot: { index: true, follow: true, "max-image-preview": "large" },
-      },
 };
 
 export const viewport: Viewport = {
@@ -57,16 +30,14 @@ export const viewport: Viewport = {
   colorScheme: "dark",
 };
 
-const personSchema = {
-  "@context": "https://schema.org",
-  "@type": "Person",
-  name: site.name,
-  url: site.url,
-  jobTitle: site.role,
-  description: site.description,
-  image: `${site.url}/icon-512.png`,
-};
-
+/**
+ * The document itself, and nothing else.
+ *
+ * Chrome belongs to a world, not to the application: the public site's header,
+ * footer and cursor are in `app/(public)/layout.tsx`, and Studio's rail is in
+ * its own. Everything here is true of every page — the language, the tokens,
+ * the icons, the theme colour.
+ */
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
@@ -80,21 +51,8 @@ export default function RootLayout({
             __html: "document.documentElement.classList.add('js')",
           }}
         />
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(personSchema) }}
-        />
       </head>
-      <body>
-        <a href="#main" className="skip">
-          Skip to content
-        </a>
-        <Header />
-        <HeaderFade />
-        <main id="main">{children}</main>
-        <Footer />
-        <Cursor />
-      </body>
+      <body>{children}</body>
     </html>
   );
 }

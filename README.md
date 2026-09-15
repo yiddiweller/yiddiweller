@@ -27,11 +27,24 @@ Open http://localhost:3000.
 | `npm run db:generate` | Generate a migration from the schema      |
 | `npm run db:migrate`  | Apply pending migrations                  |
 | `npm run env:check`   | Report missing server variables by name   |
+| `npm run studio:bootstrap-owner` | Create the first Studio Owner, once     |
 
 Requires Node 22 or newer (see `.nvmrc`). Database setup is in
 [`docs/database.md`](docs/database.md); the wider architecture, including the
 Public / Client / Studio boundaries, is in
-[`docs/architecture.md`](docs/architecture.md).
+[`docs/architecture.md`](docs/architecture.md); Studio itself — routing,
+authentication, roles and invitations — is in
+[`docs/studio.md`](docs/studio.md).
+
+Studio runs at http://localhost:3000/studio in development. It needs `APP_URL`
+and `BETTER_AUTH_SECRET` set, the migrations applied, and one Owner:
+
+```bash
+STUDIO_OWNER_EMAIL=you@example.com STUDIO_OWNER_NAME="Your Name" \
+  npm run studio:bootstrap-owner
+```
+
+There is no sign-up. Everyone after the first Owner arrives by invitation.
 
 ---
 
@@ -47,6 +60,9 @@ values. Start from `.env.example`.
 | `RESEND_API_KEY`    | Resend API key. Server-side only — never exposed to the browser.          |
 | `RESEND_FROM_EMAIL` | Address mail is sent **from**. Must be on a domain verified in Resend.    |
 | `CONTACT_EMAIL`     | Address mail is delivered **to**. Any inbox you read.                     |
+| `APP_URL`           | Absolute origin of this deployment. Studio links are built from it.       |
+| `BETTER_AUTH_SECRET`| Signs Studio sessions and sign-in links. Different in every environment.  |
+| `STUDIO_HOST`       | Optional. The host Studio answers on at its root, once the subdomain exists. |
 | `SITE_ENV`          | Set to `preview` on the beta service only. Blocks all search indexing.    |
 
 An inquiry needs somewhere to go: a database that keeps it, or an inbox that
@@ -208,28 +224,36 @@ The work index switches from the "coming soon" state to the editorial row list
 ## Structure
 
 ```
+middleware.ts           Host routing: which world a request belongs to
 app/
-  layout.tsx            Root layout: fonts, metadata, header/footer, cursor
-  page.tsx              Home
-  work/page.tsx         Work index
-  work/[slug]/page.tsx  Project detail
-  contact/page.tsx      Contact
-  api/contact/route.ts  Resend endpoint
+  layout.tsx            The document: metadata, tokens. No chrome.
+  (public)/             The public site, with its header, footer and cursor
+    page.tsx            Home
+    work/page.tsx       Work index
+    work/[slug]/page.tsx  Project detail
+    contact/page.tsx    Contact
+  studio/               Studio: sign in, accept invitation, and the signed-in shell
   not-found.tsx         404
+  api/contact/route.ts  Resend endpoint
+  api/auth/[...all]/    Better Auth endpoints
   robots.ts  sitemap.ts  manifest.ts
   globals.css           Reset + design tokens
   favicon.ico  opengraph-image.png
 components/             Header, Footer, Cursor, ContactForm, ProjectList,
-                        Reveal, SignatureMark
+                        Reveal, SignatureMark, PublicFrame
+components/studio/      Studio's own components. Nothing is shared but tokens.
 data/projects.ts        The only file to edit when adding work
 lib/site.ts             Name, role, canonical URL, description
 lib/contact.ts          Validation shared by the form and the API route
+lib/hosts.ts            Public, Studio or internal, decided by Host
+lib/auth/               Access rule, route guards, Better Auth configuration
 lib/db/                 Server-only data layer: connection, schema, domains
 lib/env.ts  lib/log.ts  Validated server config; structured JSON logging
 drizzle/                Committed SQL migrations
-scripts/                migrate.mjs (runs on deploy), check-env.mjs
+scripts/                migrate.mjs (runs on deploy), check-env.mjs,
+                        bootstrap-owner.mjs
 tests/                  node:test — no test framework dependency
-docs/                   Architecture and database documentation
+docs/                   Architecture, database and Studio documentation
 public/                 Icons served at the root
 brand/                  Source logo artwork (not served)
 ```

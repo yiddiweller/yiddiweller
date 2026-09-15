@@ -48,3 +48,6 @@ export async function closeDb(): Promise<void> {
   pool = null;
   instance = null;
 }
+
+/** Re-exported for the Better Auth Drizzle adapter, which needs the whole map. */
+export { schema };

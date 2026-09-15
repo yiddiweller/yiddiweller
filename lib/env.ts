@@ -69,3 +69,48 @@ export function emailConfig(): EmailConfig {
     to: found.CONTACT_EMAIL,
   };
 }
+
+/**
+ * Secret used by Better Auth to sign sessions and magic-link tokens.
+ * Rotating it invalidates every live session, which is the intended behaviour
+ * in an incident.
+ */
+export function authSecret(): string {
+  return requireAll(["BETTER_AUTH_SECRET"]).BETTER_AUTH_SECRET;
+}
+
+/**
+ * Absolute origin this deployment is reached at, e.g. `https://example.com`.
+ * Magic links are built from it, so a wrong value sends beta sign-in links to
+ * production. Each environment sets its own; there is no shared default.
+ */
+export function appUrl(): string {
+  return requireAll(["APP_URL"]).APP_URL.replace(/\/+$/, "");
+}
+
+/**
+ * Host that serves Studio at its root, e.g. `studio.yiddiweller.com`.
+ * Unset while the subdomain is disconnected, which is the current state: Studio
+ * is then reachable only at the `/studio` path on non-public hosts.
+ */
+export function studioHost(): string | undefined {
+  return read("STUDIO_HOST")?.toLowerCase();
+}
+
+/**
+ * Absolute base for a link into Studio, e.g. an invitation.
+ *
+ * While STUDIO_HOST is unset — the current state — Studio lives under the
+ * `/studio` path of this deployment, so that is what a link must point at.
+ * Once the subdomain is connected, Studio is the root of its own host and the
+ * path prefix disappears. Building invitation links from APP_URL alone would
+ * be right today and silently wrong the day the subdomain exists, because
+ * `/studio/join` does not resolve on the public host at all.
+ *
+ * Connecting the subdomain also requires Better Auth's baseURL to move to it,
+ * since its session cookie is host-scoped. Recorded in docs/studio.md.
+ */
+export function studioUrl(): string {
+  const host = studioHost();
+  return host ? `https://${host}` : `${appUrl()}/studio`;
+}

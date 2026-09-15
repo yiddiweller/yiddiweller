@@ -3,7 +3,8 @@
 How yiddiweller.com is organised, and the rules future phases follow.
 The locked product and domain decisions are in [`blueprint.md`](./blueprint.md),
 which this document implements. Database specifics are in
-[`database.md`](./database.md).
+[`database.md`](./database.md), and Studio — routing, authentication, roles and
+invitations — is in [`studio.md`](./studio.md).
 
 ---
 
@@ -19,7 +20,7 @@ information density:
 | Access | Open | PIN or client account | Team only |
 | Density | Extremely minimal | Minimal and functional | Powerful and efficient |
 | Indexing | Indexed | Never | Never |
-| Status | **Built** | Not built | Not built |
+| Status | **Built** | Not built | **Built** — Build 002 |
 
 **They live in one Next.js application, not a monorepo.** That was the Phase 0
 recommendation and it was accepted. The reasoning, restated so it can be
@@ -61,21 +62,32 @@ forcing shared components produces a compromised middle that serves neither.
 ## Current layout
 
 ```
+middleware.ts                Host routing only. Edge runtime, no database.
 app/
-  (public routes)            Home, Work, Work/[slug], Contact, 404
-  api/contact/route.ts       The only API route. Node runtime.
+  layout.tsx                 The document: html, body, tokens, icons. No chrome.
+  (public)/                  Home, Work, Work/[slug], Contact — header, footer, cursor
+  studio/                    Sign in, Accept invitation, and the signed-in (app) shell
+  not-found.tsx              The 404 for an unmatched URL. Brings its own frame.
+  api/contact/route.ts       Node runtime.
+  api/auth/[...all]/route.ts Better Auth's endpoints. Node runtime.
   globals.css                Design tokens
-components/                  Presentation only
+components/                  Presentation only. components/studio/ is separate.
 lib/
   contact.ts                 Validation, shared by the form and the server
+  hosts.ts                   Which world a request belongs to
+  auth/
+    access.ts                The access rule, with no framework around it
+    guard.ts                 currentStaff / requireStaff / requireOwner
+    config.ts  client.ts     Better Auth, server and browser
   db/                        Server-only data layer
     index.ts                 Lazy connection. The single entry point.
     schema.ts                Tables and conventions
     inquiries.ts             Domain module: everything done with inquiries
+    staff.ts                 Domain module: staff and invitations
     id.ts                    UUIDv7
   emails.ts  site.ts  social.ts  env.ts  log.ts
 drizzle/                     Committed migrations
-scripts/                     migrate.mjs, check-env.mjs
+scripts/                     migrate.mjs, check-env.mjs, bootstrap-owner.mjs
 tests/                       node:test, no framework
 ```
 
@@ -84,9 +96,15 @@ That keeps the shape of a table changeable from one place, and it is the pattern
 every future domain follows: one module per domain, not one giant data-access
 layer and not queries scattered through routes.
 
-When Studio arrives, public routes move into an `app/(public)/` group and Studio
-into `app/(studio)/`. No public route moves before then — restructuring for
-theoretical cleanliness costs review time and gains nothing.
+That move happened in Build 002, and not for tidiness: the root layout carried
+the public header, footer and cursor, so the Studio shell rendered inside them
+with its `<main>` nested in the public one. Chrome belongs to a world, so each
+world now owns its own layout and the root layout is the document alone. No URL
+changed — a route group is invisible in the path.
+
+Studio is at `app/studio/` rather than `app/(studio)/` because the path
+`/studio` is real on the beta and local hosts, and is what the Studio host
+rewrites to. See [`studio.md`](./studio.md).
 
 ---
 
@@ -103,10 +121,15 @@ with public page requests. That is a real security boundary.
 `dashboard.`, `app.`, `portal.`, `client.`, `clients.`, `pay.`, `files.`,
 `auth.`, `login.` and `api.` without an explicit revision.
 
-Nothing in Phase 1 blocks this. It needs, in a later phase, a Railway service or
-domain pointed at the same application, host-based routing in middleware, and an
-auth boundary on the Studio route group. No DNS was changed in Phase 1 and no
-Studio route exists.
+Build 002 implemented the routing and the auth boundary. `lib/hosts.ts`
+classifies every request as `studio`, `public` or `internal`, and `middleware.ts`
+acts on it: the Studio host serves Studio at its root, the public host answers
+404 for `/studio/*`, and the beta preview and localhost serve it at `/studio`.
+
+What is still outstanding is only the DNS and one configuration move: a Railway
+domain pointed at the same service, `STUDIO_HOST` set on that environment, and
+Better Auth's `baseURL` moved to the Studio origin, because the session cookie
+is host-scoped. Recorded in [`studio.md`](./studio.md). No DNS has been changed.
 
 ---
 

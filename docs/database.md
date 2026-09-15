@@ -2,6 +2,19 @@
 
 PostgreSQL, accessed through Drizzle ORM. Introduced in Phase 1.
 
+| Migration | Tables |
+| --- | --- |
+| `0000_inquiries.sql` | `inquiries` |
+| `0001_studio_staff.sql` | `user`, `session`, `account`, `verification`, `staff_invitations` |
+
+The Build 002 tables are Studio's. Four of them are Better Auth's own, named as
+that library expects rather than in our plural convention, which is the one
+place the naming rule below is deliberately broken: renaming them would mean
+maintaining a mapping layer forever to win an argument about spelling. Their
+identifiers are `text` columns carrying UUIDv7 values, because Better Auth
+generates and compares ids as strings. `staff_invitations` is ours and follows
+every convention.
+
 ---
 
 ## Why these tools
@@ -173,10 +186,25 @@ is expected to be disposable.
 through `@esbuild-kit/esm-loader` from `drizzle-kit`. They are accepted, for
 reasons worth checking rather than trusting:
 
-- **It cannot reach production.** `drizzle-kit` is a devDependency. The
-  production tree installs six packages — `next`, `react`, `react-dom`,
-  `drizzle-orm`, `postgres`, `resend` — and `npm ls esbuild --omit=dev` is
-  empty. `npm run audit` checks that tree and reports zero vulnerabilities.
+- **It does not reach the running image, though this changed in Build 002 and
+  is worth reading carefully.** `drizzle-kit` is a devDependency, but it is also
+  an *optional peer* of `better-auth`, wanted only by the Better Auth CLI, which
+  this repository does not use. npm records a package needed by both as neither
+  `dev` nor `peer` in the lockfile, so `npm ci --omit=dev` installs it anyway
+  and brings `esbuild` and `tsx` with it — 42 MB of build tooling, including the
+  esbuild version this advisory names, inside what is supposed to be a
+  six-package runtime.
+
+  The `prod-deps` stage of the `Dockerfile` removes it, with the reasoning at
+  that line. Nothing in Better Auth's runtime references it:
+  `grep -rl drizzle-kit node_modules/better-auth/dist` is empty, as is the
+  Drizzle adapter, and a server booted from a tree with it removed serves every
+  route including Studio sign-in.
+
+  **`npm run audit` therefore reports these four findings locally and does not
+  describe the shipped image.** That is the honest state: the check now
+  describes a tree that is one deliberate `rm` away from what runs. Re-check it
+  whenever `better-auth` changes what it asks for.
 - **The advisory does not apply to how we use it.** GHSA-67mh-4wv8-2f99 lets a
   malicious website reach esbuild's *development server* and read its responses.
   Nothing here runs `esbuild --serve`; `drizzle-kit generate` is a one-shot CLI

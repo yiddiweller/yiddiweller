@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { eq } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 
 import { db } from "./index.ts";
 import { uuidv7 } from "./id.ts";
@@ -100,4 +100,38 @@ export async function recordInquiry(
     .limit(1);
 
   return { id: existing[0]?.id ?? "", duplicate: true };
+}
+
+export type InquirySummary = {
+  id: string;
+  name: string;
+  email: string;
+  preview: string;
+  createdAt: Date;
+};
+
+/**
+ * The most recent inquiries, for Studio Home. A bridge to the Leads work in a
+ * later phase, not that work itself: read-only, no status, no pipeline.
+ *
+ * The message is truncated here rather than in the view, so a full private
+ * message never leaves the database for a screen that only shows a line of it.
+ */
+export async function listRecentInquiries(limit = 5): Promise<InquirySummary[]> {
+  return db()
+    .select({
+      id: inquiries.id,
+      name: inquiries.name,
+      email: inquiries.email,
+      preview: sql<string>`left(${inquiries.message}, 140)`,
+      createdAt: inquiries.createdAt,
+    })
+    .from(inquiries)
+    .orderBy(desc(inquiries.createdAt))
+    .limit(limit);
+}
+
+export async function countInquiries(): Promise<number> {
+  const [row] = await db().select({ n: sql<number>`count(*)::int` }).from(inquiries);
+  return row?.n ?? 0;
 }

@@ -39,6 +39,22 @@ FROM base AS prod-deps
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 
+# drizzle-kit is an *optional peer* of better-auth, wanted only by the Better
+# Auth CLI, which this repository does not use: schema and migrations are
+# written by hand and committed. Because it is also our own devDependency, npm
+# records it in the lockfile without a `dev` flag, so `--omit=dev` installs it
+# anyway and brings esbuild and tsx with it. That put 42 MB of build tooling —
+# including the esbuild version behind GHSA-67mh-4wv8-2f99 — inside the runtime
+# image, where `npm run audit` promises nothing but the six packages the server
+# actually needs.
+#
+# Nothing in better-auth's runtime references drizzle-kit: `grep -rl drizzle-kit
+# node_modules/better-auth/dist` is empty, as is the Drizzle adapter. Removing
+# it here rather than reaching for `--omit=peer`, which does not apply to an
+# entry the lockfile marks as neither dev nor peer.
+RUN rm -rf node_modules/drizzle-kit node_modules/@esbuild-kit node_modules/tsx \
+           node_modules/esbuild node_modules/@esbuild
+
 
 # ---------------------------------------------------------------------- build
 FROM base AS builder

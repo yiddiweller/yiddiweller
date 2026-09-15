@@ -95,3 +95,89 @@ ${FOOTER}`);
 
   return { subject: `New message from ${oneLine(fields.name)}`, html, text };
 }
+
+/**
+ * The Studio sign-in link. Deliberately bare: an internal entrance, not a
+ * marketing email. The URL is never logged anywhere, because possession of it
+ * is possession of the session it would create.
+ */
+export async function sendMagicLinkEmail(input: {
+  to: string;
+  url: string;
+  minutes: number;
+}): Promise<void> {
+  const { Resend } = await import("resend");
+  const { emailConfig } = await import("./env.ts");
+  const { apiKey, from: fromAddress } = emailConfig();
+
+  const from = fromAddress.includes("<")
+    ? fromAddress
+    : `${site.name} Studio <${fromAddress}>`;
+
+  const html = shell(`<tr><td style="font-family:${FONT};font-size:12px;letter-spacing:0.3em;color:${MUTED};text-transform:uppercase;padding:0 0 8px;">Yiddi&nbsp;Weller</td></tr>
+<tr><td style="font-family:${FONT};font-size:12px;letter-spacing:0.3em;color:${FAINT};text-transform:uppercase;padding:0 0 56px;">Studio</td></tr>
+<tr><td style="font-family:${FONT};font-size:30px;line-height:1.25;font-weight:300;letter-spacing:-0.01em;color:${WHITE};padding:0 0 20px;">Sign in.</td></tr>
+<tr><td style="font-family:${FONT};font-size:15px;line-height:1.65;color:${MUTED};padding:0 0 32px;">This link opens Studio and expires in ${input.minutes} minutes. If you did not ask for it, nothing happens &mdash; ignore it.</td></tr>
+<tr><td style="padding:0 0 8px;"><a href="${input.url}" style="display:inline-block;font-family:${FONT};font-size:15px;color:${BG};background:${WHITE};padding:14px 28px;text-decoration:none;">Open Studio</a></td></tr>`);
+
+  const text = `YIDDI WELLER STUDIO
+
+Sign in.
+
+This link opens Studio and expires in ${input.minutes} minutes.
+If you did not ask for it, ignore this message.
+
+${input.url}`;
+
+  const resend = new Resend(apiKey);
+  const { error } = await resend.emails.send({
+    from,
+    to: input.to,
+    subject: "Sign in to Studio",
+    html,
+    text,
+  });
+
+  if (error) throw new Error(`magic link delivery rejected: ${error.name}`);
+}
+
+/** The one route into Studio. Sent by an Owner, single use, expiring. */
+export async function sendInvitationEmail(input: {
+  to: string;
+  url: string;
+  invitedBy: string;
+}): Promise<void> {
+  const { Resend } = await import("resend");
+  const { emailConfig } = await import("./env.ts");
+  const { apiKey, from: fromAddress } = emailConfig();
+
+  const from = fromAddress.includes("<")
+    ? fromAddress
+    : `${site.name} Studio <${fromAddress}>`;
+
+  const html = shell(`<tr><td style="font-family:${FONT};font-size:12px;letter-spacing:0.3em;color:${MUTED};text-transform:uppercase;padding:0 0 8px;">Yiddi&nbsp;Weller</td></tr>
+<tr><td style="font-family:${FONT};font-size:12px;letter-spacing:0.3em;color:${FAINT};text-transform:uppercase;padding:0 0 56px;">Studio</td></tr>
+<tr><td style="font-family:${FONT};font-size:30px;line-height:1.25;font-weight:300;letter-spacing:-0.01em;color:${WHITE};padding:0 0 20px;">You have been invited.</td></tr>
+<tr><td style="font-family:${FONT};font-size:15px;line-height:1.65;color:${MUTED};padding:0 0 32px;">${escapeHtml(input.invitedBy)} has given you access to Yiddi Weller Studio. This invitation is single use and expires in seven days.</td></tr>
+<tr><td style="padding:0 0 8px;"><a href="${input.url}" style="display:inline-block;font-family:${FONT};font-size:15px;color:${BG};background:${WHITE};padding:14px 28px;text-decoration:none;">Accept invitation</a></td></tr>`);
+
+  const text = `YIDDI WELLER STUDIO
+
+You have been invited.
+
+${input.invitedBy} has given you access to Yiddi Weller Studio.
+This invitation is single use and expires in seven days.
+
+${input.url}`;
+
+  const resend = new Resend(apiKey);
+  const { error } = await resend.emails.send({
+    from,
+    to: input.to,
+    subject: "You have been invited to Yiddi Weller Studio",
+    html,
+    text,
+  });
+
+  if (error) throw new Error(`invitation delivery rejected: ${error.name}`);
+}

@@ -193,7 +193,7 @@ providers where they earn their place.
 | --- | --- | --- |
 | 0 | Audit and architecture | Complete |
 | 1 | Core foundation, inquiry persistence | **Complete — production verified**, released as **Build 001** |
-| 2 | Studio foundation and authentication | Not started |
+| 2 | Studio foundation and authentication | **On beta, verifying** — **Build 002** |
 | 3 | Clients, contacts, leads, projects | |
 | 4 | Workrooms and private client access | |
 | 5 | Files, presentations, approvals | |

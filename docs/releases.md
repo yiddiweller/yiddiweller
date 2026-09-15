@@ -17,9 +17,10 @@ tooling, nothing to keep in sync.
 | Environment | Build | Commit |
 | --- | --- | --- |
 | Production | **Build 001** | `681fc8e` |
-| Beta | **Build 001** | `681fc8e` |
+| Beta | **Build 002** | `fd70c98` |
 
-The active human-readable platform version is **Build 001**.
+Beta is one build ahead while Build 002 is verified. That is the normal state
+during testing, not a discrepancy.
 
 ---
 
@@ -67,6 +68,33 @@ trustworthy.
 ---
 
 ## Build log
+
+### Build 002 — Studio foundation and staff authentication
+
+Commit `fd70c98`. On beta, in verification. Not promoted.
+
+Phase 2. The first build with a private side: Studio, the internal team world,
+served by the same application and told apart by `Host`. Nothing about the
+public experience changed.
+
+- Magic-link authentication, invite only. No sign-up form, no password, no
+  social provider. A user row is created by accepting an invitation or by the
+  one-time owner bootstrap script, and by nothing else.
+- Two roles, Owner and Member, and a separate active/inactive status.
+  Deactivating deletes live sessions, so access ends immediately.
+- Single-use invitations, stored as a digest and expiring in seven days.
+- Host routing: Studio at the root of its own host once the subdomain is
+  connected, `/studio` on beta and localhost, and 404 on the public host.
+- Server-side authorization on every page, layout and action.
+- Public routes moved into an `app/(public)/` route group so Studio stops
+  inheriting the public header, footer and cursor. No URL changed.
+- The runtime image no longer carries drizzle-kit, esbuild and tsx, which an
+  optional peer dependency had pulled into it.
+
+Requires `APP_URL` and `BETTER_AUTH_SECRET` in every environment that serves
+it, and one migration, `0001_studio_staff.sql`.
+
+---
 
 ### Build 001 — Phase 1 production foundation
 

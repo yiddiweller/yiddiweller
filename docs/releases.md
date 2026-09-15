@@ -16,11 +16,11 @@ tooling, nothing to keep in sync.
 
 | Environment | Build | Commit |
 | --- | --- | --- |
-| Production | **Build 001** | `681fc8e` |
-| Beta | **Build 002** | `15a5969` |
+| Production | **Build 002** | `544e7bb` |
+| Beta | **Build 002** | `544e7bb` |
 
-Beta is one build ahead while Build 002 is verified. That is the normal state
-during testing, not a discrepancy.
+Both environments run the identical commit. The active human-readable platform
+version is **Build 002**.
 
 ---
 
@@ -71,7 +71,8 @@ trustworthy.
 
 ### Build 002 — Studio foundation, authentication and design system
 
-Commit `15a5969`. On beta, verified. Not promoted.
+Commit `544e7bb`. **In production, verified.** Promoted 2026-09-15 by
+fast-forward, so production and beta sit on the identical commit.
 
 A build keeps one number while it is being finished: the authentication work
 and the design system that completes it are both Build 002, and the refinement
@@ -108,7 +109,25 @@ public experience changed.
   a 200. Both are now rules, and Studio has no loading boundary.
 
 Requires `APP_URL` and `BETTER_AUTH_SECRET` in every environment that serves
-it, and one migration, `0001_studio_staff.sql`.
+it, and one migration, `0001_studio_staff.sql`, which the deploy applies itself.
+
+**Promotion, 2026-09-15.** Two stages, as planned. The code went first with
+`STUDIO_HOST` unset, so Studio was unreachable in production while the deploy
+and the migration were verified: five Studio tables created, existing inquiry
+data intact, the public site and the contact flow unaffected, and
+`yiddiweller.com/studio` still answering 404. Then
+`studio.yiddiweller.com` was connected through Railway and Namecheap, verified
+by Railway, and `STUDIO_HOST` was set. The first Owner was bootstrapped,
+magic-link sign-in was confirmed on the real domain, and Home, Team and Settings
+were checked by hand.
+
+`APP_URL` is `https://studio.yiddiweller.com` in production — the Studio origin,
+not the public one, because Better Auth builds its links and scopes its cookie
+from it. No code change was needed to connect the subdomain.
+
+A production database restore had been rehearsed successfully before promotion;
+see [`restore-rehearsal.md`](./restore-rehearsal.md) for what it established
+and what it did not.
 
 ---
 

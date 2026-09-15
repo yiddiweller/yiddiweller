@@ -1,6 +1,7 @@
 # Studio
 
-The private team world. Introduced in Phase 2, released as **Build 002**.
+The private team world. Introduced in Phase 2, released as **Build 002**, and
+**live in production at `studio.yiddiweller.com` since 2026-09-15**.
 
 Product decisions are in [`blueprint.md`](./blueprint.md) and the permanent
 interface system is in [`studio-design.md`](./studio-design.md); this file
@@ -43,6 +44,11 @@ nothing else — it runs on the Edge runtime and must never touch the database.
 | `yiddiweller.com`, `www.`, anything else in production | `public` | `/studio/*` answers **404**, by rewrite. |
 | The beta service (any hostname, with `SITE_ENV=preview`), `localhost` | `internal` | At `/studio`. |
 
+Production has `STUDIO_HOST=studio.yiddiweller.com` set, so the first row is
+live: Studio answers at the root of its own host, and `yiddiweller.com/studio`
+answers 404. Beta has no `STUDIO_HOST` and reaches Studio at `/studio` on its
+Railway hostname.
+
 The public host answering 404 rather than redirecting is deliberate: a redirect
 would confirm that internal software sits behind that domain.
 
@@ -51,21 +57,29 @@ server action checks the session against Postgres on every request. Middleware
 decides which world a request belongs to; it decides nothing about who someone
 is.
 
-Until the subdomain is connected, Studio is exercised on the beta service at
-`/studio`, on whatever hostname Railway gave it — today
-`yiddiweller-beta.up.railway.app`. **Nothing depends on that name.** A request
-is classified as `internal` because `SITE_ENV=preview` is set on that service,
-not because of its address, which is what allows beta to keep a generated
-hostname and to change it without a code change. The corollary is worth
-knowing: if `SITE_ENV` were ever unset on beta, that host would classify as
-`public` and `/studio` would answer 404 there.
+On beta, Studio is reached at `/studio` on whatever hostname Railway gave that
+service — today `yiddiweller-beta.up.railway.app`. **Nothing depends on that
+name.** A request is classified as `internal` because `SITE_ENV=preview` is set
+there, not because of its address, which is what lets beta keep a generated
+hostname and change it without a code change. The corollary is worth knowing: if
+`SITE_ENV` were ever unset on beta, that host would classify as `public` and
+`/studio` would answer 404 there.
 
-Connecting the Studio subdomain later needs three things, and no code changes
-beyond the third: a Railway domain pointing at the same service,
-`STUDIO_HOST` set on that environment, and Better Auth's `baseURL` moved to the
-Studio origin — its session cookie is host-scoped, so a link issued for one host
-cannot establish a session on the other. `studioUrl()` in `lib/env.ts` already
-builds invitation links from whichever of the two applies.
+### Connecting the subdomain — done, and what it took
+
+`studio.yiddiweller.com` was connected on 2026-09-15: a custom domain on the
+production service, a CNAME at Namecheap, Railway's verification, and
+`STUDIO_HOST` set. **No code change was needed.** Earlier notes said Better
+Auth's `baseURL` would have to move to the Studio origin — it does, but it is
+`appUrl()`, so setting `APP_URL=https://studio.yiddiweller.com` was the whole
+of it.
+
+That value matters more than it looks. The session cookie is host-scoped, so a
+sign-in link issued for one host cannot establish a session on another;
+`APP_URL` is what puts the link where the cookie can live. It is also where
+invitation links come from, through `studioUrl()`. The public site never reads
+it — its canonical URL is in `lib/site.ts`. **Do not "correct" production's
+`APP_URL` to the public domain.**
 
 ---
 
@@ -242,6 +256,12 @@ deletes their live sessions so it takes effect immediately.
 An Owner cannot deactivate themselves. That is not politeness; it is what stops
 Studio becoming unreachable.
 
+**Production currently has exactly one Owner**, which is the obvious single
+point of failure: the bootstrap script refuses to run while an active Owner
+exists, so if that mailbox became unreachable there is no supported way back in
+short of editing the database by hand. Inviting a second Owner is the cheap fix
+and should happen before Studio holds client work.
+
 ---
 
 ## Invitations
@@ -371,6 +391,37 @@ Errors are designed, not raw: an expired invitation, a withdrawn one, an
 already-used one and a page that is not yours to open each have their own calm
 wording, shared between the page that checks a link on arrival and the form that
 checks it again on submit.
+
+---
+
+## Open before Build 003
+
+Small things, none of them blocking Build 002, all of them cheaper to do now
+than after Studio holds client work.
+
+1. **Invite a second Owner.** Production has one, and the bootstrap script
+   refuses to run while an active Owner exists. Today a lost mailbox means
+   editing the database by hand. Ideally the second Owner is on a different mail
+   provider, which also insures against the item below.
+2. **Sign-in depends on one email arriving.** There is no password and no
+   fallback, so a link in a spam folder is a locked door. Confirm SPF and DKIM
+   cover the sending domain for Studio's mail, not just contact notifications.
+3. **Rate limiting is in memory.** Better Auth's default store, so the counters
+   reset on every deploy and do not span instances. Correct enough for one
+   instance; it needs a shared store before Studio runs on more than one.
+4. **Time the next restore rehearsal.** The first proved the mechanism but
+   measured nothing, so there is still no recovery time objective. The next one
+   should also check the Studio tables, the migrations table, and an application
+   boot against the restored copy — see
+   [`restore-rehearsal.md`](./restore-rehearsal.md).
+5. **Settle the audit log with Build 003, not after it.** The blueprint requires
+   activity and audit to stay separate, and Build 003 is the first build with
+   client data worth recording. Retrofitting an audit trail over an existing
+   schema is how they end up merged.
+6. **`npm run audit` still reports four moderate findings** that the runtime
+   image does not carry, because the Dockerfile prunes the package they come
+   from. Re-check when Better Auth stops asking for `drizzle-kit` as an
+   optional peer; see [`database.md`](./database.md).
 
 ---
 

@@ -31,12 +31,23 @@ that has not been on `beta` first, and never leave `beta` behind `main`.
 
 ## Platform state — settled, do not re-litigate
 
-**Phase 1 is complete and verified in production.** Released as **Build 001**.
-These are facts about the running system, not proposals. Changing any of them
-is a deliberate decision, not a cleanup.
+**Phases 1 and 2 are complete and verified in production**, released as
+**Build 001** and **Build 002**. These are facts about the running system, not
+proposals. Changing any of them is a deliberate decision, not a cleanup.
 
 - **PostgreSQL is the system of record for contact inquiries.** Email is a
   notification, not the record. An inquiry is persisted before it is emailed.
+- **Studio is live at `studio.yiddiweller.com`**, invite-only, magic-link
+  sign-in, Owner and Member roles. The same application serves both worlds and
+  tells them apart by `Host`: production has `STUDIO_HOST=studio.yiddiweller.com`
+  set, and `yiddiweller.com/studio` answers 404 by design.
+- **Production `APP_URL` is `https://studio.yiddiweller.com`**, the Studio
+  origin rather than the public one. Better Auth builds its sign-in links and
+  scopes its session cookie from it, and invitation links come from it too. The
+  public site never reads it — its canonical URL is in `lib/site.ts`. Do not
+  "correct" this to the public domain.
+- **`BETTER_AUTH_SECRET` is per environment.** Production and beta have separate
+  secrets; sharing one would make a beta session valid in production.
 - **Railway runs two isolated environments**, `production` from `main` and
   `beta` from `beta`, **each with its own PostgreSQL service.** Beta never
   touches production data.
@@ -57,7 +68,8 @@ is a deliberate decision, not a cleanup.
 - **Production PostgreSQL has Point-in-Time Recovery plus weekly and monthly
   backups, and a restore was rehearsed successfully on 2026-09-15** — PITR into
   a separate temporary service, production untouched, real inquiry data verified
-  in the restored copy. **No duration was measured, so there is no recovery time
+  in the restored copy, and the temporary service and its volume removed
+  afterwards. **No duration was measured, so there is no recovery time
   objective yet.** Procedure and full record: `docs/restore-rehearsal.md`.
 
 Builds are numbered in `docs/releases.md`: one sequential human-readable

@@ -62,7 +62,7 @@ values. Start from `.env.example`.
 | `CONTACT_EMAIL`     | Address mail is delivered **to**. Any inbox you read.                     |
 | `APP_URL`           | Absolute origin of this deployment. Studio links are built from it.       |
 | `BETTER_AUTH_SECRET`| Signs Studio sessions and sign-in links. Different in every environment.  |
-| `STUDIO_HOST`       | Optional. The host Studio answers on at its root, once the subdomain exists. |
+| `STUDIO_HOST`       | The host Studio answers on at its root. `studio.yiddiweller.com` in production; unset on beta and locally. |
 | `SITE_ENV`          | Set to `preview` on the beta service only. Blocks all search indexing.    |
 
 An inquiry needs somewhere to go: a database that keeps it, or an inbox that

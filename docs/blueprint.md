@@ -196,8 +196,8 @@ sequence and is kept because it is what earlier documents cite.
 | Build | Scope | State |
 | --- | --- | --- |
 | 001 | Core foundation, inquiry persistence | **In production** |
-| 002 | Studio foundation, authentication, and the permanent Studio design system | **On beta, verifying** |
-| 003 | Business core: clients, contacts, leads, projects | Next |
+| 002 | Studio foundation, authentication, and the permanent Studio design system | **In production, verified** |
+| 003 | Business core: clients, contacts, leads, projects | **Next** |
 | 004 | Client workrooms: private client collaboration and controlled access | |
 | 005 | Files, presentations, reviews and approvals | |
 | 006 | Money: estimates, invoices, payment requests, the public pay flow | |
@@ -234,7 +234,7 @@ is a decision for when 004 is planned, not now.
 | --- | --- | --- |
 | 0 | Audit and architecture | Complete |
 | 1 | Core foundation, inquiry persistence | **Complete — production verified**, released as **Build 001** |
-| 2 | Studio foundation, authentication, Studio design system | **On beta, verifying** — **Build 002** |
+| 2 | Studio foundation, authentication, Studio design system | **Complete — production verified**, released as **Build 002** |
 | 3 | Clients, contacts, leads, projects | |
 | 4 | Workrooms and private client access | |
 | 5 | Files, presentations, approvals | |

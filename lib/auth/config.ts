@@ -63,6 +63,10 @@ function createAuth() {
      * blunts token guessing. Better Auth's own limiter rather than a second
      * inconsistent one beside the contact form's.
      */
+    // Storage is Better Auth's default, which is in memory: the counters reset
+    // on every deploy and do not span instances. Correct enough while Studio
+    // runs on one, and recorded in docs/studio.md as something that needs a
+    // shared store before it runs on more.
     rateLimit: {
       enabled: true,
       window: 60,

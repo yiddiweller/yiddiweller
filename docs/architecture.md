@@ -20,7 +20,7 @@ information density:
 | Access | Open | PIN or client account | Team only |
 | Density | Extremely minimal | Minimal and functional | Powerful and efficient |
 | Indexing | Indexed | Never | Never |
-| Status | **Built** | Not built | **Built** — Build 002 |
+| Status | **Built** | Not built | **Built and live** — Build 002 |
 
 **They live in one Next.js application, not a monorepo.** That was the Phase 0
 recommendation and it was accepted. The reasoning, restated so it can be
@@ -131,10 +131,11 @@ classifies every request as `studio`, `public` or `internal`, and `middleware.ts
 acts on it: the Studio host serves Studio at its root, the public host answers
 404 for `/studio/*`, and the beta preview and localhost serve it at `/studio`.
 
-What is still outstanding is only the DNS and one configuration move: a Railway
-domain pointed at the same service, `STUDIO_HOST` set on that environment, and
-Better Auth's `baseURL` moved to the Studio origin, because the session cookie
-is host-scoped. Recorded in [`studio.md`](./studio.md). No DNS has been changed.
+That was completed on 2026-09-15: `studio.yiddiweller.com` is a custom domain on
+the production service, `STUDIO_HOST` is set there, and `APP_URL` is the Studio
+origin — which is also Better Auth's `baseURL`, so the host-scoped session
+cookie lands where the sign-in link does. It took no code change. Recorded in
+[`studio.md`](./studio.md).
 
 ---
 

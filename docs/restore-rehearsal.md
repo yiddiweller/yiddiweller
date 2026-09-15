@@ -225,8 +225,8 @@ rehearsal should be a shorter document than this one.
 - **Real production inquiry data was present and correct** in it — the point of
   the whole exercise, and the first time production data has been read back out
   of a backup.
-- The temporary service was deleted afterwards, leaving no second copy of
-  production data running.
+- The temporary service **and its volume** were removed afterwards, leaving no
+  second copy of production data anywhere.
 
 **What this rehearsal did not establish.** Recorded plainly, because a rehearsal
 that is remembered as more thorough than it was is worse than none:
@@ -257,5 +257,5 @@ Verification         restored service online · connected · inquiries table
 Result               success
 Surprises            none reported
 Production touched   no — online and unmodified throughout
-Cleanup              temporary service deleted
+Cleanup              temporary service and volume removed
 ```

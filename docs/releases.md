@@ -17,7 +17,7 @@ tooling, nothing to keep in sync.
 | Environment | Build | Commit |
 | --- | --- | --- |
 | Production | **Build 002** | `544e7bb` |
-| Beta | **Build 003** | see the log below |
+| Beta | **Build 003** | `e64eaeb` |
 
 Beta is a number ahead while Build 003 is verified. That is the normal state
 during testing, not a discrepancy.
@@ -71,8 +71,12 @@ trustworthy.
 
 ### Build 003 — Business core
 
-**On beta, awaiting verification.** Production stays on Build 002 until it is
-approved.
+Commit `e64eaeb`. **On beta, awaiting verification.** Production stays on Build
+002 until it is approved.
+
+Production is also one commit behind beta's `f22b8f8`, which recorded Build
+002's production verification and claimed no number of its own. It goes across
+with Build 003 when that is promoted.
 
 Phase 3. The first build holding real business data: Clients, Contacts, Leads
 and Projects, the two flows that connect them, and the audit foundation that

@@ -61,7 +61,10 @@
 .shell {
   min-height: 100svh;
   display: grid;
-  grid-template-columns: 1fr;
+  /* minmax(0, 1fr) rather than 1fr: a bare `1fr` track refuses to shrink below
+     its content, so one wide thing inside — the pipeline board is the first —
+     stretches the whole page and the phone scrolls sideways. */
+  grid-template-columns: minmax(0, 1fr);
   background: var(--black);
 }
 
@@ -687,6 +690,171 @@
 
 .entranceFoot { margin-top: var(--s-6); display: flex; flex-direction: column; gap: var(--s-2); }
 
+/* ------------------------------------------------------------- filtering */
+
+/* A plain GET form. Filtering a list is a navigation, so it survives a reload,
+   can be linked to, and works before any JavaScript has arrived. */
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--s-4);
+  padding-bottom: var(--s-4);
+}
+
+.filterField {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  min-width: 0;
+}
+
+.filterField .input,
+.filterField .select { min-width: 160px; }
+
+.filterWide { flex: 1 1 260px; }
+
+/* --------------------------------------------------------------- paging */
+
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-4);
+  padding-top: var(--s-4);
+}
+
+.pagerNote {
+  font-size: var(--s-fs-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--s-fg-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.pagerLinks { display: flex; gap: var(--s-4); }
+
+/* ----------------------------------------------------------------- chips */
+
+/* Stage and status filters, as links rather than a control: each one is a URL,
+   so the browser's back button does what somebody expects it to. */
+.chips { display: flex; flex-wrap: wrap; gap: var(--s-2); padding-bottom: var(--s-4); }
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 var(--s-3);
+  font-size: var(--s-fs-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--s-fg-3);
+  border: 1px solid var(--s-edge);
+  transition:
+    color var(--s-dur) var(--s-ease),
+    border-color var(--s-dur) var(--s-ease);
+}
+.chip:hover { color: var(--s-fg-2); border-color: var(--s-fg-3); }
+.chipActive { color: var(--s-fg); border-color: var(--s-fg); }
+
+/* ----------------------------------------------------------------- board */
+
+/* The pipeline. Columns scroll horizontally on a narrow screen rather than
+   collapsing into a list, because the shape of the pipeline IS the view. */
+.board {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(240px, 1fr);
+  gap: var(--s-4);
+  overflow-x: auto;
+  padding-bottom: var(--s-3);
+}
+
+.column { display: flex; flex-direction: column; gap: var(--s-3); min-width: 0; }
+
+.columnHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-2);
+  padding-bottom: var(--s-2);
+  border-bottom: 1px solid var(--s-edge);
+}
+
+.columnTitle {
+  font-size: var(--s-fs-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--s-fg-2);
+}
+
+.columnCount {
+  font-size: var(--s-fs-label);
+  color: var(--s-fg-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.cards { list-style: none; display: flex; flex-direction: column; gap: var(--s-2); }
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  padding: var(--s-3);
+  border: 1px solid var(--s-edge-faint);
+  background: var(--s-surface);
+  transition: border-color var(--s-dur) var(--s-ease);
+}
+.card:hover { border-color: var(--s-edge); }
+
+.cardTitle { font-size: var(--s-fs-row); color: var(--s-fg); overflow-wrap: anywhere; }
+.cardLine { font-size: var(--s-fs-ui); color: var(--s-fg-2); overflow-wrap: anywhere; }
+.cardMeta {
+  font-size: var(--s-fs-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--s-fg-3);
+}
+
+/* Whole-card link: the card is the target, not a word inside it. */
+.cardLink { display: block; }
+.cardLink:hover .cardTitle { text-decoration: underline; text-underline-offset: 3px; }
+
+/* ---------------------------------------------------------------- detail */
+
+/* The way back. A record is reached from a list, and the list is where the
+   rest of the answer is. */
+.back {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  margin-bottom: var(--s-3);
+  font-size: var(--s-fs-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--s-fg-3);
+  transition: color var(--s-dur) var(--s-ease);
+}
+.back:hover { color: var(--s-fg); }
+
+/* Free text somebody wrote, shown as they wrote it. */
+.prose {
+  font-size: var(--s-fs-ui);
+  color: var(--s-fg-2);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-width: 68ch;
+}
+
+.textarea { min-height: 104px; resize: vertical; line-height: 1.5; }
+
+/* A checkbox keeps its own box: it is the one control where the browser's
+   drawing says "this is a checkbox" better than anything we would replace it
+   with. It only needs a real target and a label beside it. */
+.check { display: flex; flex-direction: row; align-items: center; gap: var(--s-2); }
+.check input { width: 18px; height: 18px; accent-color: var(--white); }
+.check .label { text-transform: none; letter-spacing: normal; color: var(--s-fg-2); }
+
 /* ---------------------------------------------------------------- responsive */
 
 /* Desktop: the rail appears and the content moves over to sit beside it. */
@@ -709,6 +877,11 @@
   /* Stacked, and the action separates from the data it acts on. */
   .rowActions { justify-content: flex-start; margin-top: var(--s-1); }
   .rowMeta { white-space: normal; }
+
+  /* A filter row that has stopped being a row is a form. */
+  .filters { flex-direction: column; align-items: stretch; }
+  .filterField .input,
+  .filterField .select { min-width: 0; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -722,6 +895,10 @@
 
   .drawer[open],
   .dialog[open] { animation: none; }
+
+  .chip,
+  .card,
+  .back { transition: none; }
 
   .skeleton { animation: none; }
 }

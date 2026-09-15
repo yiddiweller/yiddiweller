@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 
 import StudioMark from "@/components/studio/StudioMark";
 import StudioNav from "@/components/studio/StudioNav";
+import { type StaffRole } from "@/lib/db/schema";
 import styles from "@/app/studio/studio.module.css";
 
 /**
@@ -15,7 +16,13 @@ import styles from "@/app/studio/studio.module.css";
  * Escape key, the inert background and the return of focus afterwards are the
  * platform's job rather than a hand-rolled imitation of them.
  */
-export default function StudioDrawer({ children }: { children: React.ReactNode }) {
+export default function StudioDrawer({
+  role,
+  children,
+}: {
+  role: StaffRole;
+  children: React.ReactNode;
+}) {
   const ref = useRef<HTMLDialogElement>(null);
   const [open, setOpen] = useState(false);
 
@@ -62,7 +69,7 @@ export default function StudioDrawer({ children }: { children: React.ReactNode }
             </button>
           </div>
           <div className={styles.drawerBody}>
-            <StudioNav onNavigate={() => setOpen(false)} />
+            <StudioNav role={role} onNavigate={() => setOpen(false)} />
           </div>
           {children}
         </div>

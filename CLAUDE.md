@@ -32,11 +32,27 @@ that has not been on `beta` first, and never leave `beta` behind `main`.
 ## Platform state — settled, do not re-litigate
 
 **Phases 1 and 2 are complete and verified in production**, released as
-**Build 001** and **Build 002**. These are facts about the running system, not
+**Build 001** and **Build 002**. **Build 003, the business core, is on beta and
+awaiting verification.** These are facts about the running system, not
 proposals. Changing any of them is a deliberate decision, not a cleanup.
 
 - **PostgreSQL is the system of record for contact inquiries.** Email is a
   notification, not the record. An inquiry is persisted before it is emailed.
+- **Clients, Contacts, Leads and Projects are four concepts and one table never
+  means two of them.** A Contact is a person, a Client is the relationship, a
+  Lead is an opportunity, a Project is work. The model is
+  `docs/business-core.md` and it is the source of truth, not the schema file.
+- **`inquiries` is never edited to say it was handled.** An unprocessed inquiry
+  is one with no Lead pointing at it. Do not add a `processed` flag.
+- **Optimistic concurrency compares an integer `version`, never `updated_at`.**
+  PostgreSQL keeps microseconds and a JavaScript `Date` does not, so a timestamp
+  comparison never matches. A trigger raises the version on every update.
+- **`audit_events` is append-only and PostgreSQL enforces it** against `UPDATE`,
+  `DELETE` and `TRUNCATE`. It records that something changed, never what it now
+  says: no notes, no messages, no free text, no tokens. It is not the future
+  client-facing activity feed and must never be repurposed as one.
+- **Nothing in the business core is deleted through the interface.** Archive and
+  restore, Owner-only, refused where it would leave the data nonsensical.
 - **Studio is live at `studio.yiddiweller.com`**, invite-only, magic-link
   sign-in, Owner and Member roles. The same application serves both worlds and
   tells them apart by `Host`: production has `STUDIO_HOST=studio.yiddiweller.com`

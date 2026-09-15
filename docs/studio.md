@@ -17,13 +17,29 @@ question goes back to Yiddi Weller rather than being settled in code.
 | Sign in | `/studio/login` | Anyone may ask. A link is only ever sent to active staff. |
 | Accept an invitation | `/studio/join?token=…` | Whoever holds a valid token. |
 | Home | `/studio` | Any active staff member. |
+| Clients | `/studio/clients`, `/studio/clients/[id]` | All staff. Archive and restore: Owner only. |
+| Contacts | `/studio/contacts`, `/studio/contacts/[id]` | All staff. Archive and restore: Owner only. |
+| Leads | `/studio/leads`, `/studio/leads/[id]` | All staff. Archive and restore: Owner only. |
+| Projects | `/studio/projects`, `/studio/projects/[id]` | All staff. Archive and restore: Owner only. |
+| Search | `/studio/search` | Any active staff member. |
 | Team | `/studio/team` | Roster: all staff. Invitations and deactivation: Owner only. |
+| Audit | `/studio/audit` | **Owner only.** A Member receives a genuine 404. |
 | Settings | `/studio/settings` | Any active staff member. Their own account. |
 
-Home shows real inquiry counts and the most recent messages, from Build 001's
-`inquiries` table. Nothing else is built: no clients, no projects, no workrooms.
-Those are Build 003 onward, and none of them is sketched into the interface in
-advance.
+Home answers one question — what needs attention — from conditions that are true
+of rows rather than from flags anybody has to set: an inquiry with no lead
+behind it, a follow-up whose time has passed, live work past its target date.
+When there is nothing, the section is not rendered at all.
+
+The business core arrived in Build 003 and its model is
+[`business-core.md`](./business-core.md); the audit policy is
+[`audit.md`](./audit.md). Nothing beyond it is built: no workrooms, no files, no
+invoices, and none of them is sketched into the interface in advance.
+
+**Every list is a URL.** Filters are plain `GET` forms and the archive toggles
+are links, so a view of a list survives a reload, can be sent to somebody, and
+works before any JavaScript arrives. Filtering, sorting and paging happen in
+PostgreSQL; no page assumes the studio will only ever have twenty clients.
 
 **The shell is a left rail on desktop and a drawer on small screens**, driven by
 one navigation list in `lib/studio-nav.ts`, so the two presentations cannot
@@ -221,7 +237,7 @@ hydration mismatch — React takes the server's value for the HTML it hydrates,
 then the client's, and re-renders the difference. Verified in four zones with
 no console errors and no hydration warnings.
 
-Two rules for later modules:
+Three rules for later modules:
 
 - **Never call `Intl.DateTimeFormat` in a Studio page.** The zone would default
   to the server's, which on Railway is UTC and wrong for the person reading.
@@ -230,6 +246,15 @@ Two rules for later modules:
   locale-fixed to en-GB. The zone is the part that has to be personal; the
   format is not, because two people describing the same record should see the
   same shape.
+- **A field that collects an instant needs the same treatment.**
+  `components/studio/MomentInput.tsx` prefills a `datetime-local` with the wall
+  clock in the viewer's zone, exactly the zone the server reads it back in.
+  Prefilling it in UTC and parsing it as local is how a follow-up quietly moves
+  by five hours the first time somebody edits it.
+
+A `date` column is different, and simpler: `starts_on` and `target_on` name a
+day, not an instant, so there is no zone to resolve and `formatDate` is safe on
+the server. `<Moment>` is for instants only.
 
 If scripting never runs, the labelled UTC text stays on screen. That is the one
 case the browser cannot fix, and it is true as it stands.
@@ -394,10 +419,9 @@ checks it again on submit.
 
 ---
 
-## Open before Build 003
+## Open
 
-Small things, none of them blocking Build 002, all of them cheaper to do now
-than after Studio holds client work.
+Small things, none of them blocking, all of them cheaper to do now than later.
 
 1. **Invite a second Owner.** Production has one, and the bootstrap script
    refuses to run while an active Owner exists. Today a lost mailbox means
@@ -414,11 +438,7 @@ than after Studio holds client work.
    should also check the Studio tables, the migrations table, and an application
    boot against the restored copy — see
    [`restore-rehearsal.md`](./restore-rehearsal.md).
-5. **Settle the audit log with Build 003, not after it.** The blueprint requires
-   activity and audit to stay separate, and Build 003 is the first build with
-   client data worth recording. Retrofitting an audit trail over an existing
-   schema is how they end up merged.
-6. **`npm run audit` still reports four moderate findings** that the runtime
+5. **`npm run audit` still reports four moderate findings** that the runtime
    image does not carry, because the Dockerfile prunes the package they come
    from. Re-check when Better Auth stops asking for `drizzle-kit` as an
    optional peer; see [`database.md`](./database.md).
@@ -427,8 +447,17 @@ than after Studio holds client work.
 
 ## Not built, deliberately
 
-No clients, projects, workrooms, files, invoices or notifications. No activity
-feed and no audit log — the convention for those is recorded in
-[`architecture.md`](./architecture.md) so that whichever phase introduces them
-does not invent an incompatible one. No password reset, because there is no
-password. No self-service sign-up, ever.
+No workrooms, files, invoices, payments or notifications. **No activity feed** —
+audit exists now and is a different thing, permanently: audit is who changed
+what and is append-only; activity is what happened around a client or a project
+and is a product surface. `audit_events` must never be repurposed as one, and
+the reasoning is in [`audit.md`](./audit.md).
+
+No merging of duplicate contacts, no per-record permissions, no value or
+forecast on a lead. No password reset, because there is no password. No
+self-service sign-up, ever.
+
+**Ownership is not authorization.** `owner_id` on a lead or a project says who
+is responsible and nothing about who may see it. Every active staff member sees
+the whole business core, because a studio this size covers for each other and
+hidden records make that impossible.

@@ -15,6 +15,13 @@
       "when": 1789445719729,
       "tag": "0001_studio_staff",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1789495721076,
+      "tag": "0002_business_core",
+      "breakpoints": true
     }
   ]
 }

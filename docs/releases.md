@@ -17,10 +17,10 @@ tooling, nothing to keep in sync.
 | Environment | Build | Commit |
 | --- | --- | --- |
 | Production | **Build 002** | `544e7bb` |
-| Beta | **Build 002** | `544e7bb` |
+| Beta | **Build 003** | see the log below |
 
-Both environments run the identical commit. The active human-readable platform
-version is **Build 002**.
+Beta is a number ahead while Build 003 is verified. That is the normal state
+during testing, not a discrepancy.
 
 ---
 
@@ -68,6 +68,52 @@ trustworthy.
 ---
 
 ## Build log
+
+### Build 003 — Business core
+
+**On beta, awaiting verification.** Production stays on Build 002 until it is
+approved.
+
+Phase 3. The first build holding real business data: Clients, Contacts, Leads
+and Projects, the two flows that connect them, and the audit foundation that
+had to arrive with them rather than after them. Nothing about the public
+experience changed.
+
+- Four concepts, never blurred: a Contact is a person, a Client is the
+  relationship, a Lead is an opportunity, a Project is work. One table never
+  means two of them. The model is `docs/business-core.md`, written before the
+  schema and reviewed against fourteen real situations before a migration was
+  generated.
+- People attach to clients and to projects through relationship tables, so the
+  same person can act for two clients without being duplicated. At most one
+  primary each, enforced by a partial unique index rather than by care.
+- An inquiry becomes a Lead once, by a deliberate act, in one transaction. The
+  inquiry itself is never edited: an unprocessed inquiry is one with no Lead
+  pointing at it, so there is no second source of truth to disagree with.
+- Converting a Lead writes the client, the project, the relationships and the
+  Lead's own outcome together or not at all, and only ever once. A Lead can be
+  won before there is a project to point at.
+- Optimistic concurrency on every editable record, so a save composed against a
+  row somebody else has since changed is refused rather than silently
+  overwriting them. It compares an integer `version`, because a `timestamptz`
+  cannot be compared honestly across the JavaScript boundary — the first design
+  compared `updated_at` and would never have matched.
+- Append-only audit, enforced by PostgreSQL against `UPDATE`, `DELETE` and
+  `TRUNCATE`, written in the same transaction as the change it describes. It
+  records that something changed and never what it now says.
+- Archive and restore rather than delete, refused where it would leave the data
+  nonsensical — a client with live work, a person who is somebody's only named
+  contact, a project whose client is archived.
+- One search across all four, four indexed queries in PostgreSQL, no search
+  service.
+- Home now answers "what needs attention" from conditions that are true of
+  rows — an inquiry with no lead, a follow-up whose time has passed, live work
+  past its target — never from a flag somebody has to remember to set.
+- Navigation grew its second group, Business and Studio, and hides what a
+  Member's role cannot reach.
+- Fixed while building it: the Studio shell's grid track was a bare `1fr`,
+  which refuses to shrink below its content, so the first wide element — the
+  pipeline board — made every page scroll sideways on a phone.
 
 ### Build 002 — Studio foundation, authentication and design system
 

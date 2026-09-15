@@ -42,6 +42,15 @@ export function db() {
   return instance;
 }
 
+/**
+ * A transaction handle, as the domain modules pass it around.
+ *
+ * Every multi-record business operation runs inside one of these, and the
+ * audit write goes in with it — so a change and the record of it can never
+ * drift apart. See docs/business-core.md.
+ */
+export type Tx = Parameters<Parameters<ReturnType<typeof db>["transaction"]>[0]>[0];
+
 /** Closes the pool. For tests and graceful shutdown only. */
 export async function closeDb(): Promise<void> {
   if (pool) await pool.end({ timeout: 5 });

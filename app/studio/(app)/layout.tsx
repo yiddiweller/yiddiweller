@@ -31,7 +31,7 @@ export default async function StudioAppLayout({ children }: { children: React.Re
       <div className={styles.rail}>
         <StudioMark />
         <div className={styles.railBody}>
-          <StudioNav />
+          <StudioNav role={staff.role} />
         </div>
         {account}
       </div>
@@ -39,7 +39,7 @@ export default async function StudioAppLayout({ children }: { children: React.Re
       <div className={styles.shellBody}>
         <header className={styles.topbar}>
           <StudioMark />
-          <StudioDrawer>{account}</StudioDrawer>
+          <StudioDrawer role={staff.role}>{account}</StudioDrawer>
         </header>
 
         <main id="studio-main" className={styles.main}>

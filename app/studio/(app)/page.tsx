@@ -1,23 +1,61 @@
-import { countInquiries, listRecentInquiries } from "@/lib/db/inquiries";
-import { requireStaff } from "@/lib/auth/guard";
+import Link from "next/link";
+
 import Moment from "@/components/studio/Moment";
+import RecordAction from "@/components/studio/RecordAction";
+import { requireStaff } from "@/lib/auth/guard";
+import { label } from "@/lib/business";
+import { listClients } from "@/lib/db/clients";
+import { countInquiries } from "@/lib/db/inquiries";
+import {
+  countInquiriesAwaitingLead,
+  inquiriesAwaitingLead,
+  leadsNeedingAttention,
+  listLeads,
+} from "@/lib/db/leads";
+import { countLiveProjects, overdueProjects } from "@/lib/db/projects";
+import { formatDate } from "@/lib/studio-format";
 import styles from "@/app/studio/studio.module.css";
+
+import { createLeadFromInquiryAction } from "./leads/actions";
 
 export const metadata = { title: "Home" };
 
 /**
  * The first operating screen.
  *
- * Real data only. Every figure here comes from a record that exists — the
- * person signed in, and the inquiries Build 001 started keeping. No invented
- * revenue, no placeholder chart, no fake activity feed. When Build 003 brings
- * clients, leads and projects, they arrive as further sections in this same
- * page architecture; they are not sketched in now.
+ * Real data only, and "needs attention" means a condition that is actually
+ * true of a row: an inquiry with no lead behind it, a follow-up whose time has
+ * passed, live work past its target date. Nothing here is a flag somebody has
+ * to remember to set, so none of it can quietly become a lie. When there is
+ * nothing to attend to, the section is not rendered at all rather than showing
+ * an encouraging empty state nobody asked for.
  */
 export default async function StudioHome() {
   const staff = await requireStaff();
-  const [total, recent] = await Promise.all([countInquiries(), listRecentInquiries(5)]);
-  const latest = recent[0];
+  const now = new Date();
+  const today = now.toISOString().slice(0, 10);
+
+  const [
+    inquiries,
+    awaitingCount,
+    awaiting,
+    dueLeads,
+    overdue,
+    openLeads,
+    liveProjects,
+    clients,
+  ] = await Promise.all([
+    countInquiries(),
+    countInquiriesAwaitingLead(),
+    inquiriesAwaitingLead(5),
+    leadsNeedingAttention(now, 5),
+    overdueProjects(today, 5),
+    listLeads({ open: true, pageSize: 1 }),
+    countLiveProjects(),
+    listClients({ pageSize: 1 }),
+  ]);
+
+  const attention = awaiting.length + dueLeads.length + overdue.length;
 
   return (
     <>
@@ -32,55 +70,116 @@ export default async function StudioHome() {
         <section className={styles.section} aria-label="Overview">
           <div className={styles.facts}>
             <div className={styles.fact}>
+              <span className={styles.factLabel}>Open leads</span>
+              <span className={styles.factValue}>{openLeads.total}</span>
+            </div>
+            <div className={styles.fact}>
+              <span className={styles.factLabel}>Live work</span>
+              <span className={styles.factValue}>{liveProjects}</span>
+            </div>
+            <div className={styles.fact}>
+              <span className={styles.factLabel}>Clients</span>
+              <span className={styles.factValue}>{clients.total}</span>
+            </div>
+            <div className={styles.fact}>
               <span className={styles.factLabel}>Inquiries</span>
-              <span className={styles.factValue}>{total}</span>
-            </div>
-            <div className={styles.fact}>
-              <span className={styles.factLabel}>Latest</span>
-              <span className={`${styles.factValue} ${styles.factValueSmall}`}>
-                {latest ? <Moment iso={latest.createdAt.toISOString()} /> : "None yet"}
-              </span>
-            </div>
-            <div className={styles.fact}>
-              <span className={styles.factLabel}>Your access</span>
-              <span className={`${styles.factValue} ${styles.factValueSmall}`}>
-                {staff.role === "owner" ? "Owner" : "Member"}
-              </span>
+              <span className={styles.factValue}>{inquiries}</span>
             </div>
           </div>
         </section>
 
-        <section className={styles.section}>
-          <div className={styles.sectionHead}>
-            <h2 className={styles.sectionTitle}>Recent inquiries</h2>
-            {total > recent.length ? (
+        {attention > 0 ? (
+          <section className={styles.section}>
+            <div className={styles.sectionHead}>
+              <h2 className={styles.sectionTitle}>Needs attention</h2>
               <span className={styles.sectionNote}>
-                {recent.length} of {total}
+                {attention} {attention === 1 ? "thing" : "things"}
               </span>
-            ) : null}
-          </div>
+            </div>
 
-          {recent.length === 0 ? (
-            <p className={styles.empty}>
-              Nothing has come through the contact form yet. When someone writes in from
-              yiddiweller.com, their message appears here.
-            </p>
-          ) : (
             <ul className={`${styles.list} ${styles.listFourUp}`}>
-              {recent.map((inquiry) => (
+              {awaiting.map((inquiry) => (
                 <li key={inquiry.id} className={styles.row}>
                   <span className={styles.rowPrimary}>{inquiry.name}</span>
-                  <span className={styles.rowPreview}>{inquiry.preview}</span>
                   <span className={styles.rowSecondary}>
                     <a className={styles.rowLink} href={`mailto:${inquiry.email}`}>
                       {inquiry.email}
                     </a>
                   </span>
-                  <Moment className={styles.rowMeta} iso={inquiry.createdAt.toISOString()} />
+                  <span className={styles.rowMeta}>
+                    <span className={styles.tag}>Inquiry, no lead</span>
+                  </span>
+                  <span className={styles.rowActions}>
+                    <RecordAction
+                      action={createLeadFromInquiryAction}
+                      fields={{ inquiryId: inquiry.id }}
+                      label="Make a lead"
+                      busyLabel="Making"
+                    />
+                  </span>
+                </li>
+              ))}
+
+              {dueLeads.map((lead) => (
+                <li key={lead.id} className={styles.row}>
+                  <span className={styles.rowPrimary}>
+                    <Link className={styles.rowLink} href={`/studio/leads/${lead.id}`}>
+                      {lead.title}
+                    </Link>
+                  </span>
+                  <span className={styles.rowSecondary}>
+                    {lead.nextStep || lead.clientName || lead.prospectName || "—"}
+                  </span>
+                  <span className={styles.rowMeta}>
+                    <span className={styles.tag}>Follow up due</span>
+                  </span>
+                  <Moment className={styles.rowMeta} iso={lead.followUpAt!.toISOString()} />
+                </li>
+              ))}
+
+              {overdue.map((project) => (
+                <li key={project.id} className={styles.row}>
+                  <span className={styles.rowPrimary}>
+                    <Link className={styles.rowLink} href={`/studio/projects/${project.id}`}>
+                      {project.name}
+                    </Link>
+                  </span>
+                  <span className={styles.rowSecondary}>{project.clientName}</span>
+                  <span className={styles.rowMeta}>
+                    <span className={styles.tag}>Past target</span>
+                    <span className={styles.tag}> {label(project.status)}</span>
+                  </span>
+                  <span className={styles.rowMeta}>{formatDate(project.targetOn)}</span>
                 </li>
               ))}
             </ul>
-          )}
+
+            {awaitingCount > awaiting.length ? (
+              <p className={styles.hint}>
+                {awaitingCount - awaiting.length} more inquiries are waiting on a decision.
+              </p>
+            ) : null}
+          </section>
+        ) : null}
+
+        <section className={styles.section}>
+          <div className={styles.sectionHead}>
+            <h2 className={styles.sectionTitle}>Where things are</h2>
+          </div>
+          <div className={styles.chips}>
+            <Link className={styles.chip} href="/studio/leads">
+              Pipeline
+            </Link>
+            <Link className={styles.chip} href="/studio/projects">
+              Work
+            </Link>
+            <Link className={styles.chip} href="/studio/clients">
+              Clients
+            </Link>
+            <Link className={styles.chip} href="/studio/search">
+              Search
+            </Link>
+          </div>
         </section>
       </div>
     </>

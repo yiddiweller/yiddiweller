@@ -2,7 +2,10 @@ import { sql } from "drizzle-orm";
 import {
   boolean,
   check,
+  date,
   index,
+  integer,
+  jsonb,
   pgTable,
   text,
   timestamp,
@@ -227,5 +230,378 @@ export const staffInvitations = pgTable(
     uniqueIndex("staff_invitations_token_hash_idx").on(table.tokenHash),
     index("staff_invitations_email_idx").on(table.email),
     check("staff_invitations_role_check", sql.raw(`role IN (${quoted(STAFF_ROLES)})`)),
+  ],
+);
+
+/* ==========================================================================
+   BUSINESS CORE — clients, contacts, leads, projects. Build 003.
+
+   The model and the reasoning are in `docs/business-core.md`. Every rule that
+   file marks as an invariant is enforced below, in the database, rather than
+   by the code that happens to call it.
+
+   Ownership columns (`owner_id`, `created_by`, `updated_by`) are `text`
+   because they reference `user.id`, which Better Auth defines as text. They
+   are ON DELETE SET NULL: a record's history must survive a person leaving.
+   ========================================================================== */
+
+/** Organization or individual. The account, never the person. */
+export const CLIENT_ACCOUNT_TYPES = ["organization", "individual"] as const;
+export type ClientAccountType = (typeof CLIENT_ACCOUNT_TYPES)[number];
+
+/** The state of the relationship, not of the record. Archival is separate. */
+export const CLIENT_STATUSES = ["active", "inactive"] as const;
+export type ClientStatus = (typeof CLIENT_STATUSES)[number];
+
+/** The pipeline. Centralized here so no page invents a sixth stage. */
+export const LEAD_STAGES = ["new", "discovery", "proposal", "won", "lost"] as const;
+export type LeadStage = (typeof LEAD_STAGES)[number];
+
+/** Stages a lead cannot be worked out of without a conversion or a reason. */
+export const LEAD_CLOSED_STAGES = ["won", "lost"] as const;
+
+/** Where an opportunity came from. Deliberately five, not a taxonomy. */
+export const LEAD_SOURCES = ["inquiry", "referral", "existing_client", "manual", "other"] as const;
+export type LeadSource = (typeof LEAD_SOURCES)[number];
+
+export const PROJECT_STATUSES = [
+  "planned",
+  "active",
+  "on_hold",
+  "completed",
+  "cancelled",
+] as const;
+export type ProjectStatus = (typeof PROJECT_STATUSES)[number];
+
+/** A project that is neither finished nor put away still counts as live work. */
+export const PROJECT_LIVE_STATUSES = ["planned", "active", "on_hold"] as const;
+
+/** Every kind of thing the audit log can describe. */
+export const AUDIT_ENTITY_TYPES = [
+  "client",
+  "contact",
+  "lead",
+  "project",
+  "client_contact",
+  "project_contact",
+  "inquiry",
+  "staff",
+] as const;
+export type AuditEntityType = (typeof AUDIT_ENTITY_TYPES)[number];
+
+/* ------------------------------------------------------------------ clients */
+
+export const clients = pgTable(
+  "clients",
+  {
+    id: uuid("id").primaryKey(),
+
+    accountType: text("account_type").notNull().$type<ClientAccountType>(),
+    name: text("name").notNull(),
+
+    /** As typed. `domain` is the normalized form, and only for duplicate warnings. */
+    website: text("website"),
+    domain: text("domain"),
+
+    status: text("status").notNull().default("active").$type<ClientStatus>(),
+    notes: text("notes").notNull().default(""),
+
+    /**
+     * Optimistic concurrency. Incremented by the `bump_version` trigger on
+     * every update, and compared by every write, so a save that was composed
+     * against an older version of the row is refused rather than silently
+     * overwriting somebody else's edit.
+     *
+     * An integer rather than `updated_at`: Postgres keeps microseconds and a
+     * JavaScript Date does not, so a timestamp comparison never matches.
+     */
+    version: integer("version").notNull().default(1),
+
+    /** Null while live. Archival is reversible and never cascades. */
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+
+    createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
+    updatedBy: text("updated_by").references(() => user.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("clients_name_idx").on(table.name),
+    index("clients_domain_idx").on(table.domain),
+    index("clients_status_idx").on(table.status),
+    index("clients_archived_at_idx").on(table.archivedAt),
+    index("clients_updated_at_idx").on(table.updatedAt.desc()),
+
+    check(
+      "clients_account_type_check",
+      sql.raw(`account_type IN (${quoted(CLIENT_ACCOUNT_TYPES)})`),
+    ),
+    check("clients_status_check", sql.raw(`status IN (${quoted(CLIENT_STATUSES)})`)),
+    check("clients_name_length_check", sql.raw("char_length(name) BETWEEN 1 AND 160")),
+    check("clients_notes_length_check", sql.raw("char_length(notes) <= 4000")),
+  ],
+);
+
+/* ----------------------------------------------------------------- contacts */
+
+export const contacts = pgTable(
+  "contacts",
+  {
+    id: uuid("id").primaryKey(),
+
+    name: text("name").notNull(),
+    /** As typed. `emailNormalized` is what duplicate detection compares. */
+    email: text("email"),
+    emailNormalized: text("email_normalized"),
+    phone: text("phone"),
+    title: text("title"),
+    notes: text("notes").notNull().default(""),
+
+    /** Optimistic concurrency; see the note on `clients.version`. */
+    version: integer("version").notNull().default(1),
+
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+
+    createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
+    updatedBy: text("updated_by").references(() => user.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("contacts_name_idx").on(table.name),
+    // Not unique, deliberately: shared addresses and imports are real, and a
+    // constraint would turn each into a dead end. See docs/business-core.md.
+    index("contacts_email_normalized_idx").on(table.emailNormalized),
+    index("contacts_archived_at_idx").on(table.archivedAt),
+    index("contacts_updated_at_idx").on(table.updatedAt.desc()),
+
+    check("contacts_name_length_check", sql.raw("char_length(name) BETWEEN 1 AND 160")),
+    check("contacts_email_length_check", sql.raw("email IS NULL OR char_length(email) <= 254")),
+    check("contacts_notes_length_check", sql.raw("char_length(notes) <= 4000")),
+  ],
+);
+
+/* --------------------------------------------------------- client ↔ contact */
+
+export const clientContacts = pgTable(
+  "client_contacts",
+  {
+    id: uuid("id").primaryKey(),
+    clientId: uuid("client_id")
+      .notNull()
+      .references(() => clients.id, { onDelete: "cascade" }),
+    contactId: uuid("contact_id")
+      .notNull()
+      .references(() => contacts.id, { onDelete: "cascade" }),
+
+    role: text("role"),
+    isPrimary: boolean("is_primary").notNull().default(false),
+
+    /** Optimistic concurrency; see the note on `clients.version`. */
+    version: integer("version").notNull().default(1),
+
+    createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    // The same person cannot be attached to the same client twice.
+    uniqueIndex("client_contacts_pair_idx").on(table.clientId, table.contactId),
+    index("client_contacts_contact_id_idx").on(table.contactId),
+    check("client_contacts_role_length_check", sql.raw("role IS NULL OR char_length(role) <= 120")),
+  ],
+);
+
+/* -------------------------------------------------------------------- leads */
+
+export const leads = pgTable(
+  "leads",
+  {
+    id: uuid("id").primaryKey(),
+
+    title: text("title").notNull(),
+    stage: text("stage").notNull().default("new").$type<LeadStage>(),
+    source: text("source").notNull().default("manual").$type<LeadSource>(),
+
+    /** The intake record this came from. At most one lead per inquiry. */
+    inquiryId: uuid("inquiry_id").references(() => inquiries.id, { onDelete: "set null" }),
+    contactId: uuid("contact_id").references(() => contacts.id, { onDelete: "set null" }),
+    /** Set from the start for repeat work, or by conversion for a new prospect. */
+    clientId: uuid("client_id").references(() => clients.id, { onDelete: "set null" }),
+    /** An organization's name before it is a client. */
+    prospectName: text("prospect_name"),
+
+    summary: text("summary").notNull().default(""),
+    nextStep: text("next_step").notNull().default(""),
+    followUpAt: timestamp("follow_up_at", { withTimezone: true }),
+
+    /** Operational ownership. Never an access control. */
+    ownerId: text("owner_id").references(() => user.id, { onDelete: "set null" }),
+
+    lostReason: text("lost_reason"),
+    wonAt: timestamp("won_at", { withTimezone: true }),
+    lostAt: timestamp("lost_at", { withTimezone: true }),
+
+    /** What the conversion produced, and the guard that makes it happen once. */
+    projectId: uuid("project_id"),
+    convertedAt: timestamp("converted_at", { withTimezone: true }),
+
+    /** Optimistic concurrency; see the note on `clients.version`. */
+    version: integer("version").notNull().default(1),
+
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+
+    createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
+    updatedBy: text("updated_by").references(() => user.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("leads_stage_idx").on(table.stage),
+    index("leads_owner_id_idx").on(table.ownerId),
+    index("leads_client_id_idx").on(table.clientId),
+    index("leads_contact_id_idx").on(table.contactId),
+    index("leads_follow_up_at_idx").on(table.followUpAt),
+    index("leads_archived_at_idx").on(table.archivedAt),
+    index("leads_updated_at_idx").on(table.updatedAt.desc()),
+
+    check("leads_stage_check", sql.raw(`stage IN (${quoted(LEAD_STAGES)})`)),
+    check("leads_source_check", sql.raw(`source IN (${quoted(LEAD_SOURCES)})`)),
+    check("leads_title_length_check", sql.raw("char_length(title) BETWEEN 1 AND 160")),
+    check("leads_summary_length_check", sql.raw("char_length(summary) <= 4000")),
+    check("leads_next_step_length_check", sql.raw("char_length(next_step) <= 500")),
+    check(
+      "leads_lost_reason_length_check",
+      sql.raw("lost_reason IS NULL OR char_length(lost_reason) <= 500"),
+    ),
+  ],
+);
+
+/* ----------------------------------------------------------------- projects */
+
+export const projects = pgTable(
+  "projects",
+  {
+    id: uuid("id").primaryKey(),
+
+    /** Required: work is always for somebody. */
+    clientId: uuid("client_id")
+      .notNull()
+      .references(() => clients.id, { onDelete: "restrict" }),
+    /** The opportunity it came from, when there was one. */
+    leadId: uuid("lead_id").references(() => leads.id, { onDelete: "set null" }),
+
+    name: text("name").notNull(),
+    status: text("status").notNull().default("planned").$type<ProjectStatus>(),
+    description: text("description").notNull().default(""),
+    notes: text("notes").notNull().default(""),
+
+    ownerId: text("owner_id").references(() => user.id, { onDelete: "set null" }),
+
+    /** Dates, not timestamps: a project starts on a day, not at an instant. */
+    startsOn: date("starts_on"),
+    targetOn: date("target_on"),
+
+    /** Optimistic concurrency; see the note on `clients.version`. */
+    version: integer("version").notNull().default(1),
+
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+
+    createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
+    updatedBy: text("updated_by").references(() => user.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("projects_client_id_idx").on(table.clientId),
+    index("projects_status_idx").on(table.status),
+    index("projects_owner_id_idx").on(table.ownerId),
+    index("projects_lead_id_idx").on(table.leadId),
+    index("projects_archived_at_idx").on(table.archivedAt),
+    index("projects_updated_at_idx").on(table.updatedAt.desc()),
+
+    check("projects_status_check", sql.raw(`status IN (${quoted(PROJECT_STATUSES)})`)),
+    check("projects_name_length_check", sql.raw("char_length(name) BETWEEN 1 AND 160")),
+    check("projects_description_length_check", sql.raw("char_length(description) <= 4000")),
+    check("projects_notes_length_check", sql.raw("char_length(notes) <= 4000")),
+  ],
+);
+
+/* -------------------------------------------------------- project ↔ contact */
+
+export const projectContacts = pgTable(
+  "project_contacts",
+  {
+    id: uuid("id").primaryKey(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    contactId: uuid("contact_id")
+      .notNull()
+      .references(() => contacts.id, { onDelete: "cascade" }),
+
+    role: text("role"),
+    isPrimary: boolean("is_primary").notNull().default(false),
+
+    /** Optimistic concurrency; see the note on `clients.version`. */
+    version: integer("version").notNull().default(1),
+
+    createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("project_contacts_pair_idx").on(table.projectId, table.contactId),
+    index("project_contacts_contact_id_idx").on(table.contactId),
+    check(
+      "project_contacts_role_length_check",
+      sql.raw("role IS NULL OR char_length(role) <= 120"),
+    ),
+  ],
+);
+
+/* ------------------------------------------------------------ audit events */
+
+/**
+ * Append-only. Who changed what, when — never what the thing said.
+ *
+ * No foreign key to the entity it describes: audit outlives what it records,
+ * and a key would turn a removal into either an integrity error or, worse, a
+ * cascade that erases the history. `entity_id` is `text` because business
+ * records use UUIDs and Better Auth's staff ids are strings.
+ *
+ * The migration adds a trigger that refuses UPDATE and DELETE outright. The
+ * policy, and what may never be written into `metadata`, is in docs/audit.md.
+ */
+export const auditEvents = pgTable(
+  "audit_events",
+  {
+    id: uuid("id").primaryKey(),
+    occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull().defaultNow(),
+
+    actorId: text("actor_id").references(() => user.id, { onDelete: "set null" }),
+    /** Snapshot, so the log still reads after someone leaves. */
+    actorName: text("actor_name"),
+
+    action: text("action").notNull(),
+    entityType: text("entity_type").notNull().$type<AuditEntityType>(),
+    entityId: text("entity_id"),
+    /** A safe label — a name or a title. Never a note, a message or a secret. */
+    entityLabel: text("entity_label"),
+
+    metadata: jsonb("metadata").notNull().default({}),
+  },
+  (table) => [
+    index("audit_events_occurred_at_idx").on(table.occurredAt.desc()),
+    index("audit_events_entity_idx").on(table.entityType, table.entityId),
+    index("audit_events_actor_id_idx").on(table.actorId),
+    index("audit_events_action_idx").on(table.action),
+
+    check("audit_events_entity_type_check", sql.raw(`entity_type IN (${quoted(AUDIT_ENTITY_TYPES)})`)),
+    check("audit_events_action_length_check", sql.raw("char_length(action) BETWEEN 3 AND 60")),
+    check(
+      "audit_events_entity_label_length_check",
+      sql.raw("entity_label IS NULL OR char_length(entity_label) <= 200"),
+    ),
   ],
 );

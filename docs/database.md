@@ -58,15 +58,55 @@ These apply to every table added from Phase 1 onward. They are enforced in
 | Timestamps | `timestamptz` only, stored UTC, converted at the interface layer. Never `timestamp`. |
 | `created_at` | `NOT NULL DEFAULT now()`. |
 | `updated_at` | `NOT NULL DEFAULT now()`, maintained by a `BEFORE UPDATE` trigger so no future write has to remember it. |
+| `version` | On every table a person edits: `integer NOT NULL DEFAULT 1`, raised by the same `BEFORE UPDATE` trigger. It is what optimistic concurrency compares, and it is an integer because `updated_at` cannot be compared honestly — PostgreSQL keeps microseconds, a JavaScript `Date` does not, so the timestamp read back never equals the one stored. |
 | Naming | snake_case columns, plural table names, `<table>_<column>_idx` indexes, `<table>_<column>_check` constraints. |
 | Status / enum values | `text` plus a `CHECK` constraint, **not** a Postgres `ENUM` type. Adding a value to an enum type is easy; removing or renaming one requires a table rewrite, and these sets will evolve. |
 | Nullable | Columns are `NOT NULL` with a default unless absence is genuinely meaningful. |
 | Foreign keys | Always declared. Cascade only where the child cannot exist alone; otherwise `RESTRICT`, so deleting a client cannot silently erase its invoices. |
-| Deletion | Hard delete unless a table documents a `deleted_at` policy. Decide per table when it is created, never retrofitted. |
+| Deletion | Hard delete unless a table documents a `deleted_at` policy. Decide per table when it is created, never retrofitted. The business core documents `archived_at`: nothing there is deleted through the interface. |
 | Money | Integer minor units plus an explicit currency column. Never a float. Not yet used; recorded now so it is not reversed later. |
 | External provider ids | Their own nullable column, named for the provider, e.g. `stripe_payment_intent_id`. Never overloaded into `id`. |
 | Sensitive values | Hashed, never stored in the clear. Applies to future workroom PINs. |
 | Visitor metadata | Not stored. `inquiries` deliberately carries no IP address, user agent or referrer. |
+
+---
+
+## The tables
+
+| Table | Build | Holds |
+| --- | --- | --- |
+| `inquiries` | 001 | Messages from the public contact form, exactly as they arrived. |
+| `user`, `session`, `account`, `verification` | 002 | Staff identity. Four of these have their shape dictated by Better Auth. |
+| `staff_invitations` | 002 | The only route to a `user` row. Single use, seven days, token stored as a digest. |
+| `clients` | 003 | The business relationship. |
+| `contacts` | 003 | People. |
+| `client_contacts` | 003 | Who a person is to a client, with at most one primary each. |
+| `leads` | 003 | Opportunities, before and after their outcome. |
+| `projects` | 003 | Work, always for a client. |
+| `project_contacts` | 003 | Who is on a project, with at most one primary each. |
+| `audit_events` | 003 | Append-only. Who changed what, when. Never what it said. |
+
+The model behind the Build 003 tables is [`business-core.md`](./business-core.md);
+the audit policy is [`audit.md`](./audit.md).
+
+### What `0002_business_core.sql` adds by hand
+
+drizzle-kit generates the tables, the checks and most of the indexes. The rest
+is appended to the same migration, because they are the invariants the model
+depends on and the database has to be the one enforcing them:
+
+- `bump_version()` and its six triggers — `updated_at` and `version` together.
+- `leads_project_id_projects_id_fk`. Leads and projects reference each other and
+  Drizzle cannot express the cycle; PostgreSQL has no trouble with it.
+- `leads_one_per_inquiry_idx`, a partial unique index on `inquiry_id`. Two
+  people pressing "Make a lead" on the same inquiry produce one lead.
+- `client_contacts_one_primary_idx` and `project_contacts_one_primary_idx`,
+  partial unique on `is_primary`.
+- `lower(name)` indexes, which is how search actually reads them.
+- `audit_events_append_only` and `audit_events_no_truncate`.
+
+The migration contains no destructive statement of any kind, and applies to a
+database holding Build 002 production data without touching a row of it.
 
 ---
 

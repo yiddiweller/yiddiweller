@@ -77,18 +77,24 @@ app/
 components/                  Presentation only. components/studio/ is separate.
 lib/
   contact.ts                 Validation, shared by the form and the server
+  business.ts                The business core's vocabulary, shared the same way
   hosts.ts                   Which world a request belongs to
   studio-nav.ts              Studio's navigation, as data
-  studio-format.ts           How Studio writes dates
+  studio-format.ts           How Studio writes dates, times and date fields
+  studio-result.ts           Outcome → the sentence a form shows
   auth/
     access.ts                The access rule, with no framework around it
     guard.ts                 currentStaff / requireStaff / requireOwner
     config.ts  client.ts     Better Auth, server and browser
   db/                        Server-only data layer
-    index.ts                 Lazy connection. The single entry point.
+    index.ts                 Lazy connection, and the transaction type
     schema.ts                Tables and conventions
+    outcome.ts               How an operation reports a refusal
+    audit.ts                 Append-only record, written inside the caller's transaction
     inquiries.ts             Domain module: everything done with inquiries
     staff.ts                 Domain module: staff and invitations
+    clients.ts  contacts.ts  leads.ts  projects.ts   The business core
+    search.ts                One search across all four
     id.ts                    UUIDv7
   emails.ts  site.ts  social.ts  env.ts  log.ts
 drizzle/                     Committed migrations
@@ -100,6 +106,12 @@ tests/                       node:test, no framework
 That keeps the shape of a table changeable from one place, and it is the pattern
 every future domain follows: one module per domain, not one giant data-access
 layer and not queries scattered through routes.
+
+**Neither do server actions.** A Studio action reads the form, re-checks the
+caller, calls one domain function and turns its `Outcome` into a sentence. Every
+rule that matters — what may be archived, what happens in one transaction, what
+is refused — is in the domain module, where a test can reach it without a
+browser.
 
 That move happened in Build 002, and not for tidiness: the root layout carried
 the public header, footer and cursor, so the Studio shell rendered inside them
@@ -181,8 +193,9 @@ lives in their inbox forever, so this is expensive to change later.
 
 ## Activity versus audit
 
-Two separate concerns that must not be merged into one table. Neither is built
-yet; the convention exists so later phases do not invent incompatible ones.
+Two separate concerns that must not be merged into one table. **Audit is built,
+as of Build 003 — see [`audit.md`](./audit.md). Activity is not**, and this
+convention is why the two will not collide when it is.
 
 | | Business activity | Security / audit log |
 | --- | --- | --- |

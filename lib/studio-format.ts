@@ -47,3 +47,53 @@ export function formatMomentUtc(iso: string, style: MomentStyle): string {
   const text = formatMoment(iso, style, SERVER_ZONE);
   return text && style === "exact" ? `${text} ${SERVER_ZONE}` : text;
 }
+
+/**
+ * The wall clock in a named zone, in the only shape `datetime-local` accepts:
+ * `YYYY-MM-DDTHH:mm`, with no zone written on it at all.
+ *
+ * The input then means "this time, where the person is", which is exactly how
+ * the server reads it back. Pass `undefined` for the runtime's own zone, which
+ * is only ever the reader's in the browser.
+ */
+export function momentInputValue(iso: string, timeZone?: string): string {
+  const value = new Date(iso);
+  if (Number.isNaN(value.getTime())) return "";
+
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(value);
+
+  const part = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((candidate) => candidate.type === type)?.value ?? "";
+
+  // hourCycle h23 still yields "24" for midnight in some engines.
+  const hour = part("hour") === "24" ? "00" : part("hour");
+  return `${part("year")}-${part("month")}-${part("day")}T${hour}:${part("minute")}`;
+}
+
+/**
+ * A date with no clock on it: `2026-09-01` → `1 Sept 2026`.
+ *
+ * `starts_on` and `target_on` are `date` columns, so they name a day rather
+ * than an instant and there is no zone to resolve. That makes this safe on the
+ * server — unlike `formatMoment`, it cannot be wrong for the person reading it,
+ * so it does not need `<Moment>`.
+ */
+export function formatDate(value: string | null | undefined): string {
+  if (!value) return "—";
+  const [year, month, day] = value.split("-").map(Number);
+  if (!year || !month || !day) return value;
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: SERVER_ZONE,
+  }).format(new Date(Date.UTC(year, month - 1, day)));
+}

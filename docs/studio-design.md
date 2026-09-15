@@ -217,7 +217,30 @@ should mean composing these, not writing new CSS.
 | Dialog | Native `<dialog>`, hairline border, square. |
 | Empty state | A sentence that says what will appear here, and why it has not. |
 | Notice | One line, `role="status"`, with the failure written in words. |
+| Form dialog | A form only occasionally wanted, behind the button that wants it. Native `<dialog>` with `showModal()`, closing as part of the submission that succeeded. |
+| Record action | One button that changes one record, carrying the `version` the page was rendered with and showing a refusal where the button is. |
 | Skeleton | The shape of the content that is loading, at low contrast. See the rule below before adding one. |
+| Filter bar | A plain `GET` form above a list: search, one or two selects, a submit. A filtered list is a URL. |
+| Chip | A filter or a view, as a link. Active is full contrast with a full-contrast border. |
+| Board column | The pipeline. Columns scroll sideways on a narrow screen rather than collapsing into a list, because the shape of the pipeline is the view. |
+| Card | One record on a board. The whole card is the link, not a word inside it. |
+| Pager | Page *n* of *m* and the two ways out, as links. Absent when everything fits on one page. |
+| Prose | Free text somebody wrote, shown as they wrote it. `white-space: pre-wrap`, capped at 68ch. |
+| Checkbox | The one control that keeps the browser's own drawing, because nothing we would replace it with says "checkbox" better. It gets a real target and a label beside it. |
+| Back link | Uppercase, stepped down, above the page header. A record is reached from a list, and the list is where the rest of the answer is. |
+
+**Adding a screen means composing these.** Build 003 added seven pages and
+needed nine new classes, all of them here — no page-local CSS, no inline style,
+no one-off spacing value off the 4px scale.
+
+### The shell shrinks
+
+The shell's content column is `minmax(0, 1fr)`, not `1fr`. A bare `1fr` track
+refuses to shrink below its content, so the first genuinely wide element inside
+it — the pipeline board — stretched the whole page and made every screen scroll
+sideways on a phone. It is written that way in both the base rule and the
+desktop one, and it is the sort of thing to check whenever a wide component is
+added.
 
 ### Loading, and where a skeleton may go
 

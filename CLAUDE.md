@@ -27,7 +27,7 @@ that has not been on `beta` first, and never leave `beta` behind `main`.
 
 ## Platform state — settled, do not re-litigate
 
-**Phase 1 is complete and verified in production.** Released as `v1.0.0`.
+**Phase 1 is complete and verified in production.** Released as **Build 001**.
 These are facts about the running system, not proposals. Changing any of them
 is a deliberate decision, not a cleanup.
 
@@ -53,8 +53,11 @@ is a deliberate decision, not a cleanup.
 - **Production PostgreSQL has Point-in-Time Recovery plus weekly and monthly
   backups.** A restore has not yet been rehearsed; see `docs/database.md`.
 
-Release naming is in `docs/releases.md`. Production versions are semantic,
-beta builds are numbered from `Beta 001`.
+Builds are numbered in `docs/releases.md`: one sequential human-readable
+sequence, `Build 001` upward, shared by beta and production. A build keeps its
+number as it moves between them, so beta temporarily running a higher number
+than production just means something is being verified. There is no separate
+beta track and no semantic versioning.
 
 ## Platform direction
 

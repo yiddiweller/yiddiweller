@@ -1,7 +1,7 @@
 # Blueprint — locked product and domain architecture
 
 Source of truth for every phase from Phase 2 onward. Locked 2026-09-15.
-Release naming is in [`releases.md`](./releases.md).
+Build numbering is in [`releases.md`](./releases.md).
 
 This records decisions, not plans. Where an implementation choice would
 contradict something here, the blueprint wins and the question comes back to
@@ -192,7 +192,7 @@ providers where they earn their place.
 | Phase | Scope | State |
 | --- | --- | --- |
 | 0 | Audit and architecture | Complete |
-| 1 | Core foundation, inquiry persistence | **Complete — production verified**, released as `v1.0.0` |
+| 1 | Core foundation, inquiry persistence | **Complete — production verified**, released as **Build 001** |
 | 2 | Studio foundation and authentication | Not started |
 | 3 | Clients, contacts, leads, projects | |
 | 4 | Workrooms and private client access | |

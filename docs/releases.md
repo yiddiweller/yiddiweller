@@ -1,53 +1,76 @@
-# Releases
+# Builds
 
-Human-readable names for builds people need to talk about. The commit SHA
-remains the technical source of truth underneath; these names exist so a
-conversation can say "Beta 004" instead of reading out a hash.
+One sequential build number for the whole platform. Not two tracks.
 
-There is no version database and no tooling. A Git tag and this file are the
-whole system.
+`Build 001`, `Build 002`, `Build 003`, and so on. Beta and production share the
+same sequence: a build keeps its number as it moves from one to the other, so
+two environments running the same number are running the same thing.
 
----
-
-## The two tracks
-
-| Track | Name | Where | Marked by |
-| --- | --- | --- | --- |
-| Beta | `Beta 001`, `Beta 002`, … | `beta` branch, Railway `beta` | This file |
-| Production | `v1.0.0`, `v1.1.0`, … | `main` branch, Railway `production` | An annotated Git tag |
-
-Beta numbers count **meaningful** builds worth discussing, not every push. A
-typo fix redeployed twice is still one Beta number, or none at all. Production
-versions follow semantic versioning.
-
-Railway and GitHub go on showing commit identifiers. Nothing here replaces
-them.
+The commit SHA remains the technical source of truth underneath. This file is
+the human-readable record, and it is the whole system. No version database, no
+tooling, nothing to keep in sync.
 
 ---
 
-## What each production increment means
+## Current state
 
-| Increment | When | Examples |
+| Environment | Build | Commit |
 | --- | --- | --- |
-| **PATCH** `v1.0.1` | A fix or a small correction. No new capability. | A contrast correction, a copy fix, a dependency bump, a logging improvement. |
-| **MINOR** `v1.1.0` | A meaningful feature that does not break what came before. | Portfolio projects appear on Work. A new public page. A Studio screen. Stripe payments added. |
-| **MAJOR** `v2.0.0` | A platform or product generation change. | The public rebrand ships. A client workroom is publicly reachable for the first time. An architectural change that alters how the platform is operated. |
+| Production | **Build 001** | `681fc8e` |
+| Beta | **Build 001** | `681fc8e` |
 
-Two rules that keep the numbers honest:
-
-- **Documentation-only changes do not earn a version.** They ride along with the
-  next release that contains actual change.
-- **A version is cut when the commit is verified in production**, not when the
-  work is merged. A tag says "this ran and was checked", which is the only
-  reason to trust it later.
+The active human-readable platform version is **Build 001**.
 
 ---
 
-## Release log
+## How a number moves
 
-### `v1.0.0` — Phase 1 production foundation
+A build number is claimed once, when work is ready for beta, and does not
+change afterwards.
 
-Commit `681fc8e`. Tagged after full production verification.
+```
+work merged to beta   →  Build 002 claimed
+                         beta = Build 002, production = Build 001
+approved and promoted →  production = Build 002
+                         both environments now Build 002
+next meaningful work  →  Build 003 claimed
+```
+
+Beta running a higher number than production is the normal state during
+testing, not a discrepancy. It means exactly one thing: a build is being
+verified and has not been promoted yet.
+
+**A number is never reused and never reassigned.** If a build is abandoned
+rather than promoted, its number is retired with it and the next work takes the
+following number. Renumbering would break the one property that makes this
+useful, which is that a number always refers to the same code.
+
+---
+
+## What earns a number
+
+A build number marks something worth referring to again in conversation, a
+changelog, or a release note.
+
+**Earns one:** a feature, a schema change, a security or infrastructure change,
+an accessibility or performance fix people would notice, anything that changes
+what the site or platform does.
+
+**Does not:** documentation, comments, a typo corrected and redeployed, or
+repeated deploys of the same code. If nothing about the running system is
+different, nothing has been built.
+
+When in doubt, do not claim a number. An unnumbered deploy costs nothing; a
+number that refers to nothing in particular makes every other number less
+trustworthy.
+
+---
+
+## Build log
+
+### Build 001 — Phase 1 production foundation
+
+Commit `681fc8e`. In production, verified.
 
 The first release with a real backend underneath the site. Nothing about the
 public experience changed except two accessibility corrections.
@@ -62,34 +85,39 @@ public experience changed except two accessibility corrections.
 - Separate Railway `production` and `beta` environments, each with its own
   PostgreSQL service.
 
----
-
-## Beta numbering
-
-Numbering starts at **`Beta 001`** for the next meaningful beta build after
-`v1.0.0`. Everything before this point is unnumbered; it predates the
-convention and renaming it retrospectively would invent history.
-
-A beta number is recorded in this file when the build is worth referring to
-again. It is for release notes, team conversation, a future Studio About
-screen, and changelogs. **No interface displays it yet, and none should be
-built for it until a phase asks for one.**
+Everything before Build 001 is unnumbered. It predates the convention, and
+numbering it retrospectively would invent history.
 
 ---
 
-## Cutting a release
+## Recording a build
+
+Add its entry to the log above when it reaches beta, with the commit and what
+changed. Update the current state table when it is promoted. That is the whole
+procedure.
+
+Tagging is optional and adds nothing the log does not already carry. If you
+want one for a particular build, keep the name in the same sequence:
 
 ```bash
-# 1. The commit is already verified in production.
-git checkout main && git pull
-
-# 2. Tag it, annotated, so the message travels with the tag.
-git tag -a v1.1.0 -m "Yiddi Weller Platform — <what this release is>"
-git push origin v1.1.0
-
-# 3. Add the entry to the release log above, in the next change.
+git tag -a build-002 <commit> -m "Yiddi Weller — Build 002"
+git push origin build-002
 ```
 
-Tags are never moved once pushed. A mistake is corrected by a new version, not
-by retagging, because anyone who already fetched the old tag would otherwise
-hold a different commit under the same name.
+Railway and GitHub go on showing their own commit and deployment identifiers.
+Nothing here changes or competes with them, and no interface displays the build
+number yet. None should be built until a phase asks for one.
+
+---
+
+## Superseded
+
+An earlier draft of this file proposed two parallel sequences: `Beta 001`
+upward for beta, and semantic versions such as `v1.0.0` for production. That is
+no longer the convention and should not be reintroduced. It required translating
+between two names for the same code, and semantic versioning promises a
+meaning about compatibility that a studio platform with one deployment target
+does not need to make.
+
+A `v1.0.0` tag was created locally during that draft and never reached GitHub.
+It has been deleted. No published tag or reference carried the old scheme.

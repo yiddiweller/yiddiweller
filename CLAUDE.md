@@ -1,7 +1,9 @@
 # yiddiweller.com
 
-Personal site for Yiddi Weller. Next.js App Router, TypeScript, CSS Modules,
-Resend, deployed on Railway. Full setup documentation is in `README.md`.
+The public site of Yiddi Weller, and the foundation of the YIDDI WELLER LLC
+platform. Next.js App Router, TypeScript, CSS Modules, PostgreSQL via Drizzle,
+Resend, built from the repository Dockerfile and deployed on Railway. Setup is
+in `README.md`; architecture in `docs/`.
 
 ## Branches: always update both
 
@@ -22,6 +24,37 @@ git checkout beta
 
 Both branches then sit on the identical commit. Never ship to `main` something
 that has not been on `beta` first, and never leave `beta` behind `main`.
+
+## Platform state — settled, do not re-litigate
+
+**Phase 1 is complete and verified in production.** Released as `v1.0.0`.
+These are facts about the running system, not proposals. Changing any of them
+is a deliberate decision, not a cleanup.
+
+- **PostgreSQL is the system of record for contact inquiries.** Email is a
+  notification, not the record. An inquiry is persisted before it is emailed.
+- **Railway runs two isolated environments**, `production` from `main` and
+  `beta` from `beta`, **each with its own PostgreSQL service.** Beta never
+  touches production data.
+- **The repository `Dockerfile` is the official build system.** Nixpacks was
+  removed deliberately: it declared every service variable as `ARG` then `ENV`,
+  which wrote secrets into image metadata. Do not reintroduce it.
+- **Node 22 is the supported runtime**, pinned by `node:22-slim`, `.nvmrc` and
+  `engines`, which must continue to agree.
+- **Application secrets are runtime-only and must never become Docker build
+  arguments.** `RESEND_API_KEY`, `DATABASE_URL`, `CONTACT_EMAIL` and
+  `RESEND_FROM_EMAIL` are supplied to the running container by Railway. If a
+  build ever appears to need one, that is a design fault to fix, not an `ARG`
+  to add. `SITE_ENV` is the single permitted build argument and is not a secret.
+- **`SITE_ENV=preview` belongs to beta alone.** Production must never receive
+  it. Both layers of the guard are prerendered, so this is decided at build
+  time: beta must stay non-indexable (`Disallow: /` plus
+  `noindex, nofollow, nocache`) and production must stay indexable.
+- **Production PostgreSQL has Point-in-Time Recovery plus weekly and monthly
+  backups.** A restore has not yet been rehearsed; see `docs/database.md`.
+
+Release naming is in `docs/releases.md`. Production versions are semantic,
+beta builds are numbered from `Beta 001`.
 
 ## Platform direction
 

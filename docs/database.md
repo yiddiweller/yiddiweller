@@ -143,20 +143,27 @@ it reports missing variables by name and never prints a value.
 
 ## Backups
 
-**Not yet verified for this project.** Railway offers automated backups for its
-Postgres service, but the plan, schedule and retention depend on the account,
-and nothing here should be taken as confirmation that they are running.
+Production PostgreSQL protection, in place since the Phase 1 production
+promotion:
 
-Before Studio holds anything that matters, all four of these must be true:
+| Protection | State |
+| --- | --- |
+| Point-in-Time Recovery | Enabled and healthy |
+| Weekly volume backups | Enabled |
+| Monthly volume backups | Enabled |
+| Initial backup | Completed successfully |
 
-1. Automated daily backups are enabled on the production Postgres service.
-2. The retention window is known and written down.
-3. A restore has been performed into a scratch database, at least once.
-4. The time that restore took is recorded, because that is the real recovery
-   time objective.
+**A restore has still not been rehearsed.** That is the one item from the
+original list that remains open, and it is the item that actually matters: a
+backup nobody has restored is a hypothesis, not a safeguard. Two things are
+still owed before Studio holds client work:
 
-Until step 3 has actually happened, treat the backup as a hypothesis. A backup
-nobody has restored is not a safeguard.
+1. Perform one restore into a scratch database.
+2. Record how long it took, because that figure is the real recovery time
+   objective and nothing else tells you what it is.
+
+Beta's database has no backup requirement. It holds test submissions only and
+is expected to be disposable.
 
 ---
 

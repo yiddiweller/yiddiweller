@@ -539,6 +539,9 @@
   font-size: 1rem;
   color: var(--s-fg);
   background: none;
+  /* The global reset covers input and textarea but not select, which would
+     otherwise keep the browser's own box around our underline. */
+  border: 0;
   border-bottom: 1px solid var(--s-fg-3);
   border-radius: var(--s-radius);
   transition: border-color var(--s-dur) var(--s-ease);

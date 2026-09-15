@@ -432,6 +432,31 @@ export async function createLeadFromInquiry(
 
   const emailNormalized = inquiry.email.trim().toLowerCase();
 
+  try {
+    return await inquiryToLead(actor, inquiry, emailNormalized);
+  } catch (error) {
+    // The lead was already there. That is the answer, not a failure: the person
+    // is sent to what exists.
+    if (error instanceof AlreadyFromInquiry) return ok({ leadId: error.leadId, created: false });
+    throw error;
+  }
+}
+
+/** Carries the existing lead out of a transaction that has to roll back. */
+class AlreadyFromInquiry extends Error {
+  leadId: string;
+
+  constructor(leadId: string) {
+    super("a lead already exists for this inquiry");
+    this.leadId = leadId;
+  }
+}
+
+function inquiryToLead(
+  actor: AuditActor,
+  inquiry: { id: string; name: string; email: string },
+  emailNormalized: string,
+): Promise<Outcome<LeadFromInquiry>> {
   return db().transaction(async (tx) => {
     // Reuse the person if we already know them, rather than creating a second
     // copy of somebody every time they write in.
@@ -480,10 +505,12 @@ export async function createLeadFromInquiry(
         .where(eq(leads.inquiryId, inquiry.id))
         .limit(1);
 
-      // Nothing this transaction did is worth keeping if the lead already
-      // existed, but the contact may have been created for it — and a person we
-      // now know about is not a mistake, so it stays.
-      return ok({ leadId: existing!.id, created: false });
+      // Throwing rather than returning, because everything this transaction did
+      // has to go with it. Two people pressing at the same moment both reach the
+      // "we do not know this person" branch and both insert a contact; only one
+      // wins the lead, and returning here would leave the loser's contact
+      // committed — the same person, twice, from one press each. Measured.
+      throw new AlreadyFromInquiry(existing!.id);
     }
 
     await record(tx, actor, {

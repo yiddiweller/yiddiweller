@@ -77,6 +77,21 @@ test("a record's history is Owner-only, and is not fetched for anybody else", { 
   assert.ok(owner.body.includes("Client created"));
 });
 
+test("a refused request does not learn a record's name from its title", { skip }, async () => {
+  // `generateMetadata` runs independently of the page component, so a page whose
+  // guard refuses still has its title rendered — and a 307 to the sign-in page
+  // carried `Northwind Trading — Studio` until this was fixed. The name of a
+  // client is exactly what somebody with no access should not be told.
+  const anonymous = await get(`/studio/clients/${clientId}`);
+  assert.equal(anonymous.status, 307);
+  assert.match(anonymous.body, /<title>Client — Studio<\/title>/);
+
+  // Somebody who is entitled to it still gets the real one.
+  const member = await get(`/studio/clients/${clientId}`, memberCookie);
+  assert.equal(member.status, 200);
+  assert.doesNotMatch(member.body, /<title>Client — Studio<\/title>/);
+});
+
 test("a Member is not offered a link that would answer not found", { skip }, async () => {
   const { body } = await get("/studio", memberCookie);
   assert.ok(!body.includes("/studio/audit"), "the Audit link reached a Member");

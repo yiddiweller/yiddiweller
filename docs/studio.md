@@ -200,6 +200,25 @@ management — inviting, revoking, removing access — is Owner-only and lives i
 server actions, which each re-check the caller and answer not-found for a
 Member. Concealment is the policy for those actions, not for the page.
 
+### Metadata is a second render, and it is not guarded by the page
+
+`generateMetadata` runs independently of the page component. A page whose guard
+refuses the request still has its title produced, and that title travels in the
+refusal: measured during Build 003 hardening, an inactive member's `307` to the
+sign-in page carried `Northwind Trading — Studio` in its `<title>`, which tells
+somebody with no access at all the name of a client.
+
+So a `generateMetadata` that reads a record checks the caller too — with
+`currentStaff`, not a guard, because refusing is not metadata's job. Without an
+entitled viewer it returns the generic title:
+
+```tsx
+if (!isId(id) || !(await currentStaff())) return { title: "Client" };
+```
+
+All four Build 003 detail pages do this, and `tests/authorization.test.ts` holds
+it there.
+
 ### The entrance has four states
 
 All four are designed rather than left to the framework:

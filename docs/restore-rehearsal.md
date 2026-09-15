@@ -246,6 +246,29 @@ cover now that the mechanism itself is proven. None of them changes what was
 established today: **production can be restored, into an isolated service, with
 its data intact.**
 
+### What the next rehearsal must add, now that Build 003 exists
+
+Build 003 is the first build where production holds material business data, so a
+restore that only proves `inquiries` came back no longer proves enough. The next
+rehearsal covers, in addition to timing:
+
+- **The business core tables** — `clients`, `contacts`, `client_contacts`,
+  `leads`, `projects`, `project_contacts` — present, with their row counts
+  matching the recorded starting state.
+- **`audit_events`**, including that its `audit_events_append_only` and
+  `audit_events_no_truncate` triggers came back with it. A restored audit log
+  that can be rewritten is not a restored audit log.
+- **The `version` columns and the `bump_version` triggers**, since optimistic
+  concurrency depends on them and a table restored without its trigger would
+  accept silent overwrites.
+- **`__drizzle_migrations`** compared against `drizzle/meta/_journal.json`, so a
+  restored database is known to be at a build rather than assumed to be.
+- **An application boot against the restored copy**, reaching Studio sign-in and
+  one business list.
+- **A measured restore duration.** That figure is the recovery time objective,
+  and until one is measured there is no RTO. Do not infer one from anything in
+  this file.
+
 ```
 Date                 2026-09-15
 Performed by         Yiddi Weller

@@ -9,7 +9,7 @@ import Moment from "@/components/studio/Moment";
 import ProjectFields from "@/components/studio/ProjectFields";
 import RecordAction from "@/components/studio/RecordAction";
 import RelationshipFields from "@/components/studio/RelationshipFields";
-import { requireStaff } from "@/lib/auth/guard";
+import { currentStaff, requireStaff } from "@/lib/auth/guard";
 import { isId, label } from "@/lib/business";
 import { listEntityAudit } from "@/lib/db/audit";
 import { findClient } from "@/lib/db/clients";
@@ -29,13 +29,19 @@ import {
 import { createProjectAction } from "../../projects/actions";
 
 /**
- * The tab says which record this is. `requireStaff` is not repeated here: this
- * runs only to title a page whose own guard decides whether it renders at all,
- * and the name of a record is not what needs protecting — its contents are.
+ * The tab says which record this is — but only to somebody entitled to know.
+ *
+ * `generateMetadata` runs independently of the page component, so a page whose
+ * guard refuses the request still has its title rendered, and a redirect or a
+ * 404 body carries it. Measured: an inactive member's 307 to the sign-in page
+ * contained `Northwind Trading — Studio`, which tells somebody with no access
+ * at all the name of a client. So this checks too, with `currentStaff` rather
+ * than a guard, because refusing from metadata is not its job — falling back to
+ * the generic title is.
  */
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  if (!isId(id)) return { title: "Client" };
+  if (!isId(id) || !(await currentStaff())) return { title: "Client" };
   const record = await findClient(id);
   return { title: record?.name ?? "Client" };
 }

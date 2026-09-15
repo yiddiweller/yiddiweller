@@ -380,6 +380,11 @@ test("two people pressing at the same moment still produce one lead", async () =
   assert.ok(b.ok);
   assert.equal(a.value.leadId, b.value.leadId);
   assert.equal((await listLeads()).total, 1);
+
+  // And one person, not two: the losing transaction may have created a contact
+  // before the lead index turned it away, so this is worth asserting rather
+  // than assuming.
+  assert.equal((await listContacts()).total, 1);
 });
 
 test("the inquiry is left exactly as it was, and the lead points back at it", async () => {

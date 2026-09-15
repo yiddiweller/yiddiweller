@@ -119,6 +119,20 @@ experience changed.
   which refuses to shrink below its content, so the first wide element — the
   pipeline board — made every page scroll sideways on a phone.
 
+Two further defects were found during final hardening, after beta acceptance,
+and both are fixed:
+
+- **A record's name travelled in the response that refused the request.**
+  `generateMetadata` runs independently of the page component, so a guarded page
+  still produced its title, and an inactive member's redirect to the sign-in
+  page carried `Northwind Trading — Studio`. All four detail pages now check the
+  caller before reading, and a test holds it there.
+- **A double-press on an inquiry created one lead but two people.** Both
+  transactions reached the "we do not know this person" branch and inserted a
+  contact; only one won the lead index, and the loser's contact was committed.
+  The losing transaction now rolls back entirely and the caller is sent to the
+  lead that exists.
+
 ### Build 002 — Studio foundation, authentication and design system
 
 Commit `544e7bb`. **In production, verified.** Promoted 2026-09-15 by

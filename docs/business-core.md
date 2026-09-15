@@ -189,6 +189,14 @@ would eventually disagree.
    **in one transaction**, with the audit event.
 6. Any failure rolls all of it back. There is no half-created person.
 
+**Including the failure that is not an error.** Two people pressing at the same
+moment both reach the "we do not know this person" branch and both insert a
+Contact; only one wins the unique index on `inquiry_id`. The loser therefore
+throws rather than returning, so its Contact goes back too — otherwise one press
+each would leave the same person in the table twice. The caller is then sent to
+the Lead that exists, which is what they wanted. This was measured, not assumed:
+asserting the contact count is what found it.
+
 ---
 
 ## Winning a Lead
@@ -337,6 +345,37 @@ written.
 | **Build 004 workrooms** | Attach to `projects.id` and `clients.id`, both stable UUIDs. No migration gymnastics. |
 | **Build 006 money** | Invoices reference `clients.id` and `projects.id`. Nothing financial is squatting in those rows now. |
 | **Build 007 communications** | Messages reference `contacts.id`, and a Contact is already one canonical person rather than a copy inside each Client. |
+
+---
+
+## Known limitations
+
+Recorded plainly, because a model remembered as more complete than it is costs
+more later than one whose edges are written down.
+
+- **No merging.** Two records for the same person or company are found by the
+  duplicate warnings and resolved by hand. Merging is not in Build 003.
+- **Search is substring, not full text.** `ILIKE` over `lower()` indexes, five
+  results per kind. It does not rank by relevance, spell-correct, or match
+  across words. `lib/db/search.ts` is where that becomes `tsvector` when the
+  data is big enough to need it.
+- **Every active staff member sees everything.** Ownership is not authorization,
+  and per-record permissions are not built.
+- **No value, probability or forecast on a lead.** Money is Build 006.
+- **Archiving is reversible but not cascading.** Archiving a Client leaves its
+  Contacts and archived Projects where they are, deliberately: they belong to
+  more than one thing.
+- **A Contact's relationship to a Project is not shown on the Contact's own
+  page.** Their Clients and Leads are. Adding it is a query, not a model change.
+
+---
+
+## Beta acceptance
+
+Build 003 passed manual acceptance on the Railway beta environment on
+2026-09-15: navigation, all four modules, inquiry → Lead, the pipeline,
+conversion, relationships, audit and archive protection, plus an end-to-end
+business workflow. Production remained Build 002 throughout.
 
 The model represents all of them without a workaround, which is why it was
 built this way rather than as four CRUD tables that happen to have foreign keys.

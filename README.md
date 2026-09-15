@@ -105,10 +105,10 @@ store.
 
 Two branches, each with its own Railway service.
 
-| Branch | Watched by             | Reached at                       |
-| ------ | ---------------------- | -------------------------------- |
-| `main` | the production service | `yiddiweller.com`                |
-| `beta` | the preview service    | `yiddiwellerbeta.up.railway.app` |
+| Branch | Watched by             | Reached at                        |
+| ------ | ---------------------- | --------------------------------- |
+| `main` | the production service | `yiddiweller.com`                 |
+| `beta` | the preview service    | `yiddiweller-beta.up.railway.app` |
 
 Work lands on `beta` first, is reviewed on the preview service, then merges into
 `main` to go live. Beta keeps the hostname Railway generated; it has no custom

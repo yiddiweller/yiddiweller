@@ -7,10 +7,10 @@ in `README.md`; architecture in `docs/`.
 
 ## Branches: always update both
 
-| Branch | Reached at                       | Railway variable   |
-| ------ | -------------------------------- | ------------------ |
-| `main` | `yiddiweller.com`                | none               |
-| `beta` | `yiddiwellerbeta.up.railway.app` | `SITE_ENV=preview` |
+| Branch | Reached at                        | Railway variable   |
+| ------ | --------------------------------- | ------------------ |
+| `main` | `yiddiweller.com`                 | none               |
+| `beta` | `yiddiweller-beta.up.railway.app` | `SITE_ENV=preview` |
 
 Beta uses the hostname Railway generated. It has no custom subdomain and is not
 getting one: a preview nobody links to does not need a pretty address, and

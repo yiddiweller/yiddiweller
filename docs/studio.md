@@ -45,7 +45,7 @@ is.
 
 Until the subdomain is connected, Studio is exercised on the beta service at
 `/studio`, on whatever hostname Railway gave it — today
-`yiddiwellerbeta.up.railway.app`. **Nothing depends on that name.** A request
+`yiddiweller-beta.up.railway.app`. **Nothing depends on that name.** A request
 is classified as `internal` because `SITE_ENV=preview` is set on that service,
 not because of its address, which is what allows beta to keep a generated
 hostname and to change it without a code change. The corollary is worth

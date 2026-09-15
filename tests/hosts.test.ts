@@ -57,8 +57,8 @@ test("the beta preview is where Studio lives while the subdomain is disconnected
   // day that generated name changes must not be the day Studio disappears.
   assert.deepEqual(
     classify({ SITE_ENV: "preview" }, [
-      "yiddiwellerbeta.up.railway.app",
-      "yiddiwellerbeta.up.railway.app:443",
+      "yiddiweller-beta.up.railway.app",
+      "yiddiweller-beta.up.railway.app:443",
       "anything-railway-renames-it-to.up.railway.app",
     ]),
     ["internal", "internal", "internal"],
@@ -68,7 +68,7 @@ test("the beta preview is where Studio lives while the subdomain is disconnected
 test("without the preview flag, that same host is public and Studio is not there", () => {
   // The other half of the rule: a Railway hostname is not internal by virtue of
   // being a Railway hostname. Production is reachable at one too.
-  assert.deepEqual(classify({}, ["yiddiwellerbeta.up.railway.app"]), ["public"]);
+  assert.deepEqual(classify({}, ["yiddiweller-beta.up.railway.app"]), ["public"]);
 });
 
 test("local development is internal", () => {

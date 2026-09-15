@@ -17,7 +17,7 @@ tooling, nothing to keep in sync.
 | Environment | Build | Commit |
 | --- | --- | --- |
 | Production | **Build 001** | `681fc8e` |
-| Beta | **Build 002** | `fd70c98` |
+| Beta | **Build 002** | `7debd3c` |
 
 Beta is one build ahead while Build 002 is verified. That is the normal state
 during testing, not a discrepancy.
@@ -71,7 +71,11 @@ trustworthy.
 
 ### Build 002 — Studio foundation, authentication and design system
 
-On beta, in verification. Not promoted.
+Commit `7debd3c`. On beta, in verification. Not promoted.
+
+A build keeps one number while it is being finished: the authentication work
+and the design system that completes it are both Build 002, and the refinement
+commits between them claimed no number of their own.
 
 Phase 2. The first build with a private side: Studio, the internal team world,
 served by the same application and told apart by `Host`. Nothing about the

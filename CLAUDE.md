@@ -23,6 +23,23 @@ git checkout beta
 Both branches then sit on the identical commit. Never ship to `main` something
 that has not been on `beta` first, and never leave `beta` behind `main`.
 
+## Platform direction
+
+[`docs/blueprint.md`](docs/blueprint.md) is the locked source of truth for the
+platform. Read it before any architectural decision. The constraints most easily
+broken by accident:
+
+- **Two domains, and only two.** `yiddiweller.com` is the public and client
+  world; `studio.yiddiweller.com` is the private team world. Do **not** create
+  `admin.`, `dashboard.`, `app.`, `portal.`, `client.`, `clients.`, `pay.`,
+  `files.`, `auth.`, `login.` or `api.` subdomains. Client payments, invoices,
+  files and approvals all live under `yiddiweller.com`.
+- **The internal product is called Studio.** Never Dashboard, Admin or Portal.
+- **Quiet outside, powerful inside.** New capability underneath must never make
+  the public site busier. No Login, Portal, Billing or Dashboard links in public
+  navigation.
+- **Build the current phase only.** No speculative tables, no distant features.
+
 ## Design rules
 
 - **Colour** is `#000000` and `#ffffff` only. Every secondary tone is white at

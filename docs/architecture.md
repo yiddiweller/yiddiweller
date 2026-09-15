@@ -1,7 +1,9 @@
 # Architecture
 
 How yiddiweller.com is organised, and the rules future phases follow.
-Database specifics are in [`database.md`](./database.md).
+The locked product and domain decisions are in [`blueprint.md`](./blueprint.md),
+which this document implements. Database specifics are in
+[`database.md`](./database.md).
 
 ---
 
@@ -32,9 +34,12 @@ deployable.
 before:
 
 - Studio and the public site need different deploy cadences or uptime guarantees.
+- Their scaling patterns diverge materially.
+- Security isolation between the public surface and internal data is required.
 - A third surface appears, such as a native app or a separate marketing site.
 - The production build exceeds a few minutes.
-- More than about three engineers work in the repository at once.
+- Team ownership boundaries form, or more than about three engineers work in the
+  repository at once.
 
 The decision is cheap to reverse **provided shared logic stays in modules with
 clean boundaries**. `lib/db`, and later `lib/auth`, `lib/permissions` and
@@ -88,12 +93,15 @@ theoretical cleanliness costs review time and gains nothing.
 ## The Studio subdomain
 
 Studio will be served from `studio.yiddiweller.com` by the **same application**,
-distinguished by host. `dashboard.yiddiweller.com` should redirect there rather
-than serve anything of its own.
+distinguished by host.
 
 A subdomain rather than a path, for a reason better than aesthetics: it gives
 Studio its own cookie scope, so an internal session cookie is never transmitted
 with public page requests. That is a real security boundary.
+
+`studio.` is the **only** product subdomain. The blueprint forbids `admin.`,
+`dashboard.`, `app.`, `portal.`, `client.`, `clients.`, `pay.`, `files.`,
+`auth.`, `login.` and `api.` without an explicit revision.
 
 Nothing in Phase 1 blocks this. It needs, in a later phase, a Railway service or
 domain pointed at the same application, host-based routing in middleware, and an
@@ -120,7 +128,14 @@ Reserved at minimum:
 api  work  contact  studio  admin  dashboard  login  logout  auth
 account  settings  privacy  terms  sitemap.xml  robots.txt
 manifest.webmanifest  favicon.ico  opengraph-image.png  _next  .well-known
+
+pay  invoice  invoices  files  approve  approval
 ```
+
+The second row is the client-facing namespaces the blueprint reserves at the
+root: `/pay/...`, `/invoice/...`, `/files/...`, `/approve/...`. They are not
+built yet, and they are reserved now precisely because a client slug claimed
+before they exist would silently shadow them later.
 
 Plus a buffer of plausible future pages: `about`, `services`, `journal`,
 `press`, `careers`, `clients`, `projects`, `blog`, `search`.

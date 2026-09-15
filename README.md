@@ -122,8 +122,13 @@ One Railway service per branch. Both are created the same way.
 1. **New Project → Deploy from GitHub repo** → pick this repository.
 2. **Settings → Source → Branch.** Set this before the first deploy. The
    production service watches `main`; the preview service watches `beta`.
-3. Railway detects Next.js via Nixpacks; `railway.json` pins the commands
-   (`npm run build`, then `npm run start`).
+3. The image is built from the repository `Dockerfile`, pinned in
+   `railway.json` as `"builder": "DOCKERFILE"`. Nixpacks is deliberately not
+   used: it declares every service variable as `ARG` and then `ENV`, which
+   writes secrets into the image configuration where `docker inspect` can read
+   them, and leaves them there after a key is rotated. The Dockerfile declares
+   no secret at all. `SITE_ENV` is its single build argument, because the
+   preview guard is prerendered; see the comments in the file.
 4. **Variables** → add `RESEND_API_KEY`, `RESEND_FROM_EMAIL` and
    `CONTACT_EMAIL`. On the preview service add `SITE_ENV=preview` as well.
 5. Deploy. Do **not** set a `PORT` variable — Railway injects it and

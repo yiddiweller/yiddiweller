@@ -1,0 +1,40 @@
+# The build context is what the daemon can see. Anything secret must be
+# excluded here, not merely left uncopied in the Dockerfile.
+
+# Secrets. `.env.example` holds names and comments only, and is also not needed
+# in an image, so the whole family is excluded.
+.env
+.env.*
+*.pem
+*.key
+
+# Version control and CI
+.git
+.gitignore
+.github
+
+# Installed and generated locally; the image builds its own
+node_modules
+.next
+out
+build
+coverage
+*.tsbuildinfo
+next-env.d.ts
+
+# Not needed to build or run the application
+tests
+docs
+brand
+README.md
+CLAUDE.md
+*.md
+.nvmrc
+.vscode
+.idea
+.DS_Store
+npm-debug.log*
+
+# The image is built by this Dockerfile; it does not need to see itself
+Dockerfile
+.dockerignore

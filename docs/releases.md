@@ -17,7 +17,7 @@ tooling, nothing to keep in sync.
 | Environment | Build | Commit |
 | --- | --- | --- |
 | Production | **Build 002** | `544e7bb` |
-| Beta | **Build 003** | `e64eaeb` |
+| Beta | **Build 003** | `f130d8c` |
 
 Beta is a number ahead while Build 003 is verified. That is the normal state
 during testing, not a discrepancy.
@@ -71,8 +71,8 @@ trustworthy.
 
 ### Build 003 — Business core
 
-Commit `e64eaeb`. **On beta, awaiting verification.** Production stays on Build
-002 until it is approved.
+Commits `e64eaeb` … `f130d8c`. **On beta, manually accepted, awaiting
+promotion.** Production stays on Build 002 until it is approved.
 
 Production is also one commit behind beta's `f22b8f8`, which recorded Build
 002's production verification and claimed no number of its own. It goes across

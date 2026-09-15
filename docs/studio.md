@@ -440,27 +440,39 @@ checks it again on submit.
 
 ## Open
 
-Small things, none of them blocking, all of them cheaper to do now than later.
+**Build 003 changed what these cost.** Production now holds real client records
+rather than a handful of contact-form messages, so the first three stopped being
+housekeeping: losing access, or losing the database, now loses the business's
+own data. Ordered by what it would actually cost to be wrong.
 
-1. **Invite a second Owner.** Production has one, and the bootstrap script
-   refuses to run while an active Owner exists. Today a lost mailbox means
-   editing the database by hand. Ideally the second Owner is on a different mail
-   provider, which also insures against the item below.
-2. **Sign-in depends on one email arriving.** There is no password and no
-   fallback, so a link in a spam folder is a locked door. Confirm SPF and DKIM
-   cover the sending domain for Studio's mail, not just contact notifications.
-3. **Rate limiting is in memory.** Better Auth's default store, so the counters
+1. **Production has one Owner.** The bootstrap script refuses to run while an
+   active Owner exists, so a lost mailbox means editing the database by hand to
+   get back into a Studio that now holds client work. Invite a second Owner,
+   ideally on a different mail provider, which also insures against the next
+   item. **This is the one to do first.**
+2. **Sign-in depends on one email arriving.** No password, no fallback: a link
+   in a spam folder is a locked door. Confirm SPF and DKIM cover the sending
+   domain for Studio's mail, not only contact notifications.
+3. **There is still no recovery time objective.** The first rehearsal proved the
+   mechanism and measured nothing. The next one must time the restore, and must
+   now also verify the business-core tables, `audit_events` *with its triggers*,
+   the `version` triggers, the migration ledger and an application boot against
+   the restored copy — see [`restore-rehearsal.md`](./restore-rehearsal.md),
+   which lists them.
+4. **Rate limiting is in memory.** Better Auth's default store, so the counters
    reset on every deploy and do not span instances. Correct enough for one
    instance; it needs a shared store before Studio runs on more than one.
-4. **Time the next restore rehearsal.** The first proved the mechanism but
-   measured nothing, so there is still no recovery time objective. The next one
-   should also check the Studio tables, the migrations table, and an application
-   boot against the restored copy — see
-   [`restore-rehearsal.md`](./restore-rehearsal.md).
 5. **`npm run audit` still reports four moderate findings** that the runtime
    image does not carry, because the Dockerfile prunes the package they come
    from. Re-check when Better Auth stops asking for `drizzle-kit` as an
    optional peer; see [`database.md`](./database.md).
+
+### Not open, and worth saying so
+
+Two defects found during Build 003 hardening are fixed and held by tests: a
+record's name travelling in the response that refused the request, and a
+double-press on an inquiry creating one lead but two people. Neither reached
+production.
 
 ---
 

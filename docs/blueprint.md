@@ -197,8 +197,8 @@ sequence and is kept because it is what earlier documents cite.
 | --- | --- | --- |
 | 001 | Core foundation, inquiry persistence | **In production** |
 | 002 | Studio foundation, authentication, and the permanent Studio design system | **In production, verified** |
-| 003 | Business core: clients, contacts, leads, projects | **Next** |
-| 004 | Client workrooms: private client collaboration and controlled access | |
+| 003 | Business core: clients, contacts, leads, projects | **In production, verified** |
+| 004 | Client workrooms: private client collaboration and controlled access | **Next** |
 | 005 | Files, presentations, reviews and approvals | |
 | 006 | Money: estimates, invoices, payment requests, the public pay flow | |
 | 007 | Communications: conversation, Studio inbox, notifications | |
@@ -226,6 +226,35 @@ workrooms**, so Build 004 delivers a container that Build 005 fills. Either
 bring file storage forward into 004 or accept that 004 ships incomplete. That
 is a decision for when 004 is planned, not now.
 
+### What Build 003 locked for everything after it
+
+These are settled by running code holding real data, not by preference. Build
+004 builds on them rather than around them.
+
+- **Workrooms attach to `projects.id` and `clients.id`**, both stable UUIDv7
+  primary keys that exist in production. There is no identifier to invent and
+  no migration to untangle first.
+- **The client-facing world lives under `yiddiweller.com`**, never a new
+  subdomain. Build 004 is the first build a client signs into, and that is the
+  constraint most easily broken by accident.
+- **Client access is a separate system from staff access.** Better Auth with
+  `disableSignUp` is Studio's, invite-only, `owner | member`. A client is not a
+  `user` row and must not become one.
+- **Audit already exists and is append-only.** Build 004's access events are
+  audit; the client-facing timeline is Activity and is still unbuilt. They stay
+  two tables. `audit_events.entity_type` gains its values by migration, and
+  `actor_type` — `team_user | client_user | anonymous_session` — is the
+  attribution rule already recorded in `architecture.md`.
+- **Every new editable table carries `version` and the `bump_version` trigger**,
+  and every new relationship table enforces its own invariants in PostgreSQL.
+  Optimistic concurrency is not optional and never compares `updated_at`.
+- **Archive, never delete**, with the refusal naming what blocks it.
+- **Authorization is called inside the component that reads, before it reads**,
+  a `generateMetadata` that reads a record checks the caller too, and no
+  `loading.tsx` goes above a guarded page.
+- **The Studio interface system is fixed.** New screens compose
+  `studio.module.css`; they do not add a layout.
+
 ---
 
 ## Phase sequence
@@ -235,7 +264,7 @@ is a decision for when 004 is planned, not now.
 | 0 | Audit and architecture | Complete |
 | 1 | Core foundation, inquiry persistence | **Complete — production verified**, released as **Build 001** |
 | 2 | Studio foundation, authentication, Studio design system | **Complete — production verified**, released as **Build 002** |
-| 3 | Clients, contacts, leads, projects | |
+| 3 | Clients, contacts, leads, projects | **Complete — production verified**, released as **Build 003** |
 | 4 | Workrooms and private client access | |
 | 5 | Files, presentations, approvals | |
 | 6 | Conversation hub, Studio inbox, email | |

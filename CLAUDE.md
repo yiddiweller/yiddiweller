@@ -31,10 +31,10 @@ that has not been on `beta` first, and never leave `beta` behind `main`.
 
 ## Platform state — settled, do not re-litigate
 
-**Phases 1 and 2 are complete and verified in production**, released as
-**Build 001** and **Build 002**. **Build 003, the business core, is on beta and
-awaiting verification.** These are facts about the running system, not
-proposals. Changing any of them is a deliberate decision, not a cleanup.
+**Phases 1, 2 and 3 are complete and verified in production**, released as
+**Build 001**, **Build 002** and **Build 003**. These are facts about the
+running system, not proposals. Changing any of them is a deliberate decision,
+not a cleanup.
 
 - **PostgreSQL is the system of record for contact inquiries.** Email is a
   notification, not the record. An inquiry is persisted before it is emailed.
@@ -53,6 +53,14 @@ proposals. Changing any of them is a deliberate decision, not a cleanup.
   client-facing activity feed and must never be repurposed as one.
 - **Nothing in the business core is deleted through the interface.** Archive and
   restore, Owner-only, refused where it would leave the data nonsensical.
+- **`generateMetadata` is a second render and the page's guard does not cover
+  it.** A refused request still produces a title, and that title travels in the
+  refusal. Any `generateMetadata` that reads a record checks the caller first —
+  with `currentStaff`, falling back to a generic title. Measured, not theorised:
+  see `docs/studio.md`.
+- **Production now holds real client data.** Clients, Contacts, Leads and
+  Projects are live business records, not test rows. Treat every operation
+  against the production database accordingly.
 - **Studio is live at `studio.yiddiweller.com`**, invite-only, magic-link
   sign-in, Owner and Member roles. The same application serves both worlds and
   tells them apart by `Host`: production has `STUDIO_HOST=studio.yiddiweller.com`

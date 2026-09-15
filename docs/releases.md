@@ -16,11 +16,11 @@ tooling, nothing to keep in sync.
 
 | Environment | Build | Commit |
 | --- | --- | --- |
-| Production | **Build 002** | `544e7bb` |
-| Beta | **Build 003** | `f130d8c` |
+| Production | **Build 003** | `1e4af21` |
+| Beta | **Build 003** | `1e4af21` |
 
-Beta is a number ahead while Build 003 is verified. That is the normal state
-during testing, not a discrepancy.
+Both environments run the identical commit. The active human-readable platform
+version is **Build 003**.
 
 ---
 
@@ -71,12 +71,23 @@ trustworthy.
 
 ### Build 003 — Business core
 
-Commits `e64eaeb` … `f130d8c`. **On beta, manually accepted, awaiting
-promotion.** Production stays on Build 002 until it is approved.
+Commits `e64eaeb` … `1e4af21`. **In production, verified.** Promoted
+2026-09-15 by fast-forward, so production and beta sit on the identical commit.
 
-Production is also one commit behind beta's `f22b8f8`, which recorded Build
-002's production verification and claimed no number of its own. It goes across
-with Build 003 when that is promoted.
+The promotion carried `f22b8f8` across with it — the commit that recorded Build
+002's production verification, which claimed no number of its own.
+
+**Production acceptance.** The deployment succeeded, `migrate.complete` was
+confirmed in the deploy log, and the seven business-core tables were created
+while the Build 001 and 002 tables and their data were left exactly as they
+were. The public site stayed operational and visually unchanged throughout, the
+contact flow kept working, `yiddiweller.com/studio` and
+`yiddiweller.com/studio/clients` still answer 404 on the public host, and
+`studio.yiddiweller.com` stayed live for the whole promotion. Clients, Contacts,
+Leads, Projects, inquiry → Lead, Lead conversion, the relationships, Search,
+Audit and archive protection were each exercised against production, and an
+end-to-end business workflow passed. **No new production environment variable
+was required.**
 
 Phase 3. The first build holding real business data: Clients, Contacts, Leads
 and Projects, the two flows that connect them, and the audit foundation that

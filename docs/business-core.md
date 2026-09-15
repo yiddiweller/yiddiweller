@@ -370,12 +370,17 @@ more later than one whose edges are written down.
 
 ---
 
-## Beta acceptance
+## Acceptance
 
 Build 003 passed manual acceptance on the Railway beta environment on
-2026-09-15: navigation, all four modules, inquiry → Lead, the pipeline,
+2026-09-15 — navigation, all four modules, inquiry → Lead, the pipeline,
 conversion, relationships, audit and archive protection, plus an end-to-end
-business workflow. Production remained Build 002 throughout.
+business workflow — and was then promoted and **verified in production the same
+day**, where every one of those was exercised again against the live service.
+
+**This model is now load-bearing.** It describes records that exist, belonging
+to real clients. Changing a rule here is a migration and a decision, not a
+refactor.
 
 The model represents all of them without a workaround, which is why it was
 built this way rather than as four CRUD tables that happen to have foreign keys.

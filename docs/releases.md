@@ -69,9 +69,9 @@ trustworthy.
 
 ## Build log
 
-### Build 002 — Studio foundation and staff authentication
+### Build 002 — Studio foundation, authentication and design system
 
-Commit `fd70c98`. On beta, in verification. Not promoted.
+On beta, in verification. Not promoted.
 
 Phase 2. The first build with a private side: Studio, the internal team world,
 served by the same application and told apart by `Host`. Nothing about the
@@ -90,6 +90,11 @@ public experience changed.
   inheriting the public header, footer and cursor. No URL changed.
 - The runtime image no longer carries drizzle-kit, esbuild and tsx, which an
   optional peer dependency had pulled into it.
+- The permanent Studio interface: a left rail on desktop and a drawer on small
+  screens, one page architecture every future module plugs into, and a token
+  set, component language and accessibility standard recorded in
+  `docs/studio-design.md`. Locked before the modules exist so that no later
+  build has to redesign the application to add a screen.
 
 Requires `APP_URL` and `BETTER_AUTH_SECRET` in every environment that serves
 it, and one migration, `0001_studio_staff.sql`.

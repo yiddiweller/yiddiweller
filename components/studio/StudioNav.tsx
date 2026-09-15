@@ -3,40 +3,41 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import { isCurrent, STUDIO_NAV } from "@/lib/studio-nav";
 import styles from "@/app/studio/studio.module.css";
 
 /**
- * Only areas that actually work appear here. Empty sections for features that
- * do not exist yet would be dead navigation, and Studio has none.
+ * The navigation itself, shared by the rail and the drawer so the two can
+ * never drift apart. `onNavigate` is how the drawer closes behind a choice.
  */
-const ITEMS = [
-  { href: "/studio", label: "Home" },
-  { href: "/studio/team", label: "Team" },
-  { href: "/studio/settings", label: "Settings" },
-] as const;
-
-export default function StudioNav() {
+export default function StudioNav({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
+  const showGroupLabels = STUDIO_NAV.length > 1;
 
   return (
-    <nav aria-label="Studio">
-      <ul className={styles.nav}>
-        {ITEMS.map((item) => {
-          const active =
-            item.href === "/studio" ? pathname === "/studio" : pathname.startsWith(item.href);
-          return (
-            <li key={item.href}>
-              <Link
-                href={item.href}
-                className={`${styles.navLink} ${active ? styles.navLinkActive : ""}`}
-                aria-current={active ? "page" : undefined}
-              >
-                {item.label}
-              </Link>
-            </li>
-          );
-        })}
-      </ul>
+    <nav className={styles.nav} aria-label="Studio">
+      {STUDIO_NAV.map((group) => (
+        <div key={group.label}>
+          {showGroupLabels ? <p className={styles.navGroupLabel}>{group.label}</p> : null}
+          <ul className={styles.navGroup}>
+            {group.items.map((item) => {
+              const current = isCurrent(item.href, pathname);
+              return (
+                <li key={item.href}>
+                  <Link
+                    href={item.href}
+                    className={`${styles.navLink} ${current ? styles.navLinkActive : ""}`}
+                    aria-current={current ? "page" : undefined}
+                    onClick={onNavigate}
+                  >
+                    {item.label}
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ))}
     </nav>
   );
 }

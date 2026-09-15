@@ -21,6 +21,20 @@ export async function currentStaff(): Promise<Staff | null> {
   return staffForEmail(session?.user?.email);
 }
 
+/**
+ * The address on the session cookie, whatever Studio thinks of it.
+ *
+ * Only the entrance needs this. Somebody whose access was removed still holds
+ * a valid Better Auth session — the two are different questions — and without
+ * this the sign-in page would show them an empty form for ever, with no way to
+ * learn why signing in keeps failing. Every guard above uses `staffForEmail`;
+ * this one is never an access check.
+ */
+export async function sessionEmail(): Promise<string | null> {
+  const session = await auth().api.getSession({ headers: await headers() });
+  return session?.user?.email ?? null;
+}
+
 /** Requires a signed-in active member. Sends anyone else to sign in. */
 export async function requireStaff(): Promise<Staff> {
   const staff = await currentStaff();

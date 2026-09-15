@@ -5,12 +5,15 @@ import { useId, useState } from "react";
 import { authClient } from "@/lib/auth/client";
 import styles from "@/app/studio/studio.module.css";
 
-type State = "idle" | "sending" | "sent" | "error";
+type State = "idle" | "sending" | "sent";
 
 /**
- * Requests a magic link. The response is deliberately identical whether or not
- * the address belongs to a staff member, so this form cannot be used to
- * discover who works here.
+ * Requests a sign-in link.
+ *
+ * The response is deliberately identical whether or not the address belongs to
+ * a staff member, so this form cannot be used to discover who works here. The
+ * server holds up its end of that too: a link is only ever sent to an active
+ * staff address, and the request succeeds either way.
  */
 export default function SignInForm({ defaultEmail = "" }: { defaultEmail?: string }) {
   const [email, setEmail] = useState(defaultEmail);
@@ -27,22 +30,29 @@ export default function SignInForm({ defaultEmail = "" }: { defaultEmail?: strin
     setState("sending");
 
     try {
-      await authClient.signIn.magicLink({ email: address, callbackURL: "/studio" });
-      setState("sent");
+      await authClient.signIn.magicLink({
+        email: address,
+        callbackURL: "/studio",
+        // Without this a failed link lands on /studio, which sends anyone not
+        // signed in back to this page and drops the reason on the way. Naming
+        // the page here is what lets an expired link say so.
+        errorCallbackURL: "/studio/login",
+      });
     } catch {
-      // Never surfaces whether the address exists. A genuine transport failure
-      // and an unknown address look the same from here on purpose.
-      setState("sent");
+      // A transport failure and an unknown address must look the same from
+      // here. Saying "sent" either way is the point, not a shortcut.
     }
+
+    setState("sent");
   }
 
   if (state === "sent") {
     return (
       <div role="status">
-        <p className={styles.loginTitle}>Check your email.</p>
-        <p className={styles.loginNote}>
-          If that address has Studio access, a sign-in link is on its way. It expires in ten
-          minutes.
+        <h2 className={styles.entranceTitle}>Check your email.</h2>
+        <p className={styles.entranceNote}>
+          If {email.trim()} has Studio access, a sign-in link is on its way. It works once and
+          expires in ten minutes.
         </p>
         <button type="button" className={styles.buttonQuiet} onClick={() => setState("idle")}>
           Use a different address

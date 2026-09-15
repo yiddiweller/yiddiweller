@@ -18,7 +18,7 @@ export default function PublicFrame({ children }: { children: React.ReactNode })
       </a>
       <Header />
       <HeaderFade />
-      <main id="main">{children}</main>
+      <main id="main" className="publicMain">{children}</main>
       <Footer />
       <Cursor />
     </>

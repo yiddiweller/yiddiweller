@@ -187,13 +187,54 @@ providers where they earn their place.
 
 ---
 
+## Build roadmap — locked
+
+Where the platform is going, as builds rather than phases. A build is what ships
+and what people refer to; the phase numbering below is the older engineering
+sequence and is kept because it is what earlier documents cite.
+
+| Build | Scope | State |
+| --- | --- | --- |
+| 001 | Core foundation, inquiry persistence | **In production** |
+| 002 | Studio foundation, authentication, and the permanent Studio design system | **On beta, verifying** |
+| 003 | Business core: clients, contacts, leads, projects | Next |
+| 004 | Client workrooms: private client collaboration and controlled access | |
+| 005 | Files, presentations, reviews and approvals | |
+| 006 | Money: estimates, invoices, payment requests, the public pay flow | |
+| 007 | Communications: conversation, Studio inbox, notifications | |
+| 008 | Reports, analytics and useful automation | |
+
+Later builds may extend permissions, audit history, portfolio and content
+integration, advanced client experiences and operational intelligence. None of
+that is built early.
+
+**One system.** Each build adds to the same application, the same database and
+the same Studio shell. Nothing on this list justifies a second product, a second
+design language, or a rewrite of what is already working.
+
+### Where this roadmap changed the older sequence, and why
+
+The phase table below placed communications and the inbox (Phase 6) *before*
+billing (Phase 7), and flagged the risk itself: inbound email is the hardest
+problem on the list, billing is mechanically contained, and taking the hard one
+first risks stalling the programme before it earns anything. The roadmap
+resolves that deliberately — **Money is Build 006 and Communications is Build
+007** — rather than leaving the question open.
+
+The other open dependency is unchanged and still real: **files sit inside
+workrooms**, so Build 004 delivers a container that Build 005 fills. Either
+bring file storage forward into 004 or accept that 004 ships incomplete. That
+is a decision for when 004 is planned, not now.
+
+---
+
 ## Phase sequence
 
 | Phase | Scope | State |
 | --- | --- | --- |
 | 0 | Audit and architecture | Complete |
 | 1 | Core foundation, inquiry persistence | **Complete — production verified**, released as **Build 001** |
-| 2 | Studio foundation and authentication | **On beta, verifying** — **Build 002** |
+| 2 | Studio foundation, authentication, Studio design system | **On beta, verifying** — **Build 002** |
 | 3 | Clients, contacts, leads, projects | |
 | 4 | Workrooms and private client access | |
 | 5 | Files, presentations, approvals | |

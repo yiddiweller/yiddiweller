@@ -22,8 +22,8 @@ export default function JoinForm({ token, email }: { token: string; email: strin
   if (result?.ok) {
     return (
       <div>
-        <p className={styles.loginTitle}>You are on the team.</p>
-        <p className={styles.loginNote}>
+        <h2 className={styles.entranceTitle}>You are on the team.</h2>
+        <p className={styles.entranceNote}>
           One more step. Studio has no password — send yourself a sign-in link to finish.
         </p>
         <SignInForm defaultEmail={result.email} />
@@ -37,8 +37,8 @@ export default function JoinForm({ token, email }: { token: string; email: strin
     const copy = INVITATION_FAILURE[result.reason];
     return (
       <div role="status">
-        <p className={styles.loginTitle}>{copy.title}</p>
-        <p className={styles.loginNote}>{copy.note}</p>
+        <h2 className={styles.entranceTitle}>{copy.title}</h2>
+        <p className={styles.entranceNote}>{copy.note}</p>
         <a className={styles.buttonQuiet} href="/studio/login">
           Go to sign in
         </a>
@@ -50,9 +50,11 @@ export default function JoinForm({ token, email }: { token: string; email: strin
     <form action={action} className={styles.form}>
       <input type="hidden" name="token" value={token} />
 
+      {/* Not an input: the address is fixed by the invitation, so accepting a
+          link can never grant access to an address nobody invited. */}
       <div className={styles.field}>
         <span className={styles.label}>Email</span>
-        <p className={styles.status}>{email}</p>
+        <p className={styles.rowPrimary}>{email}</p>
       </div>
 
       <div className={styles.field}>
@@ -69,6 +71,7 @@ export default function JoinForm({ token, email }: { token: string; email: strin
           minLength={2}
           maxLength={120}
           className={styles.input}
+          aria-describedby={`${id}-error`}
         />
       </div>
 
@@ -78,6 +81,7 @@ export default function JoinForm({ token, email }: { token: string; email: strin
         </button>
         <p
           className={`${styles.status} ${styles.statusError}`}
+          id={`${id}-error`}
           role="status"
           aria-live="polite"
         >

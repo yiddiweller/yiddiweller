@@ -90,8 +90,6 @@ body {
 
 body {
   min-height: 100svh;
-  /* Reserves the fixed header's space, so the first screen is unchanged. */
-  padding-top: var(--header-h);
   display: flex;
   flex-direction: column;
   color: var(--white);
@@ -150,6 +148,13 @@ a {
 
 .page {
   padding-inline: var(--page-x);
+}
+
+/* Reserves the fixed public header's space. It sits on the public frame's own
+   <main> rather than on <body>, because Studio has no fixed header and was
+   inheriting the gap as dead space at the top of every screen. */
+.publicMain {
+  padding-top: var(--header-h);
 }
 
 .rule {

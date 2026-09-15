@@ -2,8 +2,9 @@
 
 The private team world. Introduced in Phase 2, released as **Build 002**.
 
-Product decisions are in [`blueprint.md`](./blueprint.md); this file records how
-Studio is actually built. Where the two disagree the blueprint wins and the
+Product decisions are in [`blueprint.md`](./blueprint.md) and the permanent
+interface system is in [`studio-design.md`](./studio-design.md); this file
+records how Studio is actually built. Where the two disagree the blueprint wins and the
 question goes back to Yiddi Weller rather than being settled in code.
 
 ---
@@ -12,14 +13,21 @@ question goes back to Yiddi Weller rather than being settled in code.
 
 | Surface | Path | Who |
 | --- | --- | --- |
-| Sign in | `/studio/login` | Anyone. Sends a link only to staff. |
+| Sign in | `/studio/login` | Anyone may ask. A link is only ever sent to active staff. |
 | Accept an invitation | `/studio/join?token=…` | Whoever holds a valid token. |
 | Home | `/studio` | Any active staff member. |
 | Team | `/studio/team` | Roster: all staff. Invitations and deactivation: Owner only. |
 | Settings | `/studio/settings` | Any active staff member. Their own account. |
 
-Home shows real inquiry counts from Build 001's `inquiries` table. Nothing else
-is built: no clients, no projects, no workrooms. Those are Phase 3 onward.
+Home shows real inquiry counts and the most recent messages, from Build 001's
+`inquiries` table. Nothing else is built: no clients, no projects, no workrooms.
+Those are Build 003 onward, and none of them is sketched into the interface in
+advance.
+
+**The shell is a left rail on desktop and a drawer on small screens**, driven by
+one navigation list in `lib/studio-nav.ts`, so the two presentations cannot
+drift apart. The reasoning, and the page architecture every future module plugs
+into, are in [`studio-design.md`](./studio-design.md).
 
 ---
 
@@ -135,6 +143,23 @@ status code — but a determined Member could tell the two cases apart. It is
 defence in depth, not a secret, and the roster it protects is visible to them
 anyway.
 
+### The entrance has four states
+
+All four are designed rather than left to the framework:
+
+| State | What it is |
+| --- | --- |
+| The door | Address, one control, no marketing. |
+| On its way | "Check your email" — the same message whether or not the address has access. |
+| A link that did not work | Expired, already used, or invalid. The sign-in request passes `errorCallbackURL` so the reason survives the redirect; without it a failed link lands on `/studio`, bounces to the sign-in page and loses the explanation. |
+| An account without access | A Better Auth session whose staff record is not active. |
+
+The last one is a safety net rather than an everyday path: removing access
+deletes that person's sessions, so they normally return to the plain sign-in
+form. It exists because a session that outlives access would otherwise put
+someone in a loop — sign in, bounce, sign in — with nothing on screen to explain
+why. It was verified by changing a status without deleting the session.
+
 ---
 
 ## Roles
@@ -187,6 +212,12 @@ The acceptance page reads the token only to decide what to show. Redeeming it
 happens in the server action, which repeats every check, because the preview and
 the acceptance are two separate requests and the invitation may have been
 revoked in between.
+
+Inviting is a dialog on the Team page rather than a form sitting permanently
+below the roster: it is an occasional act, and the roster is what the page is
+for. Revoking an open invitation and removing someone's access both ask for
+confirmation first — destructive actions are marked by a question and by their
+words, not by being red.
 
 ---
 

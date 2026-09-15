@@ -75,6 +75,9 @@ broken by accident:
   `files.`, `auth.`, `login.` or `api.` subdomains. Client payments, invoices,
   files and approvals all live under `yiddiweller.com`.
 - **The internal product is called Studio.** Never Dashboard, Admin or Portal.
+  Its interface system — shell, page architecture, tokens, components — is
+  locked in [`docs/studio-design.md`](docs/studio-design.md). Build Studio
+  screens from it rather than inventing a layout per phase.
 - **Quiet outside, powerful inside.** New capability underneath must never make
   the public site busier. No Login, Portal, Billing or Dashboard links in public
   navigation.

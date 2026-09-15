@@ -33,10 +33,10 @@ export default async function StudioJoin({
   if (!token || !preview?.ok) {
     const copy = INVITATION_FAILURE[preview && !preview.ok ? preview.reason : "invalid"];
     return (
-      <main className={styles.login}>
-        <StudioMark className={styles.loginMark} />
-        <h1 className={styles.loginTitle}>{copy.title}</h1>
-        <p className={styles.loginNote}>{copy.note}</p>
+      <main className={`${styles.tokens} ${styles.entrance}`}>
+        <StudioMark className={styles.entranceMark} />
+        <h1 className={styles.entranceTitle}>{copy.title}</h1>
+        <p className={styles.entranceNote}>{copy.note}</p>
         <Link className={styles.buttonQuiet} href="/studio/login">
           Go to sign in
         </Link>
@@ -45,11 +45,12 @@ export default async function StudioJoin({
   }
 
   return (
-    <main className={styles.login}>
-      <StudioMark className={styles.loginMark} />
-      <h1 className={styles.loginTitle}>Welcome.</h1>
-      <p className={styles.loginNote}>
+    <main className={`${styles.tokens} ${styles.entrance}`}>
+      <StudioMark className={styles.entranceMark} />
+      <h1 className={styles.entranceTitle}>Welcome.</h1>
+      <p className={styles.entranceNote}>
         You have been invited to Studio as {preview.role === "owner" ? "an Owner" : "a Member"}.
+        One detail and you are in.
       </p>
       <JoinForm token={token} email={preview.email} />
     </main>

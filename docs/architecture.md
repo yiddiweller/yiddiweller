@@ -56,6 +56,9 @@ vocabulary.
 **Not shared: components.** Public and Studio share design *tokens* only. A
 public hero and a Studio data table have nothing structural in common, and
 forcing shared components produces a compromised middle that serves neither.
+Studio's own system is in [`studio-design.md`](./studio-design.md); the two are
+deliberately separate, which is why the public chrome moved out of the root
+layout when Studio arrived.
 
 ---
 
@@ -75,6 +78,8 @@ components/                  Presentation only. components/studio/ is separate.
 lib/
   contact.ts                 Validation, shared by the form and the server
   hosts.ts                   Which world a request belongs to
+  studio-nav.ts              Studio's navigation, as data
+  studio-format.ts           How Studio writes dates
   auth/
     access.ts                The access rule, with no framework around it
     guard.ts                 currentStaff / requireStaff / requireOwner

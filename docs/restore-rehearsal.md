@@ -1,12 +1,15 @@
 # Restore rehearsal
 
 The procedure for proving that production PostgreSQL can actually be restored.
-**It has not been performed.** Nothing in this file may be described as done
-until it has been carried out and its evidence recorded at the bottom.
 
-A backup nobody has restored is a hypothesis. This turns it into a fact, and
-produces the one number that matters — how long a restore takes — which nothing
-else can tell you.
+**Performed on 2026-09-15. Production restore is no longer a hypothesis.** What
+was established, and what was not, is in the record at the bottom — read it
+before relying on any of this, because a partial rehearsal proves partial
+things.
+
+Keep the procedure below for the next one. It is written to be repeated after
+any change to the database, the backup configuration, or Railway's own restore
+flow.
 
 ---
 
@@ -58,37 +61,40 @@ snapshot.
 
 ---
 
-## Step 3 — Create the scratch environment
+## Step 3 — Where the restore lands
 
-Use a **separate Railway environment**, not a second service inside
-`production`, so there is no chance of a restore landing beside the live
-database and being mistaken for it.
+**As of the 2026-09-15 rehearsal, Railway does this itself:** starting a
+Point-in-Time Recovery from the production service creates a **separate
+temporary Postgres service** for the restored copy and leaves production
+running. Nothing has to be prepared in advance.
+
+Confirm that is still what the console offers before starting. If a future
+version instead offers to restore *over* the source service, stop — that is the
+one thing this procedure exists to avoid — and create an isolated environment to
+restore into by hand:
 
 1. Railway project → **Environments** → new environment named
-   `restore-rehearsal`.
+   `restore-rehearsal`, holding one Postgres service and nothing else.
 2. Confirm the environment selector reads `restore-rehearsal` before every
    further action. This is the step where mistakes happen.
-3. That environment gets **no application service**, no domain and no
-   variables. It holds one Postgres service and nothing else.
 
 ---
 
 ## Step 4 — Restore into it
 
-Railway's restore flow is the part of this procedure that is least certain from
-documentation alone, and it is deliberately not guessed here. See *Railway
-uncertainty* below.
+Railway's restore flow was exercised for real on 2026-09-15 and behaved as
+described in step 3. Re-check it rather than assuming it has not changed; see
+*Railway uncertainty* below for what is still unverified.
 
 The intent, whichever shape the console offers:
 
-- restore from production's backup **into the `restore-rehearsal` environment's
-  Postgres service**, never into production's own service
+- the restored copy lands in a service **of its own**, never over production's
 - target the moment chosen in step 2
-- if Railway will only restore a backup into the service it came from, do
-  **not** proceed — stop and use the fallback in *Railway uncertainty*
+- production stays online throughout; confirm that as it runs, not afterwards
 
-Start a timer when the restore begins. Stop it when the database accepts a
-connection. That is the number this rehearsal exists to produce.
+**Start a timer when the restore begins and stop it when the database accepts a
+connection.** The first rehearsal did not, so the platform still has no recovery
+time objective. This is the single most valuable thing the next one adds.
 
 ---
 
@@ -174,13 +180,11 @@ must be checked in the console during the rehearsal:
 
 - **Where the restore control lives**, and what it is called. Railway has moved
   backups between the service page and its settings tab more than once.
-- **Whether a backup can be restored into a different service or environment**,
-  or only back into the service it came from. This decides whether the
-  procedure above works at all. If it is restore-in-place only, do **not**
-  rehearse against production. The fallback is: take a logical dump of
-  production (`pg_dump` over the private connection string, read-only), restore
-  that into the scratch service, and rehearse verification against it — noting
-  in the record that PITR itself was not exercised, only the dump path.
+- ~~**Whether a backup can be restored into a different service or
+  environment**, or only back into the service it came from.~~ **Answered on
+  2026-09-15: Railway restored production into a separate temporary Postgres
+  service, leaving production online and untouched.** The `pg_dump` fallback
+  this section used to describe is therefore not needed.
 - **Whether PITR can target an arbitrary instant** or only the backup
   boundaries, and what the true retention window is.
 - **Whether restoring produces a new volume and a new connection string**, and
@@ -195,19 +199,63 @@ rehearsal should be a shorter document than this one.
 
 ## Record
 
-Nothing here yet. This is the shape it should take once performed:
+### 2026-09-15 — first rehearsal, successful
+
+| | |
+| --- | --- |
+| Date | 2026-09-15 |
+| Performed by | Yiddi Weller, in the Railway console |
+| Method | **Point-in-Time Recovery**, initiated from the live production Postgres service |
+| Target | A **separate temporary Postgres service** created by Railway for the restore |
+| Production during the rehearsal | **Online and untouched** throughout |
+| Result | **Success** |
+
+**What was actually verified**, and nothing beyond it:
+
+- The restore was initiated from the real production Postgres service, not from
+  a copy or a dump.
+- Railway restored into a separate temporary service rather than over
+  production. This settles the open question in *Railway uncertainty* below:
+  **a production backup can be restored into a service of its own.**
+- The original production database stayed online and unmodified for the whole
+  rehearsal.
+- The restored service came online successfully.
+- Railway connected to the restored database.
+- The `inquiries` table was present in the restored copy.
+- **Real production inquiry data was present and correct** in it — the point of
+  the whole exercise, and the first time production data has been read back out
+  of a backup.
+- The temporary service was deleted afterwards, leaving no second copy of
+  production data running.
+
+**What this rehearsal did not establish.** Recorded plainly, because a rehearsal
+that is remembered as more thorough than it was is worse than none:
+
+- **No restore duration was measured**, so **there is still no recovery time
+  objective.** Nothing in this record should be read as one, and a number must
+  not be inferred from it later. Timing the restore is the first thing to add to
+  the next rehearsal.
+- Schema completeness beyond the presence of `inquiries` — indexes, triggers,
+  constraints, and the Build 002 tables once they exist in production — was not
+  checked.
+- `__drizzle_migrations` was not compared against the repository.
+- The application was not booted against the restored database.
+
+Those four are steps 5's checks, and they are what the next rehearsal should
+cover now that the mechanism itself is proven. None of them changes what was
+established today: **production can be restored, into an isolated service, with
+its data intact.**
 
 ```
-Date                 —
-Performed by         —
-Restore point        —
-Restore duration     —   ← the recovery time objective
-Method               PITR into a new environment / logical dump fallback
-Verification         schema / migrations / row counts / constraint / app boot
-Result               —
-Surprises            —
-Production touched   no
+Date                 2026-09-15
+Performed by         Yiddi Weller
+Restore point        PITR, from the live production service
+Restore duration     not measured  ← still no RTO
+Method               PITR into a separate temporary Postgres service
+Verification         restored service online · connected · inquiries table
+                     present · real production inquiry data verified
+Result               success
+Surprises            none reported
+Production touched   no — online and unmodified throughout
+Cleanup              temporary service deleted
 ```
-
-Until that table is filled in, the correct statement about production backups
-remains: **configured, healthy, and never restored.**

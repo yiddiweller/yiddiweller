@@ -166,9 +166,16 @@ promotion:
 | Monthly volume backups | Enabled |
 | Initial backup | Completed successfully |
 
-**A restore has still not been rehearsed.** That is the one item from the
-original list that remains open, and it is the item that actually matters: a
-backup nobody has restored is a hypothesis, not a safeguard.
+**A restore was rehearsed on 2026-09-15, successfully.** Production was
+restored by Point-in-Time Recovery into a separate temporary Postgres service;
+production itself stayed online and untouched; the restored database came
+online, the `inquiries` table was present, and real production inquiry data was
+verified inside it. The temporary service was deleted afterwards.
+
+**No duration was measured, so there is still no recovery time objective.** Do
+not infer one. Schema completeness beyond `inquiries`, the migrations table, and
+an application boot against the restored copy were also not checked — they are
+what the next rehearsal should add, now that the mechanism itself is proven.
 
 The procedure is now written out step by step in
 [`restore-rehearsal.md`](./restore-rehearsal.md): restore *out of* production
@@ -179,8 +186,9 @@ afterwards. It also lists the Railway behaviour that has to be checked by hand
 rather than assumed, including whether a backup can be restored into a
 different service at all.
 
-Until that document's record table is filled in, the correct statement about
-production backups is: **configured, healthy, and never restored.**
+The full record is in [`restore-rehearsal.md`](./restore-rehearsal.md), which
+also keeps the procedure for repeating it after any change to the database or
+to Railway's restore flow.
 
 Beta's database has no backup requirement. It holds test submissions only and
 is expected to be disposable.

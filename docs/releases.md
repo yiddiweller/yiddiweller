@@ -99,6 +99,13 @@ public experience changed.
   set, component language and accessibility standard recorded in
   `docs/studio-design.md`. Locked before the modules exist so that no later
   build has to redesign the application to add a screen.
+- Times render in the reader's own timezone, with the server sending labelled
+  UTC so nothing is ever quietly wrong.
+- Authorization is called inside the component that reads, before it reads.
+  Measuring a guarded page showed that a guard in a parent layout does not stop
+  its page running — an anonymous request came back with the protected data in
+  the body — and that a `loading.tsx` above a guarded page turns a refusal into
+  a 200. Both are now rules, and Studio has no loading boundary.
 
 Requires `APP_URL` and `BETTER_AUTH_SECRET` in every environment that serves
 it, and one migration, `0001_studio_staff.sql`.

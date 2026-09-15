@@ -169,6 +169,12 @@ tracked uppercase is slower to read and Studio is for working.
 
 Numbers that line up in a column use `font-variant-numeric: tabular-nums`.
 
+**Every timestamp goes through `components/studio/Moment.tsx`.** The server
+renders UTC and labels it; the browser re-renders the same instant in the
+viewer's own zone. A Studio module must not call `Intl.DateTimeFormat` itself —
+the zone would silently become the server's, which on Railway is UTC and wrong
+for whoever is reading. The reasoning is in [`studio.md`](./studio.md).
+
 ---
 
 ## Spacing and shape
@@ -211,7 +217,20 @@ should mean composing these, not writing new CSS.
 | Dialog | Native `<dialog>`, hairline border, square. |
 | Empty state | A sentence that says what will appear here, and why it has not. |
 | Notice | One line, `role="status"`, with the failure written in words. |
-| Skeleton | The shape of the content that is loading, at low contrast. |
+| Skeleton | The shape of the content that is loading, at low contrast. See the rule below before adding one. |
+
+### Loading, and where a skeleton may go
+
+The skeleton component exists and no Studio screen uses one yet, deliberately.
+A `loading.tsx` creates a Suspense boundary, the shell flushes before the page
+runs, and after that the response status can no longer be set — which turns an
+authorization refusal into a 200 carrying a "Not found." page. Studio's pages
+answer in milliseconds, so the boundary bought little and cost the one thing
+that has to stay exact.
+
+When a screen is genuinely slow enough to need one, the boundary goes **below
+every authorization guard**, never above one. The measurements behind that rule
+are in [`studio.md`](./studio.md).
 
 ### Empty states and errors
 

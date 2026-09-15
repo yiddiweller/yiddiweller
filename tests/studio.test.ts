@@ -1,13 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-// Before the formatters are imported: Intl resolves the zone once, and these
-// assertions are about the format, not about where the machine running them
-// happens to be. Railway runs UTC, which is what Studio renders in.
-process.env.TZ = "UTC";
-
 import { isCurrent, STUDIO_NAV } from "../lib/studio-nav.ts";
-import { whenDay, whenExact } from "../lib/studio-format.ts";
+import { formatMoment, formatMomentUtc } from "../lib/studio-format.ts";
 
 /**
  * The two pure pieces of the Studio shell. Neither needs a browser, and both
@@ -36,8 +31,34 @@ test("Home is current only at Home, and sections claim their own subtree", () =>
   assert.equal(isCurrent("/studio/team", "/studio/settings"), false);
 });
 
-test("dates read the same wherever they appear", () => {
-  const date = new Date(Date.UTC(2026, 8, 4, 14, 20));
-  assert.equal(whenExact(date), "4 Sept, 14:20", "24-hour, because this is working software");
-  assert.equal(whenDay(date), "4 Sept 2026");
+// ---------------------------------------------------------------- moments
+
+const EVENING_IN_UTC = new Date(Date.UTC(2026, 8, 4, 22, 20)).toISOString();
+
+test("a moment is written the same way in every zone, and only the clock moves", () => {
+  assert.equal(formatMoment(EVENING_IN_UTC, "exact", "UTC"), "4 Sept, 22:20");
+  assert.equal(formatMoment(EVENING_IN_UTC, "exact", "Europe/Brussels"), "5 Sept, 00:20");
+  assert.equal(formatMoment(EVENING_IN_UTC, "exact", "America/New_York"), "4 Sept, 18:20");
+
+  // The shape never changes: 24-hour, short month, no locale surprises.
+  for (const zone of ["UTC", "Europe/Brussels", "America/New_York", "Asia/Tokyo"]) {
+    assert.match(formatMoment(EVENING_IN_UTC, "exact", zone), /^\d{1,2} \w+, \d{2}:\d{2}$/, zone);
+  }
+});
+
+test("a date can belong to a different day either side of a zone", () => {
+  assert.equal(formatMoment(EVENING_IN_UTC, "day", "UTC"), "4 Sept 2026");
+  assert.equal(formatMoment(EVENING_IN_UTC, "day", "Asia/Tokyo"), "5 Sept 2026");
+});
+
+test("what the server sends is labelled, so it is never quietly wrong", () => {
+  // Rendered before the browser has had its say, and true as it stands.
+  assert.equal(formatMomentUtc(EVENING_IN_UTC, "exact"), "4 Sept, 22:20 UTC");
+  // A date carries no clock, so a zone suffix would say nothing.
+  assert.equal(formatMomentUtc(EVENING_IN_UTC, "day"), "4 Sept 2026");
+});
+
+test("a value that is not a date renders as nothing rather than as Invalid Date", () => {
+  assert.equal(formatMoment("not-a-date", "exact", "UTC"), "");
+  assert.equal(formatMomentUtc("", "day"), "");
 });

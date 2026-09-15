@@ -43,9 +43,28 @@ export async function requireStaff(): Promise<Staff> {
 }
 
 /**
- * Requires the Owner role. Answers 404 rather than 403 for a signed-in member,
- * so Studio does not confirm to a non-owner that a given management surface
- * exists at all.
+ * Requires the Owner role. Answers not-found rather than forbidden for a
+ * signed-in Member, so Studio does not confirm to a non-Owner that a given
+ * management surface exists at all.
+ *
+ * **Where this must be called, and it is not a style preference.** Measured
+ * against a running build, not assumed:
+ *
+ *   guard in the page, before the read       404, nothing fetched  — correct
+ *   guard in the page, loading.tsx above it  200, nothing fetched  — wrong status
+ *   guard in a parent layout                 404, but the page ran
+ *                                            and shipped its data  — a leak
+ *
+ * A parent layout does not gate its children: Next renders layout and page
+ * concurrently, so a page that fetches protected data will fetch and ship it
+ * while the layout is still deciding. And any Suspense boundary above the page
+ * — a `loading.tsx` in that segment or an ancestor — flushes the shell first,
+ * after which the status can no longer be set and a refusal arrives as 200.
+ *
+ * So: call this **inside the component that reads the data, before it reads**,
+ * and do not put a `loading.tsx` above a guarded page. The guard in
+ * `(app)/layout.tsx` is defence in depth and the thing that produces the
+ * redirect for an anonymous request; it is not what protects a page's data.
  */
 export async function requireOwner(): Promise<Staff> {
   const staff = await requireStaff();

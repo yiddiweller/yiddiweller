@@ -1,6 +1,6 @@
 import { countInquiries, listRecentInquiries } from "@/lib/db/inquiries";
 import { requireStaff } from "@/lib/auth/guard";
-import { whenExact } from "@/lib/studio-format";
+import Moment from "@/components/studio/Moment";
 import styles from "@/app/studio/studio.module.css";
 
 export const metadata = { title: "Home" };
@@ -38,7 +38,7 @@ export default async function StudioHome() {
             <div className={styles.fact}>
               <span className={styles.factLabel}>Latest</span>
               <span className={`${styles.factValue} ${styles.factValueSmall}`}>
-                {latest ? whenExact(latest.createdAt) : "None yet"}
+                {latest ? <Moment iso={latest.createdAt.toISOString()} /> : "None yet"}
               </span>
             </div>
             <div className={styles.fact}>
@@ -76,9 +76,7 @@ export default async function StudioHome() {
                       {inquiry.email}
                     </a>
                   </span>
-                  <time className={styles.rowMeta} dateTime={inquiry.createdAt.toISOString()}>
-                    {whenExact(inquiry.createdAt)}
-                  </time>
+                  <Moment className={styles.rowMeta} iso={inquiry.createdAt.toISOString()} />
                 </li>
               ))}
             </ul>

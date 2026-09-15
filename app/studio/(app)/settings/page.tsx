@@ -1,6 +1,6 @@
 import SignOutButton from "@/components/studio/SignOutButton";
 import { requireStaff } from "@/lib/auth/guard";
-import { whenDay } from "@/lib/studio-format";
+import Moment from "@/components/studio/Moment";
 import styles from "@/app/studio/studio.module.css";
 
 export const metadata = { title: "Settings" };
@@ -43,7 +43,9 @@ export default async function StudioSettings() {
             </li>
             <li className={styles.row}>
               <span className={styles.rowMeta}>Joined</span>
-              <span className={styles.rowPrimary}>{whenDay(staff.createdAt)}</span>
+              <span className={styles.rowPrimary}>
+                <Moment iso={staff.createdAt.toISOString()} style="day" />
+              </span>
             </li>
           </ul>
           <p className={styles.hint}>

@@ -55,7 +55,9 @@ is a deliberate decision, not a cleanup.
   time: beta must stay non-indexable (`Disallow: /` plus
   `noindex, nofollow, nocache`) and production must stay indexable.
 - **Production PostgreSQL has Point-in-Time Recovery plus weekly and monthly
-  backups.** A restore has not yet been rehearsed; see `docs/database.md`.
+  backups.** A restore has not yet been rehearsed. The procedure for doing it
+  safely is `docs/restore-rehearsal.md`; until its record table is filled in,
+  the backups are configured, healthy and unproven.
 
 Builds are numbered in `docs/releases.md`: one sequential human-readable
 sequence, `Build 001` upward, shared by beta and production. A build keeps its

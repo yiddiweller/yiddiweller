@@ -2,7 +2,7 @@ import InviteDialog from "@/components/studio/InviteDialog";
 import StaffAction from "@/components/studio/StaffActions";
 import { requireStaff } from "@/lib/auth/guard";
 import { listOpenInvitations, listStaff } from "@/lib/db/staff";
-import { whenDay } from "@/lib/studio-format";
+import Moment from "@/components/studio/Moment";
 import styles from "@/app/studio/studio.module.css";
 
 import { deactivateStaff, reactivateStaff, revokeStaffInvitation } from "./actions";
@@ -85,7 +85,9 @@ export default async function StudioTeam() {
                         }
                       />
                     ) : (
-                      <span className={styles.rowMeta}>Since {whenDay(person.createdAt)}</span>
+                      <span className={styles.rowMeta}>
+                        Since <Moment iso={person.createdAt.toISOString()} style="day" />
+                      </span>
                     )}
                   </span>
                 </li>
@@ -116,7 +118,7 @@ export default async function StudioTeam() {
                   >
                     <span className={styles.rowPrimary}>{invite.email}</span>
                     <span className={styles.rowSecondary}>
-                      Invited {whenDay(invite.createdAt)}
+                      Invited <Moment iso={invite.createdAt.toISOString()} style="day" />
                     </span>
                     <span className={styles.rowMeta}>
                       <span className={styles.tag}>{invite.role}</span>
@@ -125,7 +127,7 @@ export default async function StudioTeam() {
                     <span className={styles.rowActions}>
                       {!invite.expired ? (
                         <span className={styles.rowMeta}>
-                          Expires {whenDay(invite.expiresAt)}
+                          Expires <Moment iso={invite.expiresAt.toISOString()} style="day" />
                         </span>
                       ) : null}
                       <StaffAction

@@ -135,13 +135,40 @@ whenever their cookie happens to expire.
 `requireOwner` answers not-found rather than forbidden so Studio does not
 confirm to a Member that a given management surface exists.
 
-**One honest limitation.** Because Studio renders dynamically and streams, the
-response has already begun by the time `notFound()` is reached, so a Member at
-`/studio/team` receives HTTP 200 carrying the "Not found." page rather than a
-404 status. The page is identical either way and no access depends on the
-status code — but a determined Member could tell the two cases apart. It is
-defence in depth, not a secret, and the roster it protects is visible to them
-anyway.
+### Where a guard has to be called
+
+This was measured against a running build rather than assumed, and the results
+are not what the file layout suggests:
+
+| Guard position | Status | Protected data in the response |
+| --- | --- | --- |
+| In the page, before the read | **404** | No |
+| In the page, with a `loading.tsx` above it | 200 | No |
+| In a parent layout | 404 | **Yes — the page ran anyway** |
+| In a parent layout, with a `loading.tsx` beside the page | 404 | **Yes** |
+
+Two things follow, and both are rules rather than preferences:
+
+1. **A parent layout does not gate its children.** Next renders a layout and
+   its page concurrently, so a page that fetches protected data fetches and
+   ships it while the layout is still deciding. An anonymous request to such a
+   page was observed returning a redirect whose body contained the data.
+   The guard must be called **inside the component that reads**, before it
+   reads.
+2. **No `loading.tsx` above a guarded page.** A Suspense boundary flushes the
+   shell first, and after that the response status cannot be set — so a refusal
+   arrives as 200 with the not-found page inside it. Studio has no loading
+   boundary for this reason; where one is worth adding later, it goes below
+   every guard, never above one.
+
+Today every Studio page calls `requireStaff()` itself before touching data,
+and the `(app)` layout calls it too as defence in depth and to produce the
+redirect for an anonymous request.
+
+**Team is deliberately not an Owner-only page.** Members see the roster;
+management — inviting, revoking, removing access — is Owner-only and lives in
+server actions, which each re-check the caller and answer not-found for a
+Member. Concealment is the policy for those actions, not for the page.
 
 ### The entrance has four states
 
@@ -159,6 +186,39 @@ deletes that person's sessions, so they normally return to the plain sign-in
 form. It exists because a session that outlives access would otherwise put
 someone in a loop — sign in, bounce, sign in — with nothing on screen to explain
 why. It was verified by changing a status without deleting the session.
+
+---
+
+## Dates and times
+
+The database keeps `timestamptz` in UTC and that does not change. Display is a
+separate concern and lives entirely at the edge:
+
+```
+server   →  "15 Sept, 14:08 UTC"   labelled, so it is never quietly wrong
+browser  →  "15 Sept, 16:08"       the same instant, in the viewer's own zone
+markup   →  <time dateTime="2026-09-15T14:08:08.942Z">
+```
+
+`components/studio/Moment.tsx` is the only place this happens, and every Studio
+timestamp goes through it. It uses `useSyncExternalStore` with a server
+snapshot and a client snapshot, which is how the two sides can differ without a
+hydration mismatch — React takes the server's value for the HTML it hydrates,
+then the client's, and re-renders the difference. Verified in four zones with
+no console errors and no hydration warnings.
+
+Two rules for later modules:
+
+- **Never call `Intl.DateTimeFormat` in a Studio page.** The zone would default
+  to the server's, which on Railway is UTC and wrong for the person reading.
+  Use `Moment`.
+- **Formatting lives in `lib/studio-format.ts`**, takes an explicit zone, and is
+  locale-fixed to en-GB. The zone is the part that has to be personal; the
+  format is not, because two people describing the same record should see the
+  same shape.
+
+If scripting never runs, the labelled UTC text stays on screen. That is the one
+case the browser cannot fix, and it is true as it stands.
 
 ---
 

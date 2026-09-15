@@ -168,12 +168,19 @@ promotion:
 
 **A restore has still not been rehearsed.** That is the one item from the
 original list that remains open, and it is the item that actually matters: a
-backup nobody has restored is a hypothesis, not a safeguard. Two things are
-still owed before Studio holds client work:
+backup nobody has restored is a hypothesis, not a safeguard.
 
-1. Perform one restore into a scratch database.
-2. Record how long it took, because that figure is the real recovery time
-   objective and nothing else tells you what it is.
+The procedure is now written out step by step in
+[`restore-rehearsal.md`](./restore-rehearsal.md): restore *out of* production
+into an isolated scratch environment, verify schema, migrations, row counts, a
+constraint and an application boot against it, record how long the restore took
+— that figure is the real recovery time objective — and delete everything
+afterwards. It also lists the Railway behaviour that has to be checked by hand
+rather than assumed, including whether a backup can be restored into a
+different service at all.
+
+Until that document's record table is filled in, the correct statement about
+production backups is: **configured, healthy, and never restored.**
 
 Beta's database has no backup requirement. It holds test submissions only and
 is expected to be disposable.

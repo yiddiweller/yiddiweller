@@ -51,7 +51,24 @@ test("the Studio host owns its root once STUDIO_HOST is set", () => {
 });
 
 test("the beta preview is where Studio lives while the subdomain is disconnected", () => {
-  assert.deepEqual(classify({ SITE_ENV: "preview" }, ["beta.yiddiweller.com"]), ["internal"]);
+  // Beta runs on the hostname Railway generated and has no custom domain, so
+  // the preview flag has to be what decides this, not the address. Asserted
+  // with the real hostname and with two names beta does not use, because the
+  // day that generated name changes must not be the day Studio disappears.
+  assert.deepEqual(
+    classify({ SITE_ENV: "preview" }, [
+      "yiddiwellerbeta.up.railway.app",
+      "yiddiwellerbeta.up.railway.app:443",
+      "anything-railway-renames-it-to.up.railway.app",
+    ]),
+    ["internal", "internal", "internal"],
+  );
+});
+
+test("without the preview flag, that same host is public and Studio is not there", () => {
+  // The other half of the rule: a Railway hostname is not internal by virtue of
+  // being a Railway hostname. Production is reachable at one too.
+  assert.deepEqual(classify({}, ["yiddiwellerbeta.up.railway.app"]), ["public"]);
 });
 
 test("local development is internal", () => {

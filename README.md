@@ -105,16 +105,18 @@ store.
 
 Two branches, each with its own Railway service.
 
-| Branch | Watched by                | Public at              |
-| ------ | ------------------------- | ---------------------- |
-| `main` | the production service    | `yiddiweller.com`      |
-| `beta` | the preview service       | `beta.yiddiweller.com` |
+| Branch | Watched by             | Reached at                       |
+| ------ | ---------------------- | -------------------------------- |
+| `main` | the production service | `yiddiweller.com`                |
+| `beta` | the preview service    | `yiddiwellerbeta.up.railway.app` |
 
-Work lands on `beta` first, is reviewed on the preview domain, then merges into
-`main` to go live.
+Work lands on `beta` first, is reviewed on the preview service, then merges into
+`main` to go live. Beta keeps the hostname Railway generated; it has no custom
+domain, which is why nothing in the application may depend on what it is called.
+The preview service is identified by `SITE_ENV=preview`, never by its address.
 
 ```bash
-git push origin beta          # publishes to beta.yiddiweller.com
+git push origin beta          # publishes to the preview service
 
 git checkout main             # once the preview is approved
 git merge --ff-only beta
@@ -163,7 +165,7 @@ One Railway service per branch. Both are created the same way.
 > So: read **Settings → Source** on every service after creating it, and again
 > after any change to the default branch. Confirm the production service says
 > `main` and the preview service says `beta`. If a preview service is left on
-> `main`, `beta.yiddiweller.com` mirrors production instead of previewing
+> `main`, the preview service mirrors production instead of previewing
 > anything, which looks like it is working and is not.
 
 ### Custom domain — yiddiweller.com

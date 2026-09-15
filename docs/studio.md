@@ -33,7 +33,7 @@ nothing else — it runs on the Edge runtime and must never touch the database.
 | --- | --- | --- |
 | `studio.yiddiweller.com` (once `STUDIO_HOST` is set) | `studio` | At the root. `/team` is rewritten to `/studio/team`. |
 | `yiddiweller.com`, `www.`, anything else in production | `public` | `/studio/*` answers **404**, by rewrite. |
-| Beta preview, `localhost` | `internal` | At `/studio`. |
+| The beta service (any hostname, with `SITE_ENV=preview`), `localhost` | `internal` | At `/studio`. |
 
 The public host answering 404 rather than redirecting is deliberate: a redirect
 would confirm that internal software sits behind that domain.
@@ -43,9 +43,17 @@ server action checks the session against Postgres on every request. Middleware
 decides which world a request belongs to; it decides nothing about who someone
 is.
 
-Until the subdomain is connected, Studio is exercised on beta at
-`beta.yiddiweller.com/studio`. Connecting it later needs three things and no
-code changes beyond the third: a Railway domain pointing at the same service,
+Until the subdomain is connected, Studio is exercised on the beta service at
+`/studio`, on whatever hostname Railway gave it — today
+`yiddiwellerbeta.up.railway.app`. **Nothing depends on that name.** A request
+is classified as `internal` because `SITE_ENV=preview` is set on that service,
+not because of its address, which is what allows beta to keep a generated
+hostname and to change it without a code change. The corollary is worth
+knowing: if `SITE_ENV` were ever unset on beta, that host would classify as
+`public` and `/studio` would answer 404 there.
+
+Connecting the Studio subdomain later needs three things, and no code changes
+beyond the third: a Railway domain pointing at the same service,
 `STUDIO_HOST` set on that environment, and Better Auth's `baseURL` moved to the
 Studio origin — its session cookie is host-scoped, so a link issued for one host
 cannot establish a session on the other. `studioUrl()` in `lib/env.ts` already

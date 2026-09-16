@@ -16,17 +16,18 @@ tooling, nothing to keep in sync.
 
 | Environment | Build | Commit |
 | --- | --- | --- |
-| Production | **Build 003** | `8d0fd80` |
-| Beta | **Build 004** | `b4ba8f8` |
+| Production | **Build 004** | `6b4ca20` |
+| Beta | **Build 004** | `6b4ca20` |
 
-Beta is a number ahead while Build 004 is verified. That is the normal state
-during testing, not a discrepancy.
+Both environments sit on the identical commit. Build 004 was promoted on
+2026-09-16 by fast-forward, so there is nothing on one that is not on the
+other, and no build is awaiting promotion.
 
 The commits above are what each branch actually points at, which is not always
-the commit that claimed the number. Production's head is `8d0fd80`, the
-unnumbered commit recording Build 003's verification, sitting on top of
-`1e4af21`, which is Build 003 itself. A documentation commit changes nothing
-about the running system, so it claims no number and does not move the build.
+the commit that claimed the number. A documentation commit changes nothing
+about the running system, so it claims no number and does not move the build —
+Build 003's own commit was `1e4af21`, and production ran `8d0fd80` on top of it
+until this promotion.
 
 ---
 
@@ -77,8 +78,27 @@ trustworthy.
 
 ### Build 004 — Client workrooms
 
-Commits `53d07fd` … `b4ba8f8`. **Verified on beta, awaiting production
-promotion.** Production stays on Build 003 until it is approved.
+Commits `53d07fd` … `6b4ca20`. **In production, verified.** Promoted
+2026-09-16 by fast-forward, so production and beta sit on the identical commit
+`6b4ca20bafb69db794636baf8b87798b95f806c2`.
+
+**Production acceptance.** The deployment succeeded, migration `0003` completed
+successfully, and the Next.js application started. Studio is healthy on
+`studio.yiddiweller.com` and **Workrooms** appears in its navigation under
+DELIVERY. A controlled test Client, Contact and Project were created against
+the live service, a Workroom was created from that Project, its draft state
+behaved as designed, and publishing it worked.
+
+Those four records are still in production and are the only rows there that are
+not real business data. Archive them when they have served their purpose —
+archive, never delete, like everything else in the business core.
+
+**What production acceptance deliberately did not repeat.** After publishing
+the production test Workroom, the invitation → acceptance → client sign-in →
+revocation journey was **not** run again against production. It was exercised
+in full on beta, recorded immediately below, and this entry does not claim
+otherwise. Anybody reading this later should treat that journey as verified on
+beta and unproven in production until somebody runs it there.
 
 **Beta acceptance.** Exercised by hand against the running beta deployment:
 creating a Workroom from a Project and only from a Project, publishing and
@@ -92,6 +112,20 @@ disappearing from the client's world, a contact with live access refusing to
 be archived, a project with an open Workroom refusing to be archived, a
 project status change appearing in the client's timeline, the Studio surfaces
 for all of it, and the public site and contact flow unchanged throughout.
+
+The five that matter most, and where each was proven:
+
+| | Beta | Production |
+| --- | --- | --- |
+| Invitation delivery — the email arrived | **passed** | not repeated |
+| Invitation acceptance | **passed** | not repeated |
+| Client reaches their own Workroom | **passed** | not repeated |
+| Client sign-out and sign-in again | **passed** | not repeated |
+| Membership revocation takes effect immediately | **passed** | not repeated |
+
+"Not repeated" is not "failed" and not "unknown in principle" — it is a
+deliberate choice about how far to exercise a live service with a test client,
+recorded so nobody later reads the production column as passed.
 
 Phase 4, and the first client-facing build. Each project can now have one
 private space the client is invited into. Nothing about the public site

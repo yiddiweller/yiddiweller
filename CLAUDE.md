@@ -31,11 +31,10 @@ that has not been on `beta` first, and never leave `beta` behind `main`.
 
 ## Platform state — settled, do not re-litigate
 
-**Phases 1, 2 and 3 are complete and verified in production**, released as
-**Build 001**, **Build 002** and **Build 003**. **Build 004, client workrooms,
-is verified on beta and hardened, awaiting production promotion.** These are
-facts about the running system, not proposals. Changing any of them is a
-deliberate decision, not a cleanup.
+**Phases 1, 2, 3 and 4 are complete and verified in production**, released as
+**Build 001**, **Build 002**, **Build 003** and **Build 004**. Build 005 has not
+begun. These are facts about the running system, not proposals. Changing any of
+them is a deliberate decision, not a cleanup.
 
 - **PostgreSQL is the system of record for contact inquiries.** Email is a
   notification, not the record. An inquiry is persisted before it is emailed.
@@ -61,7 +60,10 @@ deliberate decision, not a cleanup.
   see `docs/studio.md`.
 - **Production now holds real client data.** Clients, Contacts, Leads and
   Projects are live business records, not test rows. Treat every operation
-  against the production database accordingly.
+  against the production database accordingly. The one exception is the small
+  set of Client, Contact, Project and Workroom rows created deliberately to
+  accept Build 004 — the only production records that are safe to archive, and
+  the reason archive exists rather than delete.
 - **A client is never a row in `user`.** Clients sign in through a second,
   isolated Better Auth instance with its own tables, cookie name, secret and
   API path. A client session must never satisfy `requireStaff` or

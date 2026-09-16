@@ -261,3 +261,23 @@ and switching off a person's identity everywhere at once.
 | **Build 005 approvals** | A membership row is already the place a capability would hang, if one is ever needed. |
 | **Build 006 billing** | References `clients.id` and `projects.id`, as Build 003 locked. Nothing financial is squatting here. |
 | **Build 007 communications** | References `contacts.id` and `workrooms.id`. Activity stays a system timeline and does not become a message list. |
+
+---
+
+## Acceptance
+
+Build 004 passed manual acceptance on the Railway beta environment, then was
+promoted and verified in production on 2026-09-16, both environments sitting on
+commit `6b4ca20`. The full record, including exactly which checks were run in
+which environment, is in [`releases.md`](./releases.md).
+
+One distinction matters more than the rest, and is repeated here because this
+is the file somebody reads before changing the model: **the invitation,
+acceptance, client sign-in and revocation journey was proven on beta and was
+deliberately not repeated against production.** Studio-side Workroom creation,
+the draft state and publishing were exercised in production; the client-side
+journey was not. Treat it as unproven there until somebody runs it.
+
+This model is now load-bearing. It describes Workrooms that exist in the
+production database. Changing a rule here is a migration and a decision, not a
+refactor.

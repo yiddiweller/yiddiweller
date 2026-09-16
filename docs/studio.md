@@ -442,10 +442,12 @@ checks it again on submit.
 
 ## Open
 
-**Build 003 changed what these cost.** Production now holds real client records
-rather than a handful of contact-form messages, so the first three stopped being
-housekeeping: losing access, or losing the database, now loses the business's
-own data. Ordered by what it would actually cost to be wrong.
+**Build 003 changed what these cost, and Build 004 raised them again.**
+Production holds real client records rather than a handful of contact-form
+messages, and since Build 004 it also holds the access by which people outside
+the company reach their own work. The first three stopped being housekeeping:
+losing access, or losing the database, now loses the business's own data and
+its clients' way in. Ordered by what it would actually cost to be wrong.
 
 1. **Production has one Owner.** The bootstrap script refuses to run while an
    active Owner exists, so a lost mailbox means editing the database by hand to
@@ -454,7 +456,9 @@ own data. Ordered by what it would actually cost to be wrong.
    item. **This is the one to do first.**
 2. **Sign-in depends on one email arriving.** No password, no fallback: a link
    in a spam folder is a locked door. Confirm SPF and DKIM cover the sending
-   domain for Studio's mail, not only contact notifications.
+   domain for Studio's mail, not only contact notifications. Since Build 004
+   this is also a client-facing risk: a Workroom invitation that does not
+   deliver is a client who cannot reach work that exists.
 3. **There is still no recovery time objective.** The first rehearsal proved the
    mechanism and measured nothing. The next one must time the restore, and must
    now also verify the business-core tables, `audit_events` *with its triggers*,
@@ -483,6 +487,18 @@ threw, which turned a real address into a 500 and an unknown one into a 200 —
 an enumeration oracle in the one endpoint most carefully written not to be one.
 Both instances now log the failure and answer identically.
 
+Build 004's hardening pass found a fourth in the same place: identical answers
+that took visibly different times, because only a known address went on to call
+the mail provider. Delivery now happens outside the request and the two are
+indistinguishable; see `lib/auth-delivery.ts` for the measurements before and
+after.
+
+**These two are not like the first two.** The Build 003 findings were caught
+before that build was promoted. These were in Build 002's shipped code, so both
+ran in production from Build 002 until Build 004 was promoted on 2026-09-16.
+Saying "found and fixed" without saying "and it was live for two builds" would
+be the more comfortable sentence and the less true one.
+
 ### Clients are not staff, and the separation is structural
 
 Build 004 put people outside the company behind their own Better Auth instance:
@@ -496,11 +512,15 @@ which asserts all four against a running deployment.
 
 ## Not built, deliberately
 
-No workrooms, files, invoices, payments or notifications. **No activity feed** —
-audit exists now and is a different thing, permanently: audit is who changed
-what and is append-only; activity is what happened around a client or a project
-and is a product surface. `audit_events` must never be repurposed as one, and
-the reasoning is in [`audit.md`](./audit.md).
+No files, invoices, payments or notifications. Workrooms arrived in Build 004
+and are in production; the Studio side of them is one item under DELIVERY and
+`workroom_activity` is the client-facing timeline they brought with them.
+
+**That timeline is not audit, and the separation is permanent.** Audit is who
+changed what and is append-only; activity is what happened around a client or a
+project and is a product surface. They are two tables and `audit_events` must
+never be repurposed as one — the reasoning is in [`audit.md`](./audit.md) and
+the model in [`activity.md`](./activity.md).
 
 No merging of duplicate contacts, no per-record permissions, no value or
 forecast on a lead. No password reset, because there is no password. No

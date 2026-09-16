@@ -198,8 +198,8 @@ sequence and is kept because it is what earlier documents cite.
 | 001 | Core foundation, inquiry persistence | **In production** |
 | 002 | Studio foundation, authentication, and the permanent Studio design system | **In production, verified** |
 | 003 | Business core: clients, contacts, leads, projects | **In production, verified** |
-| 004 | Client workrooms: private client collaboration and controlled access | **On beta** |
-| 005 | Files, presentations, reviews and approvals | |
+| 004 | Client workrooms: private client collaboration and controlled access | **In production, verified** |
+| 005 | Files, presentations, reviews and approvals | Not begun |
 | 006 | Money: estimates, invoices, payment requests, the public pay flow | |
 | 007 | Communications: conversation, Studio inbox, notifications | |
 | 008 | Reports, analytics and useful automation | |
@@ -242,8 +242,8 @@ These are settled by running code holding real data, not by preference. Build
   `disableSignUp` is Studio's, invite-only, `owner | member`. A client is not a
   `user` row and must not become one.
 - **Audit already exists and is append-only.** Build 004's access events are
-  audit; the client-facing timeline is Activity and is still unbuilt. They stay
-  two tables. `audit_events.entity_type` gains its values by migration, and
+  audit; the client-facing timeline is Activity, which Build 004 went on to
+  build as `workroom_activity`. They stay two tables. `audit_events.entity_type` gains its values by migration, and
   `actor_type` — `team_user | client_user | anonymous_session` — is the
   attribution rule already recorded in `architecture.md`.
 - **Every new editable table carries `version` and the `bump_version` trigger**,
@@ -266,8 +266,8 @@ These are settled by running code holding real data, not by preference. Build
 | 1 | Core foundation, inquiry persistence | **Complete — production verified**, released as **Build 001** |
 | 2 | Studio foundation, authentication, Studio design system | **Complete — production verified**, released as **Build 002** |
 | 3 | Clients, contacts, leads, projects | **Complete — production verified**, released as **Build 003** |
-| 4 | Workrooms and private client access | **On beta**, released as **Build 004** |
-| 5 | Files, presentations, approvals | |
+| 4 | Workrooms and private client access | **Complete — production verified**, released as **Build 004** |
+| 5 | Files, presentations, approvals | Not begun |
 | 6 | Conversation hub, Studio inbox, email | |
 | 7 | Invoices and payments | |
 | 8 | Activity, notifications, automation | |

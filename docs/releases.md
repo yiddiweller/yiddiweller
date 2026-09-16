@@ -17,7 +17,7 @@ tooling, nothing to keep in sync.
 | Environment | Build | Commit |
 | --- | --- | --- |
 | Production | **Build 003** | `1e4af21` |
-| Beta | **Build 004** | see the log below |
+| Beta | **Build 004** | `53d07fd` |
 
 Beta is a number ahead while Build 004 is verified. That is the normal state
 during testing, not a discrepancy.
@@ -71,8 +71,8 @@ trustworthy.
 
 ### Build 004 — Client workrooms
 
-**On beta, awaiting verification.** Production stays on Build 003 until it is
-approved.
+Commit `53d07fd`. **On beta, awaiting verification.** Production stays on Build
+003 until it is approved.
 
 Phase 4, and the first client-facing build. Each project can now have one
 private space the client is invited into. Nothing about the public site

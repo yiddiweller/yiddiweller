@@ -117,8 +117,11 @@ a deliberate decision, not a cleanup.
   production use separate buckets with separate credentials.
 - **Object storage is a second durability surface and PostgreSQL's PITR does not
   cover it.** A database restore returns every file's metadata and none of its
-  bytes. `docs/restore-rehearsal.md` needs a bucket section before Build 005 is
-  promoted; this is open, not solved.
+  bytes. The bucket has **no versioning, no object locks, no lifecycle
+  configuration and no native snapshots** — so overwrite is defended by
+  architecture, deletion is not defended at all, and abandoned uploads are swept
+  by the application rather than expired by the bucket. A per-object backup
+  strategy is open, not solved: `docs/restore-rehearsal.md`.
 - **Studio is live at `studio.yiddiweller.com`**, invite-only, magic-link
   sign-in, Owner and Member roles. The same application serves both worlds and
   tells them apart by `Host`: production has `STUDIO_HOST=studio.yiddiweller.com`

@@ -312,20 +312,46 @@ of this database's backup.** A PITR restore returns every file's metadata,
 revision membership and approval history and **none of its bytes**, which looks
 like a successful restore right up to the moment somebody opens a presentation.
 
-Before Build 005 is promoted, this file must answer, from Railway's own
-documentation rather than from assumption:
+**Two of the four questions this section opened with are now answered, and the
+answers narrow the problem rather than solve it.**
 
-- What durability and retention does a Railway bucket itself guarantee?
-- Is object versioning available, and is it on? A permanent object key is never
-  overwritten by design, so the exposure is deletion, not overwrite.
-- What does a restore of *metadata without bytes* look like in practice, and how
-  would somebody recognise it rather than assume the restore worked?
-- Does the recovery procedure need the bucket and the database restored to the
-  same point in time, and if so, how is that achieved when only one of them has
-  PITR?
+Verified against Railway's current documentation:
 
-**None of these is answered today.** They are written here so the question is
-found during planning rather than during an incident.
+- **Object versioning is not available.** Neither are object locks.
+- **Bucket lifecycle configuration is not available**, which is why abandoned
+  uploads are swept by the application rather than expired by the bucket.
+- **There are no native bucket snapshots or backups**, and nothing in
+  `delivery.md` claims any. Whatever whole-bucket deletion protection the
+  platform provides guards against losing the bucket; **it is not per-object
+  backup and it is not versioning, and it must never be written down as
+  either.**
+
+So the exposure is precise. **Overwrite and rewrite are already defended**, by
+architecture rather than by storage: a permanent object key is never a presigned
+upload target, is never written twice, and is referenced by revision rows
+PostgreSQL refuses to update or delete. **Deletion is not defended** — a valid
+credential, or our own mistake, can remove an object, and there is no version
+underneath it to fall back to.
+
+Still unanswered, and **required before Build 005 is promoted** rather than
+before Stage A begins:
+
+- **Is a per-object backup or replication strategy wanted, and which?** Copying
+  new permanent objects to a second location is the obvious shape. It is a real
+  cost and a real decision, and it is the only thing that turns deletion from
+  permanent into recoverable.
+- **What does a restore of *metadata without bytes* look like in practice?** A
+  database restore returns every file's metadata, revision membership and
+  approval history and none of its bytes. How would somebody recognise that
+  state rather than conclude the restore worked?
+- **Do the bucket and the database need restoring to the same point in time?**
+  Only one of them has PITR. A rehearsal has to say what "consistent" means when
+  the two cannot be pinned together.
+- **What durability does the bucket itself guarantee?** Read it from Railway and
+  write the number here rather than assuming it is enough.
+
+These are written down so the question is found during planning rather than
+during an incident.
 
 ```
 Date                 2026-09-15

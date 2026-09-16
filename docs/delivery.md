@@ -127,9 +127,40 @@ That is Railway's domain, not ours, and it stays that way.
 | --- | --- |
 | Provider | Railway Storage Buckets, S3-compatible |
 | Client | `@aws-sdk/client-s3` + `@aws-sdk/s3-request-presigner`, pointed at the bucket's endpoint |
-| Buckets | One per Railway environment: `beta` and `production`, separate credentials |
+| Buckets | Separate bucket and credentials for beta and production |
 | Public access | None. The bucket is private and no policy grants anonymous GET |
-| Lifecycle rule | Delete objects under `pending/` after 24 hours |
+| Abandoned uploads | **Cleaned up by us**, not by the bucket. See *Sweeping abandoned uploads* |
+
+### What the bucket does and does not do — verified
+
+Verified externally against Railway's current documentation. The design below
+uses only the left column.
+
+| Supported, and used here | Not supported |
+| --- | --- |
+| `PutObject`, `GetObject`, `HeadObject`, `DeleteObject` | Bucket **lifecycle configuration** |
+| `ListObjects` / `ListObjectsV2` | Object **versioning** |
+| `CopyObject` | Object **locks** |
+| Presigned URLs | **Server-side encryption** configuration |
+| Multipart uploads | |
+| Object tagging (available; not needed) | |
+
+Every operation this architecture depends on is in the left column, including
+the two the whole upload design rests on: `CopyObject` for the pending →
+permanent promotion, and multipart for files above the threshold. **Nothing here
+requires anything from the right column**, and three of those four absences
+change how something is written rather than whether it works:
+
+- **No lifecycle configuration**, so abandoned uploads are the application's
+  job. That is the correction below, and it is the only behavioural change.
+- **No object versioning and no object locks**, so *storage provides no
+  immutability of its own*. Ours is architectural — a permanent key that is
+  never a presigned upload target, never overwritten, and referenced by
+  immutable revision rows — and it was never leaning on the bucket. That is
+  now load-bearing rather than belt-and-braces, which is worth knowing.
+- **No server-side encryption configuration**, so objects are encrypted at rest
+  only as the platform encrypts them by default. We do not configure it and do
+  not claim more than that.
 
 **Why Railway and not Cloudflare R2.** This was R2 until the provider decision
 was revisited. Railway Buckets are S3-compatible, private, support presigned
@@ -163,23 +194,12 @@ API, not a disk.
 
 ### Object storage sits outside the database backup story — for any provider
 
-This was stated as an argument against volumes. It is equally true of a bucket,
-including this one, and stating it only against the rejected option would have
-been dishonest.
-
-Production PostgreSQL has PITR and a rehearsed restore. **The bucket does not
-participate in that.** A database restore returns every file's metadata,
-ownership, revision membership and approval history — and none of its bytes.
-That is not a reason to store bytes in PostgreSQL, where they would bloat every
-backup and every restore rehearsal. It is a reason to say plainly that
-**Build 005 introduces a second durability surface**, and that
-[`restore-rehearsal.md`](./restore-rehearsal.md) must grow a bucket section
-before Build 005 is promoted: what the bucket's own durability guarantee is,
-whether objects are versioned, and what a restore of metadata-without-bytes
-looks like when somebody is standing in front of it.
-
-**That is an open infrastructure question, not a solved one.** It is recorded
-here so it cannot be discovered during an incident.
+This was stated as an argument against Railway volumes. It is equally true of a
+bucket, including this one, and using it only against the option we rejected
+would have been dishonest. It is not a reason to store bytes in PostgreSQL,
+where they would bloat every backup and every restore rehearsal. It is a reason
+to write down exactly what is and is not protected: see **Durability, stated
+plainly** below.
 
 ### Provider neutrality
 
@@ -205,35 +225,85 @@ has been proven.
 
 ### Configuration
 
-A Railway bucket exposes its S3 credentials on its **Credentials** tab, and a
-service reaches them through **Variable References** — so the names the
-application reads are **chosen by us when the reference is created**, not
-force-injected by the platform. The five values available are the bucket name,
-access key id, secret access key, region and endpoint.
+A Railway bucket exposes five credential values, **verified**:
 
-Planned names, matching Railway's own documented convention and deliberately
-provider-neutral in wording:
+```
+BUCKET   ENDPOINT   REGION   ACCESS_KEY_ID   SECRET_ACCESS_KEY
+```
 
-| Variable | Holds |
+A service reaches them through **Variable References**, so the names the
+application reads are chosen when the reference is created. Mapping them to
+prefixed, application-facing names keeps the storage adapter readable and keeps
+`ACCESS_KEY_ID` from looking like it might be anyone's:
+
+| Application variable | Railway value |
 | --- | --- |
-| `BUCKET_ENDPOINT` | The S3-compatible endpoint URL |
-| `BUCKET_NAME` | The bucket |
-| `BUCKET_REGION` | Its region |
-| `BUCKET_ACCESS_KEY_ID` | Access key id |
-| `BUCKET_SECRET_ACCESS_KEY` | Secret access key |
+| `BUCKET_ENDPOINT` | `ENDPOINT` |
+| `BUCKET_NAME` | `BUCKET` |
+| `BUCKET_REGION` | `REGION` |
+| `BUCKET_ACCESS_KEY_ID` | `ACCESS_KEY_ID` |
+| `BUCKET_SECRET_ACCESS_KEY` | `SECRET_ACCESS_KEY` |
 
-All five are **runtime-only and never build arguments** — `SITE_ENV` remains the
-single permitted build argument. `scripts/check-env.mjs` reports them. Beta and
-production reference **different buckets with different credentials**, for the
-same reason `BETTER_AUTH_SECRET` is per environment: a beta credential must
+**Every one is a Variable Reference. No secret value is ever copied by hand.**
+Pasting a key into a second variable creates a copy that has to be rotated twice
+and will one day be rotated once — the same class of mistake as a secret in a
+build argument. All five are **runtime-only and never build arguments**;
+`SITE_ENV` remains the single permitted build argument. `scripts/check-env.mjs`
+reports them.
+
+### Beta and production isolation — verify the topology, do not assume it
+
+Beta and production must use **different buckets with different credentials**,
+for the reason `BETTER_AUTH_SECRET` is per environment: a beta credential must
 never open a production object.
 
-> **Confirm before Stage A.** These spellings come from Railway's published
-> examples, read through search because `docs.railway.com` is blocked by this
-> environment's egress proxy. They were not read from the live Credentials tab.
-> Check the exact five values there and correct this table if they differ —
-> the adapter takes an endpoint and a credential either way, so a different
-> spelling changes this table and nothing else.
+Railway states that **each Railway Environment receives its own isolated bucket
+instance and credentials.** If this project's `production` and `beta` are two
+Railway Environments, that isolation is automatic and there is nothing to
+arrange.
+
+**That has not been checked against this project's actual topology.**
+`CLAUDE.md` records two Railway environments, `production` from `main` and
+`beta` from `beta`, each with its own PostgreSQL service — which strongly
+suggests environments rather than two services in one — but *suggests* is not
+*verified*, and the failure mode is silent: one shared bucket across both,
+looking exactly like two until a beta test overwrites a production object.
+
+**Stage A must inspect the real project and environment structure before relying
+on this**, and the bucket isolation must be demonstrated, not inferred — write an
+object from beta, confirm production cannot see it.
+
+## Durability, stated plainly
+
+Three facts, none of them comfortable, all of them true:
+
+1. **The bucket is a separate durability surface from PostgreSQL.** Production
+   PostgreSQL has PITR and a rehearsed restore. **The bucket does not
+   participate in it.** A database restore returns every file's metadata,
+   ownership, revision membership and approval history — and none of its bytes.
+   That looks like a successful restore right up until somebody opens a
+   presentation.
+
+2. **There are no native bucket snapshots or backups, and this document does not
+   claim any.** Railway provides no lifecycle configuration, no object
+   versioning and no object locks. Whatever whole-bucket deletion protection the
+   platform offers is a guard against deleting the bucket; **it is not per-object
+   backup and it is not versioning, and it must never be described as either.**
+
+3. **Historical integrity does not depend on the bucket.** With no versioning and
+   no object locks, storage offers no immutability of its own — so ours is
+   entirely architectural, and it holds: a permanent key is never a presigned
+   upload target, is never overwritten, and is referenced by revision rows that
+   PostgreSQL refuses to update or delete. What that architecture cannot defend
+   against is **deletion** of an object, by credential compromise or by our own
+   mistake. The sweep is built so it cannot be that mistake; a stolen credential
+   is not addressed by anything here.
+
+**A per-object backup or replication strategy is therefore an open question, not
+a solved one.** It belongs in [`restore-rehearsal.md`](./restore-rehearsal.md),
+which now carries it, and it must be answered before Build 005 is promoted —
+not before Stage A begins, because Stage A does not yet hold anything a client
+paid for.
 
 ## Files
 
@@ -319,13 +389,13 @@ a **server-side copy** the browser never has a URL for. The permanent key is
 never the target of any presigned upload, ever, and is therefore not writable by
 anything outside our own credentials.
 
-Only `pending/` carries the 24-hour lifecycle rule. Nothing under `w/` is ever
-expired by a bucket policy.
+Nothing under `w/` is ever deleted by anything except a deliberate,
+guarded action. `pending/` is swept by us — see below.
 
 ### Keys
 
 ```
-pending/{upload_id}                 transient, lifecycle-expired at 24h
+pending/{upload_id}                 transient, swept by the application at 24h
 w/{workroom_id}/f/{file_id}         permanent, immutable, never overwritten
 w/{workroom_id}/f/{file_id}/preview optional image preview
 ```
@@ -353,14 +423,60 @@ that form. It is treated as **an opaque integrity value from the bucket**,
 compared only against itself, never computed, parsed or interpreted by us. That
 is what keeps it correct across providers.
 
-> **Confirm before Stage A.** Railway Buckets are documented as fully
-> S3-compatible, "the same functionality as a normal S3 bucket", but multipart
-> upload was not confirmed against primary documentation — `docs.railway.com` is
-> blocked by this environment's egress proxy. The >100 MB path depends on
-> `CreateMultipartUpload`, presigned `UploadPart` and `CompleteMultipartUpload`.
-> **Verify these three against a real beta bucket before Stage A commits to the
-> multipart path.** If they are missing, the ceiling for a single PUT becomes
-> the open question, not the design.
+Multipart upload is **verified as supported**, so the >100 MB path is settled
+rather than provisional.
+
+### Sweeping abandoned uploads — ours, not the bucket's
+
+**Railway Buckets do not support lifecycle configuration.** An earlier draft of
+this document assumed a 24-hour rule under `pending/` would expire abandoned
+uploads. It will not, and nothing would have failed loudly — the objects would
+simply have accumulated for ever while the document said they were being cleaned
+up. Cleanup is the application's job.
+
+A **bounded, idempotent maintenance sweep**:
+
+```
+find  workroom_files WHERE status = 'pending' AND created_at < now() - 24h
+      ordered oldest first, LIMIT n
+
+for each row:
+   1. assert the key starts with `pending/`      ← refuse anything else
+   2. DeleteObject                               ← tolerate "not found"
+   3. DELETE the database row
+```
+
+Five properties, each load-bearing:
+
+- **The object is deleted before the row.** The reverse order loses the key on a
+  partial failure, leaving an object nobody can name — an unrecoverable leak. In
+  this order a crash between the two leaves the row, the next run finds it, and
+  the object delete no-ops.
+- **Idempotent.** A missing object is success, not an error. Running the sweep
+  twice, or twice concurrently, changes nothing the first run did not already do.
+- **It can only ever touch `pending/`.** The prefix is asserted from the row
+  before the delete is issued, so a bug elsewhere that wrote a permanent key
+  into a `pending` row still cannot delete a real file. `w/` is unreachable from
+  this code path by construction, not by intention.
+- **Bounded.** A `LIMIT` per run, so it cannot turn into an unbounded delete
+  loop against storage or hold a long transaction.
+- **Only `pending` rows, only older than 24 hours.** A `ready` row is never a
+  candidate, and an upload in progress is never mistaken for an abandoned one.
+  `ON DELETE restrict` on `presentation_revision_items.file_id` is the second
+  line of defence: a file that any revision references cannot be deleted by
+  anything, including this.
+
+**Scheduling is a Stage A infrastructure decision, deliberately not made here.**
+The sweep is written as a script that can be run by hand — the shape
+`scripts/*.mjs` already uses — and how it comes to be run regularly (a Railway
+cron service, an invocation beside the migration, something else) is decided
+when the bucket exists. **Until it is scheduled, abandoned uploads accumulate**,
+which is a cost measured in pennies and a fact that should be stated rather than
+assumed away.
+
+Object tagging is available and is not used. The `pending/` prefix plus the
+database row already answer every question the sweep asks, and a tag would be a
+second source of truth for the same fact.
 
 ### Why there is no browser-computed SHA-256
 
@@ -773,10 +889,11 @@ data nonsensical — the business-core rule, unchanged.
 | Approval | Never | Never |
 
 The abandoned upload is the whole of the delete surface: a `pending` row whose
-bytes never arrived or never verified, plus its `pending/` object, expired by
-the bucket after 24 hours and removable by a sweep before that. A file that was
-presented and approved and a file that was never really uploaded are not the
-same kind of thing, and the schema says so.
+bytes never arrived or never verified, plus its `pending/` object, both removed
+by the application's own bounded, idempotent sweep — the bucket has no lifecycle
+configuration and expires nothing on our behalf. A file that was presented and
+approved and a file that was never really uploaded are not the same kind of
+thing, and the schema says so.
 
 ---
 
@@ -880,6 +997,8 @@ boundary above a guarded page turns a refusal into a 200. Measured; see
 | Uploaded SVG / HTML | Never rendered inline, never previewed. An SVG from our origin is stored XSS |
 | Oversize upload | Verified by authenticated HEAD at finalize, not by a presign condition |
 | Path traversal | Structurally impossible — no caller string reaches a key |
+| Sweep deleting a real file | It only ever reads `pending` rows older than 24 hours and asserts the `pending/` prefix before issuing a delete. `ON DELETE restrict` on `presentation_revision_items.file_id` is the second line |
+| **Object deleted by a stolen bucket credential** | **Not defended against here.** Storage offers no versioning and no object locks, so a valid credential can delete an object. Immutability protects against overwrite and rewrite, not deletion — see *Durability* |
 
 **Malware scanning is out of scope, and the boundary is stated.** Files move
 studio → client inside an invited relationship, and nothing is rendered inline
@@ -990,7 +1109,8 @@ the wrong reason.
 | **Archive attempted on a File inside a Revision** | **Refused**, naming the Revision. `ON DELETE restrict` blocks the delete; the guard blocks the archive |
 | **Double approval** | Partial unique index. One approval, one clean refusal, decided by the database |
 | **Double publish** | Unique `(presentation_id, revision_number)`. Two presses produce two distinct numbers or one refusal — never a duplicate number, never a lost Revision |
-| **Abandoned upload** | Row stays `pending`, never appears anywhere, object expires from `pending/` after 24 hours. The only hard-deletable thing here |
+| **Abandoned upload** | Row stays `pending` and never appears anywhere. After 24 hours the application's sweep deletes the `pending/` object, then the row — that order, so a partial failure leaves a retryable row rather than an unnameable object. The only hard-deletable thing here |
+| **Sweep runs twice, or crashes halfway** | Idempotent. A missing object is success; a surviving row is found again next run. It asserts the `pending/` prefix before every delete, so it cannot reach a permanent object even if a row were wrong |
 | **Oversize upload** | Declared size refused early; actual size caught by authenticated HEAD at finalize. Finalize fails, pending object is deleted, row never becomes `ready` |
 | **Cross-Workroom file reference** | Composite foreign key. The insert fails in PostgreSQL |
 | **Old upload URL reused after finalization** | It targets `pending/{upload_id}`, which was deleted and was never the permanent key. The permanent object is not writable by any presigned URL that has ever existed |

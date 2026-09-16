@@ -304,6 +304,29 @@ so it adds these:
   restore means the next few minutes are unmetered, not that anything is
   wrong.
 
+### Build 005 adds a second durability surface, and this file does not cover it yet
+
+Build 005 puts file bytes in a private Railway Storage Bucket — the architecture
+is [`delivery.md`](./delivery.md), and it is not built. **The bucket is not part
+of this database's backup.** A PITR restore returns every file's metadata,
+revision membership and approval history and **none of its bytes**, which looks
+like a successful restore right up to the moment somebody opens a presentation.
+
+Before Build 005 is promoted, this file must answer, from Railway's own
+documentation rather than from assumption:
+
+- What durability and retention does a Railway bucket itself guarantee?
+- Is object versioning available, and is it on? A permanent object key is never
+  overwritten by design, so the exposure is deletion, not overwrite.
+- What does a restore of *metadata without bytes* look like in practice, and how
+  would somebody recognise it rather than assume the restore worked?
+- Does the recovery procedure need the bucket and the database restored to the
+  same point in time, and if so, how is that achieved when only one of them has
+  PITR?
+
+**None of these is answered today.** They are written here so the question is
+found during planning rather than during an incident.
+
 ```
 Date                 2026-09-15
 Performed by         Yiddi Weller

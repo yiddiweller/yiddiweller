@@ -111,47 +111,129 @@ collision risk entirely, which was the whole argument for the alternative.
 
 ---
 
-## Storage — Cloudflare R2
+## Storage — Railway Storage Buckets
 
-**Locked:** private bucket, no public access, separate buckets **and separate
-credentials** for beta and production, **no custom `yiddiweller.com` domain on
-the bucket, and specifically never `files.yiddiweller.com`** — which the
-blueprint's forbidden-subdomain list already names.
+**Locked:** a private, S3-compatible Railway Storage Bucket holds file bytes.
+Separate buckets **and separate credentials** for beta and production. No public
+bucket. **No custom `yiddiweller.com` domain on the bucket, and specifically
+never `files.yiddiweller.com`** — which the blueprint's forbidden-subdomain list
+already names.
 
 That last one is written down because it is the tidy-looking improvement a
-future session will reach for. Presigned URLs live on
-`*.r2.cloudflarestorage.com`. That is Cloudflare's domain, not ours, and it
-stays that way.
+future session will reach for. Presigned URLs live on the bucket's own endpoint.
+That is Railway's domain, not ours, and it stays that way.
 
 | | |
 | --- | --- |
-| Provider | Cloudflare R2, S3-compatible API |
-| Client | `@aws-sdk/client-s3` + `@aws-sdk/s3-request-presigner` |
-| Buckets | `yw-delivery-production`, `yw-delivery-beta` |
-| Credentials | Separate per environment, same reasoning as `BETTER_AUTH_SECRET` |
-| Public access | None. No bucket policy permits anonymous GET |
+| Provider | Railway Storage Buckets, S3-compatible |
+| Client | `@aws-sdk/client-s3` + `@aws-sdk/s3-request-presigner`, pointed at the bucket's endpoint |
+| Buckets | One per Railway environment: `beta` and `production`, separate credentials |
+| Public access | None. The bucket is private and no policy grants anonymous GET |
 | Lifecycle rule | Delete objects under `pending/` after 24 hours |
 
-**Why R2 and not a Railway volume.** A volume attaches to one service in one
-region and is **outside the PostgreSQL backup story**. Production Postgres has
-PITR and a rehearsed restore; a volume would mean a restore brings back every
-file's metadata and none of its bytes — a verified restore that is silently
-broken. `restore-rehearsal.md` exists precisely so that cannot happen.
+**Why Railway and not Cloudflare R2.** This was R2 until the provider decision
+was revisited. Railway Buckets are S3-compatible, private, support presigned
+URLs, and are already inside the platform this application is deployed on — so
+adding Cloudflare would mean a second vendor account, a second set of
+credentials to rotate and a second place to look when something is wrong, for a
+capability Railway now provides. **Fewer moving parts wins when the capability is
+equivalent.**
 
-**Why R2 and not S3.** Zero egress fees, which is the cost shape when clients
-re-download video and large design files. S3-compatible, so the code ports to S3
-or Backblaze by changing an endpoint.
+**What that costs, recorded rather than glossed.** R2 was partly chosen because
+it sits *outside* Railway, so a future platform move would not also be a data
+migration. Railway Buckets give that up: storage is now coupled to the same
+vendor as compute and the database. It is a real tradeoff and it was accepted
+deliberately. The mitigation is that the coupling is **only an endpoint and a
+credential** — see *Provider neutrality* below — so a move is a configuration
+change plus a bulk copy, not a rewrite.
 
-**PostgreSQL stores metadata, relationships, authorization, history and
-integrity values. R2 stores bytes.** A 2 GB video in a `bytea` column bloats
-every backup, every PITR window and every restore rehearsal — and Postgres is
-the one part of this system whose recoverability has been proven.
+**Why not a Railway volume**, which is the other in-platform option and is still
+refused:
 
-Environment variables, runtime-only and **never build arguments**:
-`R2_ACCOUNT_ID`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`.
-`scripts/check-env.mjs` reports them.
+- A volume attaches to **one service in one region** and blocks running more
+  than one instance.
+- It puts file bytes **in the application container's filesystem**, which this
+  design forbids outright: the container is ephemeral, rebuilt on every deploy,
+  and nothing a client paid for should live there.
+- It has no presigned-URL story, so every download would stream through the
+  Next server — the one thing this architecture is built to avoid.
 
----
+A bucket has none of those properties. It is object storage reached over an S3
+API, not a disk.
+
+### Object storage sits outside the database backup story — for any provider
+
+This was stated as an argument against volumes. It is equally true of a bucket,
+including this one, and stating it only against the rejected option would have
+been dishonest.
+
+Production PostgreSQL has PITR and a rehearsed restore. **The bucket does not
+participate in that.** A database restore returns every file's metadata,
+ownership, revision membership and approval history — and none of its bytes.
+That is not a reason to store bytes in PostgreSQL, where they would bloat every
+backup and every restore rehearsal. It is a reason to say plainly that
+**Build 005 introduces a second durability surface**, and that
+[`restore-rehearsal.md`](./restore-rehearsal.md) must grow a bucket section
+before Build 005 is promoted: what the bucket's own durability guarantee is,
+whether objects are versioned, and what a restore of metadata-without-bytes
+looks like when somebody is standing in front of it.
+
+**That is an open infrastructure question, not a solved one.** It is recorded
+here so it cannot be discovered during an incident.
+
+### Provider neutrality
+
+The storage layer is written against **S3, not against Railway.** Module names,
+types and functions say `storage`, never the vendor:
+
+```
+lib/storage/client.ts     an S3 client built from endpoint + credentials
+lib/storage/keys.ts       key construction
+lib/storage/presign.ts    presigned GET, PUT, multipart part URLs
+```
+
+Nothing above the adapter knows who is holding the bytes. Moving to R2, S3,
+Backblaze or MinIO is a different endpoint and a different credential, plus a
+bulk copy — which is exactly the property that makes the vendor coupling above
+an acceptable cost rather than a trap.
+
+**PostgreSQL stores metadata, relationships, authorization, history and the
+integrity values read back from storage. The bucket stores bytes.** A 2 GB video
+in a `bytea` column bloats every backup, every PITR window and every restore
+rehearsal, and this database is the one part of the system whose recoverability
+has been proven.
+
+### Configuration
+
+A Railway bucket exposes its S3 credentials on its **Credentials** tab, and a
+service reaches them through **Variable References** — so the names the
+application reads are **chosen by us when the reference is created**, not
+force-injected by the platform. The five values available are the bucket name,
+access key id, secret access key, region and endpoint.
+
+Planned names, matching Railway's own documented convention and deliberately
+provider-neutral in wording:
+
+| Variable | Holds |
+| --- | --- |
+| `BUCKET_ENDPOINT` | The S3-compatible endpoint URL |
+| `BUCKET_NAME` | The bucket |
+| `BUCKET_REGION` | Its region |
+| `BUCKET_ACCESS_KEY_ID` | Access key id |
+| `BUCKET_SECRET_ACCESS_KEY` | Secret access key |
+
+All five are **runtime-only and never build arguments** — `SITE_ENV` remains the
+single permitted build argument. `scripts/check-env.mjs` reports them. Beta and
+production reference **different buckets with different credentials**, for the
+same reason `BETTER_AUTH_SECRET` is per environment: a beta credential must
+never open a production object.
+
+> **Confirm before Stage A.** These spellings come from Railway's published
+> examples, read through search because `docs.railway.com` is blocked by this
+> environment's egress proxy. They were not read from the live Credentials tab.
+> Check the exact five values there and correct this table if they differ —
+> the adapter takes an endpoint and a credential either way, so a different
+> spelling changes this table and nothing else.
 
 ## Files
 
@@ -167,9 +249,9 @@ migrates into a foldered one cleanly; the reverse does not.
 | `display_name` | Client-facing. Editable. What a client sees |
 | `original_filename` | Recorded. **Never shown to a client**, never used to build a key or a URL |
 | `content_type` | Recorded. **Never trusted for rendering** |
-| `byte_size` | Verified against R2, not taken from the browser |
+| `byte_size` | Verified against the bucket, not taken from the browser |
 | `storage_key` | Permanent, immutable, internal |
-| `storage_etag` | R2's own value, read by an authenticated HEAD |
+| `storage_etag` | The bucket's own value, read by an authenticated HEAD |
 | `preview_key` | Optional second object; images only |
 | `status` | `pending` → `ready` |
 | `visibility` | `internal` \| `shared` |
@@ -191,11 +273,15 @@ It is where `final_v7_CLIENTNAME_dontsend.pdf` lives. The client sees
 
 ### The correction this flow exists to make
 
-An **R2 presigned PUT does not enforce a `content-length-range`.** That
-condition belongs to S3's browser POST **policy**, which is a different
-mechanism, and assuming otherwise would have left the 2 GB ceiling resting on
-the browser's good behaviour. Signing `Content-Length` as a signed header binds
-what the client *declares*; it is defence in depth, not the guarantee.
+**A presigned PUT does not enforce a `content-length-range`.** That condition
+belongs to S3's browser POST **policy**, which is a different mechanism.
+Assuming otherwise would have left the 2 GB ceiling resting on the browser's
+good behaviour. Signing `Content-Length` as a signed header binds what the
+client *declares*; it is defence in depth, not the guarantee.
+
+This is a property of the S3 API itself, not of any one provider, so it survives
+the move from R2 to Railway Buckets unchanged — as does everything else in this
+section. The flow below is written against S3 semantics and names no vendor.
 
 **The guarantee is an authenticated HEAD after the bytes land.**
 
@@ -205,7 +291,7 @@ what the client *declares*; it is defence in depth, not the guarantee.
 3. server validates the DECLARED values, refuses early if obviously wrong
    → creates a `pending` row
    → issues upload authorization for   pending/{upload_id}
-4. bytes go browser → R2 directly
+4. bytes go browser → bucket directly
 5. browser calls finalize
 6. server performs an AUTHENTICATED HEAD on pending/{upload_id}
       actual byte_size == declared size ?
@@ -262,8 +348,19 @@ difference between a studio that ships video and one that gives up and uses
 WeTransfer.
 
 `storage_etag` for a multipart object is not an MD5 of the content — it is
-`{md5-of-part-md5s}-{n}`. It is treated as **an opaque integrity value from
-R2**, compared only against itself, never computed or interpreted by us.
+conventionally `{md5-of-part-md5s}-{n}`, and a provider is not obliged to use
+that form. It is treated as **an opaque integrity value from the bucket**,
+compared only against itself, never computed, parsed or interpreted by us. That
+is what keeps it correct across providers.
+
+> **Confirm before Stage A.** Railway Buckets are documented as fully
+> S3-compatible, "the same functionality as a normal S3 bucket", but multipart
+> upload was not confirmed against primary documentation — `docs.railway.com` is
+> blocked by this environment's egress proxy. The >100 MB path depends on
+> `CreateMultipartUpload`, presigned `UploadPart` and `CompleteMultipartUpload`.
+> **Verify these three against a real beta bucket before Stage A commits to the
+> multipart path.** If they are missing, the ceiling for a single PUT becomes
+> the open question, not the design.
 
 ### Why there is no browser-computed SHA-256
 
@@ -271,7 +368,8 @@ It was considered and rejected. The browser could hash during upload and report
 it, but we cannot verify that claim without streaming the bytes through our own
 server — the one thing this design exists to avoid. It would detect corruption
 and not tampering, and the uploader is trusted staff, so the threat it defends
-against is not in the model. The verified `byte_size` plus R2's `storage_etag`,
+against is not in the model. The verified `byte_size` plus the bucket's
+`storage_etag`,
 both read by our own authenticated HEAD, are facts rather than claims.
 
 ### Image previews — included, browser-only
@@ -462,7 +560,7 @@ the database rather than by a read both of them passed. The same mechanism as
 ## Files are immutable once ready
 
 **A `ready` File is never replaced in place.** Replacement creates a **new File
-row and a new R2 object**; the old row gains nothing and the new one records
+row and a new object**; the old row gains nothing and the new one records
 `supersedes_file_id`.
 
 **If any Revision references a File:**

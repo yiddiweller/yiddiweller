@@ -108,11 +108,17 @@ a deliberate decision, not a cleanup.
 - **An approval names a Presentation Revision, never a Presentation.** Revisions
   and their items are immutable; a terminal approval refuses UPDATE, DELETE and
   TRUNCATE. A new decision about changed work requires a new Revision.
-- **File bytes live in Cloudflare R2, never in PostgreSQL and never on a Railway
-  volume** — a volume sits outside the database backup story, so a restore would
-  return every file's metadata and none of its bytes. Uploads land in
-  `pending/`, are verified by an authenticated HEAD, then **server-side copied**
-  to a permanent key that is never a presigned upload target.
+- **File bytes live in a private Railway Storage Bucket, never in PostgreSQL,
+  never on a Railway volume and never in the container filesystem.** The storage
+  layer is written against S3, not against the vendor — `lib/storage/*`, an
+  endpoint and a credential — so the provider is a configuration change. Uploads
+  land in `pending/`, are verified by an authenticated HEAD, then **server-side
+  copied** to a permanent key that is never a presigned upload target. Beta and
+  production use separate buckets with separate credentials.
+- **Object storage is a second durability surface and PostgreSQL's PITR does not
+  cover it.** A database restore returns every file's metadata and none of its
+  bytes. `docs/restore-rehearsal.md` needs a bucket section before Build 005 is
+  promoted; this is open, not solved.
 - **Studio is live at `studio.yiddiweller.com`**, invite-only, magic-link
   sign-in, Owner and Member roles. The same application serves both worlds and
   tells them apart by `Host`: production has `STUDIO_HOST=studio.yiddiweller.com`

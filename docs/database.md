@@ -331,8 +331,16 @@ schema and the next table that needs one should copy rather than reinvent:
   `WHERE item_id IS NOT NULL`. PostgreSQL 16's `NULLS NOT DISTINCT` would also
   work; two partial indexes say what they mean at the point of definition.
 
-**Bytes are not stored here.** File contents live in Cloudflare R2; PostgreSQL
-holds metadata, relationships, authorization, history and the integrity values
-read back from storage. A 2 GB object in a `bytea` column would bloat every
-backup, every PITR window and every restore rehearsal — and this database is the
-one part of the system whose recoverability has been proven.
+**Bytes are not stored here.** File contents live in a private, S3-compatible
+Railway Storage Bucket; PostgreSQL holds metadata, relationships, authorization,
+history and the integrity values read back from storage. A 2 GB object in a
+`bytea` column would bloat every backup, every PITR window and every restore
+rehearsal — and this database is the one part of the system whose recoverability
+has been proven.
+
+**The consequence is a second durability surface.** A PITR restore of this
+database returns every file's metadata, revision membership and approval history
+— and none of its bytes, because the bucket is not part of this database's
+backup. That is the correct trade against storing bytes here, and it is
+[`restore-rehearsal.md`](./restore-rehearsal.md)'s problem to cover before
+Build 005 is promoted. See [`delivery.md`](./delivery.md).

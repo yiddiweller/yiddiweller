@@ -268,8 +268,9 @@ container and no file storage**, deliberately: a Workroom is useful without
 files because it answers what the project is, where it has got to, who is
 involved and what has happened — and an empty Files tab would have been worse
 than no tab. Build 005 fills it, attaching to `workrooms.id` — the model is
-[`delivery.md`](./delivery.md), and file bytes live in Cloudflare R2 rather than
-anywhere Railway can lose them.
+[`delivery.md`](./delivery.md), and file bytes live in a private, S3-compatible
+Railway Storage Bucket — never in PostgreSQL, never on a volume, and never in
+the container filesystem.
 
 ### What Build 003 locked for everything after it
 

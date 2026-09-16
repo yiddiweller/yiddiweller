@@ -33,9 +33,9 @@ that has not been on `beta` first, and never leave `beta` behind `main`.
 
 **Phases 1, 2 and 3 are complete and verified in production**, released as
 **Build 001**, **Build 002** and **Build 003**. **Build 004, client workrooms,
-is on beta and awaiting verification.** These are facts about the running
-system, not proposals. Changing any of them is a deliberate decision, not a
-cleanup.
+is verified on beta and hardened, awaiting production promotion.** These are
+facts about the running system, not proposals. Changing any of them is a
+deliberate decision, not a cleanup.
 
 - **PostgreSQL is the system of record for contact inquiries.** Email is a
   notification, not the record. An inquiry is persisted before it is emailed.
@@ -70,6 +70,16 @@ cleanup.
 - **`client_identities.email` is a verified credential, not a business field.**
   Editing `contacts.email` never moves somebody's access. Changing an access
   email means revoke and re-invite, deliberately.
+  It is also unique, while `contacts.email` deliberately is not, so two Contacts
+  sharing one address can never both hold access — the second acceptance is
+  refused rather than crashed.
+- **A client authentication flow may only land under `/workrooms`.** Better
+  Auth refuses another origin; it cannot know `/studio` is a second product on
+  this one. Every `callbackURL` is sanitised on both halves of the flow, in
+  `lib/client-auth/redirect.ts`.
+- **Neither sign-in endpoint may reveal an address by how long it takes.**
+  Delivery happens outside the request for exactly this reason; see
+  `lib/auth-delivery.ts` before making it awaited again.
 - **A Workroom is not its Project.** It carries its own client-facing title and
   summary; `projects.description` and every `notes` field are internal and never
   shown. Nothing reaches a client surface except through

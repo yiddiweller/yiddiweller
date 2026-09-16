@@ -123,6 +123,24 @@ Everything else — unknown address, disabled identity, revoked access, a
 Workroom that has been unpublished — produces the same neutral page and no
 email at all. There is nothing in the response to tell them apart.
 
+Nothing in the response, and nothing in how long it takes. A sign-in that
+waited for the mail provider answered in 28–76ms for a known address against
+~15ms for an unknown one, every run — the same question asked with a
+stopwatch. Delivery no longer happens inside the request (`lib/auth-delivery.ts`
+says why, and why that is safe here), and the two now sit on top of each other:
+medians of 17.6ms and 16.0ms over fifteen samples each, both ranging 14–20ms.
+
+Nor in where it sends you afterwards. A `callbackURL` is honoured only if it
+is a path under `/workrooms`; anything else — another origin, a
+protocol-relative URL, a `javascript:` URL, `/studio/clients`,
+`/workrooms/../studio` — becomes `/workrooms`. Better Auth refuses the
+cross-origin cases by itself, but it cannot know that `/studio` on this origin
+is a second product with a second identity system, so the rule is stated in
+`lib/client-auth/redirect.ts`. Both halves of the flow carry a `callbackURL`
+and both are sanitised: the sign-in `POST` in its body, the verification `GET`
+in its query string. Sanitising only the body left
+`/magic-link/verify?callbackURL=/studio/clients` still working.
+
 ---
 
 ## Sessions
@@ -249,3 +267,10 @@ re-enabled; Workroom published, unpublished, archived, restored.
   acceptance, and the activity row that records it.
 - **Concealment over explanation.** A non-member gets the same answer for a
   Workroom that exists and one that never did.
+- **Two Contacts cannot share one access email.** `contacts` does not make
+  email unique — a shared inbox is a real thing, and so are duplicate rows —
+  but `client_identities.email` is a credential and does. The studio can still
+  send the second invitation; accepting it is refused as "not open yet" and
+  logged with the address redacted, because the alternative is one mailbox
+  holding two people's access. If that is ever wanted, it needs a decision
+  about what an identity means, not a relaxed index.

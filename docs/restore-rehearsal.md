@@ -119,6 +119,12 @@ psql "$RESTORED_URL" -c 'select max(created_at) from inquiries'
 psql "$RESTORED_URL" -c 'select count(*) from "user"'
 psql "$RESTORED_URL" -c 'select count(*) from staff_invitations'
 
+# Build 004: the client side, which is a separate world and a separate failure.
+psql "$RESTORED_URL" -c 'select count(*) from client_identities'
+psql "$RESTORED_URL" -c 'select count(*) from workrooms'
+psql "$RESTORED_URL" -c 'select count(*) from workroom_members'
+psql "$RESTORED_URL" -c 'select count(*) from workroom_activity'
+
 # Constraints: the restored copy must still refuse bad data, not merely hold rows.
 psql "$RESTORED_URL" -c "insert into inquiries (id, name, email, message, status, dedupe_key)
   values ('00000000-0000-7000-8000-000000000001','x','a@b.com','hi','not-a-status','rehearsal')"
@@ -246,7 +252,7 @@ cover now that the mechanism itself is proven. None of them changes what was
 established today: **production can be restored, into an isolated service, with
 its data intact.**
 
-### What the next rehearsal must add, now that Build 003 exists
+### What the next rehearsal must add, now that Builds 003 and 004 exist
 
 Build 003 is the first build where production holds material business data, so a
 restore that only proves `inquiries` came back no longer proves enough. The next
@@ -268,6 +274,35 @@ rehearsal covers, in addition to timing:
 - **A measured restore duration.** That figure is the recovery time objective,
   and until one is measured there is no RTO. Do not infer one from anything in
   this file.
+
+Build 004 adds people outside the company to what a restore has to bring back,
+so it adds these:
+
+- **The client authentication tables** — `client_identities`,
+  `client_sessions`, `client_credentials`, `client_verifications` — present and
+  counted. A restore that brings back Workrooms but not identities leaves every
+  client locked out of a space that still exists, which looks like a working
+  restore until somebody tries to sign in.
+- **`client_identities_email_idx` and `client_identities_contact_id_idx`.**
+  Both are unique, both carry a rule that nothing else enforces — one identity
+  per Contact, one Contact per access email — and a restore that drops a unique
+  index restores the rows without the rule.
+- **The Workroom tables** — `workrooms`, `workroom_members`,
+  `workroom_invitations`, `workroom_activity` — with their row counts, plus
+  `workrooms_public_id_idx`, `workrooms_project_id_idx` (one Workroom per
+  Project) and `workroom_invitations_one_open_idx`, the partial unique index
+  that keeps at most one open invitation per person per Workroom.
+- **`audit_events.actor_type` and its `audit_events_actor_shape_check`**, which
+  is what keeps a client actor out of the staff foreign key. Restoring the
+  column without the constraint would let the distinction rot quietly.
+- **Sessions are expected to survive, and it is fine if they do not.** A client
+  whose session row did not come back is asked to sign in again, which is a
+  recoverable inconvenience. Say which happened rather than leaving it
+  unrecorded.
+- **The rate-limit tables** — `client_rate_limits`, `auth_rate_limits` — need
+  only exist. Their contents are disposable by design; an empty pair after a
+  restore means the next few minutes are unmetered, not that anything is
+  wrong.
 
 ```
 Date                 2026-09-15

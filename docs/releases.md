@@ -17,7 +17,7 @@ tooling, nothing to keep in sync.
 | Environment | Build | Commit |
 | --- | --- | --- |
 | Production | **Build 003** | `1e4af21` |
-| Beta | **Build 004** | `53d07fd` |
+| Beta | **Build 004** | `787163e` |
 
 Beta is a number ahead while Build 004 is verified. That is the normal state
 during testing, not a discrepancy.
@@ -71,8 +71,21 @@ trustworthy.
 
 ### Build 004 — Client workrooms
 
-Commit `53d07fd`. **On beta, awaiting verification.** Production stays on Build
-003 until it is approved.
+Commits `53d07fd` … `787163e`. **Verified on beta, awaiting production
+promotion.** Production stays on Build 003 until it is approved.
+
+**Beta acceptance.** Exercised by hand against the running beta deployment:
+creating a Workroom from a Project and only from a Project, publishing and
+unpublishing it, previewing it as a client sees it, inviting a contact,
+opening the invitation link more than once without spending it, accepting it,
+signing in and out, requesting a fresh sign-in link, reaching one's own
+Workroom and being refused somebody else's, the index listing only what the
+viewer may open, revoking access and having it take effect on the next
+request, restoring it without a new invitation, an archived Workroom
+disappearing from the client's world, a contact with live access refusing to
+be archived, a project with an open Workroom refusing to be archived, a
+project status change appearing in the client's timeline, the Studio surfaces
+for all of it, and the public site and contact flow unchanged throughout.
 
 Phase 4, and the first client-facing build. Each project can now have one
 private space the client is invited into. Nothing about the public site
@@ -109,6 +122,34 @@ changed, and nothing about Studio changed except gaining a way to run these.
 - Fixed in Build 002's own code while building this: a mail **delivery** failure
   threw, turning a real address into a 500 and an unknown one into a 200 — an
   enumeration oracle in the endpoint most carefully written not to be one.
+
+**Hardening after beta acceptance.** Five changes, each from something
+measured rather than suspected.
+
+- A client sign-in could be sent to `/studio/clients`. Better Auth refuses
+  another origin but cannot know that `/studio` is a second product on this
+  one, so the rule is now stated where it belongs: an authentication flow for
+  a client may only land on a path under `/workrooms`. Both halves carry a
+  `callbackURL` and both are sanitised — fixing only the POST body left the
+  verification `GET` still redirecting out of the client world.
+- Two invitations to the **same person**, for different Workrooms, accepted in
+  the same moment, crashed: neither transaction saw the other's uncommitted
+  identity and one died on the unique index. Fixing it exposed a second
+  collision that is not a race at all — `contacts` does not make email unique,
+  a client identity's email does, so two Contacts sharing one address could
+  never both hold access and were reaching the same crash. Both are now a
+  reuse or a clean refusal.
+- Both sign-in endpoints returned the same status and body for a known and an
+  unknown address, and took visibly different times doing it: 28–76ms against
+  ~15ms, because only one went on to call the mail provider. Delivery is no
+  longer part of the request, and the two are now 17.6ms against 16.0ms with
+  overlapping ranges.
+- `robots.txt` said `Disallow: /workrooms/`, which is a prefix match and so
+  left `/workrooms` itself — the index of everybody's private spaces —
+  uncovered. The trailing slash is gone.
+- The invitation races are now asserted on every table a successful acceptance
+  writes to, rather than on the primary record, and one test proves audit and
+  activity roll back with the data by making the last write fail.
 
 ### Build 003 — Business core
 

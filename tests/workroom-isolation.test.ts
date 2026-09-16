@@ -144,7 +144,9 @@ test("public pages are untouched by any of it", { skip }, async () => {
   }
 
   const robots = await get("/robots.txt");
-  assert.match(robots.body, /Disallow: \/workrooms\//);
+  // No trailing slash: a prefix match with one would leave `/workrooms`
+  // itself, the index of everybody's private spaces, crawlable.
+  assert.match(robots.body, /Disallow: \/workrooms$/m);
   assert.match(robots.body, /Allow: \//);
 
   const sitemap = await get("/sitemap.xml");

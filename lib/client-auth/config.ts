@@ -9,7 +9,8 @@ import { uuidv7 } from "../db/id.ts";
 import { canSignIn } from "../db/workrooms.ts";
 import { clientAuthSecret, clientAuthUrl } from "../env.ts";
 import { sendWorkroomLinkEmail } from "../emails.ts";
-import { describeError, log, redactEmail } from "../log.ts";
+import { log, redactEmail } from "../log.ts";
+import { sendWithoutTelling } from "../auth-delivery.ts";
 
 import { workroomInvitation } from "./invitation-plugin.ts";
 import { workroomRedirect } from "./redirect.ts";
@@ -166,22 +167,18 @@ function createClientAuth() {
           }
 
           /**
-           * A delivery failure must not change the response either.
+           * Neither a delivery failure nor the time delivery takes may change
+           * the response.
            *
-           * Measured: letting this throw turned a real address into a 500 and
-           * an unknown one into a 200, which tells anybody who asks which
-           * addresses work with us — the very thing the check above exists to
-           * prevent. The person sees the same page; we get the log line.
+           * Measured twice. Letting this throw turned a real address into a 500
+           * and an unknown one into a 200. Awaiting it made a real address
+           * answer 28–76ms against ~15ms for an unknown one, every run — the
+           * same question, asked with a stopwatch instead. Both are the thing
+           * the check above exists to prevent. See lib/auth-delivery.ts.
            */
-          try {
-            await sendWorkroomLinkEmail({ to: email, url, minutes: MAGIC_LINK_MINUTES });
-            log.info("client.login_requested", { email: redactEmail(email) });
-          } catch (cause) {
-            log.error("client.login_delivery_failed", {
-              email: redactEmail(email),
-              error: describeError(cause),
-            });
-          }
+          sendWithoutTelling("client", email, () =>
+            sendWorkroomLinkEmail({ to: email, url, minutes: MAGIC_LINK_MINUTES }),
+          );
         },
       }),
       workroomInvitation(),

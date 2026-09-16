@@ -7,7 +7,8 @@ import { db, schema } from "../db/index.ts";
 import { uuidv7 } from "../db/id.ts";
 import { appUrl, authSecret } from "../env.ts";
 import { sendMagicLinkEmail } from "../emails.ts";
-import { describeError, log, redactEmail } from "../log.ts";
+import { log, redactEmail } from "../log.ts";
+import { sendWithoutTelling } from "../auth-delivery.ts";
 import { staffForEmail } from "./access.ts";
 
 /**
@@ -121,20 +122,15 @@ function createAuth() {
             return;
           }
 
-          // A delivery failure must not change the response either: throwing
-          // here turns a real address into a 500 and an unknown one into a 200,
-          // which tells anybody who asks which addresses have Studio access —
-          // the very thing the check above exists to prevent. Found while
-          // building the client instance, and the same shape on both.
-          try {
-            await sendMagicLinkEmail({ to: email, url, minutes: MAGIC_LINK_MINUTES });
-            log.info("studio.login_requested", { email: redactEmail(email) });
-          } catch (cause) {
-            log.error("studio.login_delivery_failed", {
-              email: redactEmail(email),
-              error: describeError(cause),
-            });
-          }
+          // Neither a delivery failure nor the time delivery takes may change
+          // the answer. Throwing here turned a real address into a 500 and an
+          // unknown one into a 200; waiting here made a real address answer
+          // several times slower. Both told anybody who asked which addresses
+          // have Studio access — the thing the check above exists to prevent.
+          // See lib/auth-delivery.ts for the measurements.
+          sendWithoutTelling("studio", email, () =>
+            sendMagicLinkEmail({ to: email, url, minutes: MAGIC_LINK_MINUTES }),
+          );
         },
       }),
     nextCookies(),

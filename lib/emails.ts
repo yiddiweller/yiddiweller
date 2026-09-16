@@ -181,3 +181,106 @@ ${input.url}`;
 
   if (error) throw new Error(`invitation delivery rejected: ${error.name}`);
 }
+
+/* ----------------------------------------------------- client workrooms */
+
+/**
+ * The two messages a client receives. Both are deliberately quiet.
+ *
+ * **Neither subject names the project or the client.** A subject line is
+ * visible on a lock screen, in a notification, over somebody's shoulder on a
+ * train, and it is the one part of an email that leaks without being opened.
+ * "Your Yiddi Weller workroom" says enough.
+ */
+async function sendClientEmail(input: {
+  to: string;
+  subject: string;
+  html: string;
+  text: string;
+  kind: string;
+}): Promise<void> {
+  const { Resend } = await import("resend");
+  const { emailConfig } = await import("./env.ts");
+  const { apiKey, from: fromAddress } = emailConfig();
+
+  const from = fromAddress.includes("<") ? fromAddress : `${site.name} <${fromAddress}>`;
+
+  const resend = new Resend(apiKey);
+  const { error } = await resend.emails.send({
+    from,
+    to: input.to,
+    subject: oneLine(input.subject),
+    html: input.html,
+    text: input.text,
+  });
+
+  if (error) throw new Error(`${input.kind} delivery rejected: ${error.name}`);
+}
+
+/** An invitation into one Workroom. The link renders a page; it consumes nothing. */
+export async function sendWorkroomInvitationEmail(input: {
+  to: string;
+  url: string;
+  /** Who is inviting them, so the message has a person behind it. */
+  invitedBy: string;
+  days: number;
+}): Promise<void> {
+  const by = escapeHtml(input.invitedBy);
+
+  const html = shell(`${MARK}
+<tr><td style="font-family:${FONT};font-size:30px;line-height:1.25;font-weight:300;letter-spacing:-0.01em;color:${WHITE};padding:0 0 20px;">Your workroom is ready.</td></tr>
+<tr><td style="font-family:${FONT};font-size:15px;line-height:1.65;color:${MUTED};padding:0 0 32px;">${by} has opened a private space for your project. Everything about the work lives there, and only the people invited to it can see it.</td></tr>
+<tr><td style="padding:0 0 24px;"><a href="${input.url}" style="display:inline-block;font-family:${FONT};font-size:15px;color:${BG};background:${WHITE};padding:14px 28px;text-decoration:none;">Open your workroom</a></td></tr>
+<tr><td style="font-family:${FONT};font-size:13px;line-height:1.6;color:${FAINT};">This link is yours alone and expires in ${input.days} days. If you were not expecting it, ignore this message &mdash; nothing happens until you open it.</td></tr>
+${FOOTER}`);
+
+  const text = `YIDDI WELLER
+
+Your workroom is ready.
+
+${input.invitedBy} has opened a private space for your project.
+Only the people invited to it can see it.
+
+${input.url}
+
+This link is yours alone and expires in ${input.days} days.
+If you were not expecting it, ignore this message.`;
+
+  await sendClientEmail({
+    to: input.to,
+    subject: "Your Yiddi Weller workroom",
+    html,
+    text,
+    kind: "workroom invitation",
+  });
+}
+
+/** Coming back later. Passwordless, so this is the whole sign-in. */
+export async function sendWorkroomLinkEmail(input: {
+  to: string;
+  url: string;
+  minutes: number;
+}): Promise<void> {
+  const html = shell(`${MARK}
+<tr><td style="font-family:${FONT};font-size:30px;line-height:1.25;font-weight:300;letter-spacing:-0.01em;color:${WHITE};padding:0 0 20px;">Your sign-in link.</td></tr>
+<tr><td style="font-family:${FONT};font-size:15px;line-height:1.65;color:${MUTED};padding:0 0 32px;">This opens your workroom and expires in ${input.minutes} minutes. If you did not ask for it, nothing happens &mdash; ignore it.</td></tr>
+<tr><td style="padding:0 0 8px;"><a href="${input.url}" style="display:inline-block;font-family:${FONT};font-size:15px;color:${BG};background:${WHITE};padding:14px 28px;text-decoration:none;">Open your workroom</a></td></tr>
+${FOOTER}`);
+
+  const text = `YIDDI WELLER
+
+Your sign-in link.
+
+This opens your workroom and expires in ${input.minutes} minutes.
+If you did not ask for it, ignore this message.
+
+${input.url}`;
+
+  await sendClientEmail({
+    to: input.to,
+    subject: "Your Yiddi Weller workroom",
+    html,
+    text,
+    kind: "workroom sign-in",
+  });
+}

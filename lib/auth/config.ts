@@ -7,7 +7,7 @@ import { db, schema } from "../db/index.ts";
 import { uuidv7 } from "../db/id.ts";
 import { appUrl, authSecret } from "../env.ts";
 import { sendMagicLinkEmail } from "../emails.ts";
-import { log, redactEmail } from "../log.ts";
+import { describeError, log, redactEmail } from "../log.ts";
 import { staffForEmail } from "./access.ts";
 
 /**
@@ -63,12 +63,20 @@ function createAuth() {
      * blunts token guessing. Better Auth's own limiter rather than a second
      * inconsistent one beside the contact form's.
      */
-    // Storage is Better Auth's default, which is in memory: the counters reset
-    // on every deploy and do not span instances. Correct enough while Studio
-    // runs on one, and recorded in docs/studio.md as something that needs a
-    // shared store before it runs on more.
+    // Database-backed since Build 004, in its own table. It was Better Auth's
+    // in-memory default, whose counters reset on every deploy and do not span
+    // instances — fine while Studio ran on one, and an open item in
+    // docs/studio.md ever since. Client auth needed a durable limiter, and
+    // pointing staff auth at the same first-party mechanism costs a table.
+    //
+    // A separate table from the client instance's on purpose: both expose
+    // `/sign-in/magic-link`, and the limiter keys by path and address, so one
+    // shared table would let a staff sign-in and a client sign-in from the same
+    // office spend each other's allowance.
     rateLimit: {
       enabled: true,
+      storage: "database",
+      modelName: "authRateLimit",
       window: 60,
       max: 10,
       customRules: {
@@ -113,8 +121,20 @@ function createAuth() {
             return;
           }
 
-          await sendMagicLinkEmail({ to: email, url, minutes: MAGIC_LINK_MINUTES });
-          log.info("studio.login_requested", { email: redactEmail(email) });
+          // A delivery failure must not change the response either: throwing
+          // here turns a real address into a 500 and an unknown one into a 200,
+          // which tells anybody who asks which addresses have Studio access —
+          // the very thing the check above exists to prevent. Found while
+          // building the client instance, and the same shape on both.
+          try {
+            await sendMagicLinkEmail({ to: email, url, minutes: MAGIC_LINK_MINUTES });
+            log.info("studio.login_requested", { email: redactEmail(email) });
+          } catch (cause) {
+            log.error("studio.login_delivery_failed", {
+              email: redactEmail(email),
+              error: describeError(cause),
+            });
+          }
         },
       }),
     nextCookies(),

@@ -12,7 +12,11 @@ export default function robots(): MetadataRoute.Robots {
 
   return {
     // Icons must stay crawlable for Google to pick up the favicon.
-    rules: [{ userAgent: "*", allow: "/", disallow: "/api/" }],
+    // `/workrooms/` is private by authorization, not by this line — a crawler
+    // reaching one gets the sign-in page. It is here so the paths never appear
+    // in an index at all, and every page beneath also states `noindex` itself,
+    // for the crawlers that ignore this file.
+    rules: [{ userAgent: "*", allow: "/", disallow: ["/api/", "/workrooms/"] }],
     sitemap: `${site.url}/sitemap.xml`,
     host: site.url,
   };

@@ -70,6 +70,9 @@ app/
   layout.tsx                 The document: html, body, tokens, icons. No chrome.
   (public)/                  Home, Work, Work/[slug], Contact — header, footer, cursor
   studio/                    Sign in, Accept invitation, and the signed-in (app) shell
+  workrooms/                 The client world: sign in, accept an invitation, and
+                             the signed-in (room) shell. Its own chrome, neither
+                             the public site's nor Studio's.
   not-found.tsx              The 404 for an unmatched URL. Brings its own frame.
   api/contact/route.ts       Node runtime.
   api/auth/[...all]/route.ts Better Auth's endpoints. Node runtime.
@@ -82,10 +85,19 @@ lib/
   studio-nav.ts              Studio's navigation, as data
   studio-format.ts           How Studio writes dates, times and date fields
   studio-result.ts           Outcome → the sentence a form shows
+  workrooms/
+    id.ts                    The opaque identifier a Workroom is reached by
+    view.ts                  The only shape that reaches a client surface
   auth/
     access.ts                The access rule, with no framework around it
     guard.ts                 currentStaff / requireStaff / requireOwner
     config.ts  client.ts     Better Auth, server and browser
+  client-auth/               The second Better Auth instance. Clients.
+    config.ts                Its own tables, cookie, secret and base path
+    guard.ts                 currentViewer / requireViewer
+    invitation-plugin.ts     Accepting, as an endpoint, using the library's
+                             own session primitives
+    client.ts                The browser half
   db/                        Server-only data layer
     index.ts                 Lazy connection, and the transaction type
     schema.ts                Tables and conventions
@@ -94,6 +106,8 @@ lib/
     inquiries.ts             Domain module: everything done with inquiries
     staff.ts                 Domain module: staff and invitations
     clients.ts  contacts.ts  leads.ts  projects.ts   The business core
+    workrooms.ts             Client access: workrooms, membership, invitations
+    activity.ts              The client-facing timeline. Not the audit log.
     search.ts                One search across all four
     id.ts                    UUIDv7
   emails.ts  site.ts  social.ts  env.ts  log.ts
@@ -193,9 +207,10 @@ lives in their inbox forever, so this is expensive to change later.
 
 ## Activity versus audit
 
-Two separate concerns that must not be merged into one table. **Audit is built,
-as of Build 003 — see [`audit.md`](./audit.md). Activity is not**, and this
-convention is why the two will not collide when it is.
+Two separate concerns that are two tables and always will be. **Both are built:
+audit in Build 003, activity in Build 004** — see [`audit.md`](./audit.md) and
+[`activity.md`](./activity.md). Communications, the third thing, is still
+unbuilt, and this table is why it will not collide with either.
 
 | | Business activity | Security / audit log |
 | --- | --- | --- |

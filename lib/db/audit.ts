@@ -2,7 +2,12 @@ import { and, desc, eq, gte, lte, sql, type SQL } from "drizzle-orm";
 
 import { db, type Tx } from "./index.ts";
 import { uuidv7 } from "./id.ts";
-import { auditEvents, user, type AuditEntityType } from "./schema.ts";
+import {
+  auditEvents,
+  user,
+  type AuditActorType,
+  type AuditEntityType,
+} from "./schema.ts";
 
 /**
  * Who changed what, and when. Append-only, in the same transaction as the
@@ -17,7 +22,22 @@ import { auditEvents, user, type AuditEntityType } from "./schema.ts";
  * anyway through the `audit_events_append_only` trigger.
  */
 
-export type AuditActor = { id: string; name: string };
+/**
+ * Who caused an event.
+ *
+ * `kind` defaults to the staff case because that is every event Builds 001–003
+ * ever wrote. A client actor's id belongs to `client_identities`, a different
+ * table from `user`, so it is written to a different column — the schema
+ * refuses a row that claims one and carries the other.
+ */
+export type AuditActor = { id: string; name: string; kind?: AuditActorType };
+
+/** The studio itself, for an event no person pressed a button for. */
+export const SYSTEM_ACTOR: AuditActor = {
+  id: "",
+  name: "Yiddi Weller",
+  kind: "anonymous_session",
+};
 
 export type AuditEvent = {
   action: string;
@@ -33,9 +53,13 @@ export type AuditEvent = {
  * of it cannot drift apart: if the change rolls back, so does this.
  */
 export async function record(tx: Tx, actor: AuditActor, event: AuditEvent): Promise<void> {
+  const kind = actor.kind ?? "team_user";
+
   await tx.insert(auditEvents).values({
     id: uuidv7(),
-    actorId: actor.id,
+    actorType: kind,
+    actorId: kind === "team_user" ? actor.id : null,
+    clientActorId: kind === "client_user" ? actor.id : null,
     // Snapshot, so the log still reads after someone leaves the studio.
     actorName: actor.name,
     action: event.action,
@@ -68,6 +92,7 @@ export function changedFields<T extends Record<string, unknown>>(before: T, afte
 export type AuditRow = {
   id: string;
   occurredAt: Date;
+  actorKind: AuditActorType;
   actorName: string | null;
   action: string;
   entityType: AuditEntityType;
@@ -105,6 +130,7 @@ export async function listAuditEvents(
       .select({
         id: auditEvents.id,
         occurredAt: auditEvents.occurredAt,
+        actorKind: auditEvents.actorType,
         actorName: auditEvents.actorName,
         action: auditEvents.action,
         entityType: auditEvents.entityType,
@@ -133,6 +159,7 @@ export async function listEntityAudit(
     .select({
       id: auditEvents.id,
       occurredAt: auditEvents.occurredAt,
+      actorKind: auditEvents.actorType,
       actorName: auditEvents.actorName,
       action: auditEvents.action,
       entityType: auditEvents.entityType,

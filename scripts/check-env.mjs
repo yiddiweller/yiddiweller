@@ -13,6 +13,13 @@ const REQUIRED = [
   // BETTER_AUTH_SECRET sessions cannot be signed.
   "APP_URL",
   "BETTER_AUTH_SECRET",
+  // Client Workrooms, from Build 004. Required in every environment that
+  // serves them: CLIENT_AUTH_URL is the public origin a client's invitation
+  // and sign-in links point at, and it is not APP_URL — in production that is
+  // the Studio origin. The secret is the client auth instance's own and is
+  // never the staff one.
+  "CLIENT_AUTH_URL",
+  "CLIENT_AUTH_SECRET",
 ];
 
 // Not required. Studio lives at /studio until its subdomain is connected, and

@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  bigint,
   boolean,
   check,
   date,
@@ -286,8 +287,26 @@ export const AUDIT_ENTITY_TYPES = [
   "project_contact",
   "inquiry",
   "staff",
+  // Build 004.
+  "workroom",
+  "workroom_member",
+  "workroom_invitation",
+  "client_identity",
 ] as const;
 export type AuditEntityType = (typeof AUDIT_ENTITY_TYPES)[number];
+
+/**
+ * Who caused an audited event. Recorded in docs/architecture.md before either
+ * of the non-staff kinds existed, so that the day one did, the model was
+ * already decided.
+ *
+ * `team_user` points at `user`, `client_user` at `client_identities`. They are
+ * separate columns because they are separate tables — a client is never a row
+ * in the staff table, and a schema that pretended otherwise would be the first
+ * place that rule broke.
+ */
+export const AUDIT_ACTOR_TYPES = ["team_user", "client_user", "anonymous_session"] as const;
+export type AuditActorType = (typeof AUDIT_ACTOR_TYPES)[number];
 
 /* ------------------------------------------------------------------ clients */
 
@@ -579,7 +598,18 @@ export const auditEvents = pgTable(
     id: uuid("id").primaryKey(),
     occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull().defaultNow(),
 
+    /**
+     * Which identity system the actor belongs to. Defaulting to `team_user`
+     * is what makes this additive: every event written before Build 004 was a
+     * staff action, so the backfill is correct rather than a guess.
+     */
+    actorType: text("actor_type").notNull().default("team_user").$type<AuditActorType>(),
+
     actorId: text("actor_id").references(() => user.id, { onDelete: "set null" }),
+    /** Set instead of `actor_id` when a client caused the event. */
+    clientActorId: text("client_actor_id").references(() => clientIdentity.id, {
+      onDelete: "set null",
+    }),
     /** Snapshot, so the log still reads after someone leaves. */
     actorName: text("actor_name"),
 
@@ -597,11 +627,394 @@ export const auditEvents = pgTable(
     index("audit_events_actor_id_idx").on(table.actorId),
     index("audit_events_action_idx").on(table.action),
 
+    index("audit_events_client_actor_id_idx").on(table.clientActorId),
+
     check("audit_events_entity_type_check", sql.raw(`entity_type IN (${quoted(AUDIT_ENTITY_TYPES)})`)),
+    check("audit_events_actor_type_check", sql.raw(`actor_type IN (${quoted(AUDIT_ACTOR_TYPES)})`)),
+    // A staff event may have no actor id at all — the column is SET NULL when
+    // somebody is removed — but it may never carry a client's.
+    check(
+      "audit_events_actor_shape_check",
+      sql.raw(
+        "(actor_type = 'team_user' AND client_actor_id IS NULL)" +
+          " OR (actor_type = 'client_user' AND actor_id IS NULL)" +
+          " OR (actor_type = 'anonymous_session' AND actor_id IS NULL AND client_actor_id IS NULL)",
+      ),
+    ),
     check("audit_events_action_length_check", sql.raw("char_length(action) BETWEEN 3 AND 60")),
     check(
       "audit_events_entity_label_length_check",
       sql.raw("entity_label IS NULL OR char_length(entity_label) <= 200"),
+    ),
+  ],
+);
+
+/* ==========================================================================
+   BUILD 004 — CLIENT WORKROOMS
+
+   Two things live here and they are deliberately not one thing:
+
+     the client's identity   — how somebody outside the company signs in
+     the Workroom            — what they are allowed to see once they have
+
+   A client is never a row in `user`. The tables below are the client half of
+   Better Auth, renamed through `modelName` so the two instances share a
+   library and nothing else. The reasoning is in docs/client-auth.md; the
+   Workroom model is in docs/workrooms.md.
+   ========================================================================== */
+
+/** A client identity can sign in, or it cannot. Never deleted to revoke. */
+export const CLIENT_IDENTITY_STATUSES = ["active", "inactive"] as const;
+export type ClientIdentityStatus = (typeof CLIENT_IDENTITY_STATUSES)[number];
+
+/**
+ * The login. One per Contact, and most Contacts never have one.
+ *
+ * Exported under the name Better Auth is configured to look for — its Drizzle
+ * adapter resolves a model against the schema export of that `modelName` — so
+ * the export reads `clientIdentity` and the table is `client_identities`.
+ * Nothing in this file calls a client a user.
+ */
+export const clientIdentity = pgTable(
+  "client_identities",
+  {
+    id: text("id").primaryKey(),
+
+    /** Better Auth writes this; the canonical name is the Contact's. */
+    name: text("name").notNull(),
+
+    /**
+     * The verified access email, and a security credential rather than a
+     * business field. It is set once, from the address an invitation was
+     * actually sent to, and no edit of `contacts.email` ever changes it. See
+     * docs/client-auth.md — silently moving a credential is how access ends up
+     * in the wrong mailbox.
+     */
+    email: text("email").notNull(),
+    emailVerified: boolean("email_verified").notNull().default(false),
+    image: text("image"),
+
+    /** The person. One identity per Contact, enforced below. */
+    contactId: uuid("contact_id")
+      .notNull()
+      .references(() => contacts.id, { onDelete: "restrict" }),
+
+    status: text("status").notNull().default("active").$type<ClientIdentityStatus>(),
+
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("client_identities_email_idx").on(table.email),
+    uniqueIndex("client_identities_contact_id_idx").on(table.contactId),
+    index("client_identities_status_idx").on(table.status),
+    check(
+      "client_identities_status_check",
+      sql.raw(`status IN (${quoted(CLIENT_IDENTITY_STATUSES)})`),
+    ),
+  ],
+);
+
+export const clientSession = pgTable(
+  "client_sessions",
+  {
+    id: text("id").primaryKey(),
+    token: text("token").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    ipAddress: text("ip_address"),
+    userAgent: text("user_agent"),
+    userId: text("user_id")
+      .notNull()
+      .references(() => clientIdentity.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("client_sessions_token_idx").on(table.token),
+    index("client_sessions_user_id_idx").on(table.userId),
+    index("client_sessions_expires_at_idx").on(table.expiresAt),
+  ],
+);
+
+/**
+ * Better Auth's `account` model. Magic-link sign-in never writes to it, exactly
+ * as the staff `account` table has stayed empty since Build 002 — it is part of
+ * the library's core schema rather than a feature anybody asked for, and
+ * leaving it out would mean a missing-model error the first time some internal
+ * path resolved it.
+ */
+export const clientCredential = pgTable(
+  "client_credentials",
+  {
+    id: text("id").primaryKey(),
+    accountId: text("account_id").notNull(),
+    providerId: text("provider_id").notNull(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => clientIdentity.id, { onDelete: "cascade" }),
+    accessToken: text("access_token"),
+    refreshToken: text("refresh_token"),
+    idToken: text("id_token"),
+    accessTokenExpiresAt: timestamp("access_token_expires_at", { withTimezone: true }),
+    refreshTokenExpiresAt: timestamp("refresh_token_expires_at", { withTimezone: true }),
+    scope: text("scope"),
+    password: text("password"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("client_credentials_user_id_idx").on(table.userId)],
+);
+
+export const clientVerification = pgTable(
+  "client_verifications",
+  {
+    id: text("id").primaryKey(),
+    identifier: text("identifier").notNull(),
+    value: text("value").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("client_verifications_identifier_idx").on(table.identifier),
+    index("client_verifications_expires_at_idx").on(table.expiresAt),
+  ],
+);
+
+/**
+ * Better Auth's rate-limit storage, one table per instance.
+ *
+ * Both instances expose `/sign-in/magic-link`, and the limiter keys by path and
+ * address — one shared table would let a staff sign-in and a client sign-in
+ * from the same office spend each other's allowance. Database-backed rather
+ * than the in-memory default, so the counters survive a deploy and would
+ * survive a second instance, which closes an item open since Build 002.
+ */
+export const clientRateLimit = pgTable(
+  "client_rate_limits",
+  {
+    id: text("id").primaryKey(),
+    key: text("key").notNull(),
+    count: integer("count").notNull(),
+    lastRequest: bigint("last_request", { mode: "number" }).notNull(),
+  },
+  (table) => [uniqueIndex("client_rate_limits_key_idx").on(table.key)],
+);
+
+export const authRateLimit = pgTable(
+  "auth_rate_limits",
+  {
+    id: text("id").primaryKey(),
+    key: text("key").notNull(),
+    count: integer("count").notNull(),
+    lastRequest: bigint("last_request", { mode: "number" }).notNull(),
+  },
+  (table) => [uniqueIndex("auth_rate_limits_key_idx").on(table.key)],
+);
+
+/* ------------------------------------------------------------- workrooms */
+
+/** Where a Workroom is in its life. Archival is separate, as everywhere else. */
+export const WORKROOM_STATUSES = ["draft", "published", "unpublished"] as const;
+export type WorkroomStatus = (typeof WORKROOM_STATUSES)[number];
+
+/**
+ * The client-facing container around one Project.
+ *
+ * There is deliberately no `client_id`: it would be a second copy of
+ * `projects.client_id` that could drift from it, and the Client is one join
+ * away. See docs/workrooms.md.
+ */
+export const workrooms = pgTable(
+  "workrooms",
+  {
+    id: uuid("id").primaryKey(),
+
+    /**
+     * What the URL carries. Not the UUIDv7, whose first 48 bits are the moment
+     * the row was created — a client-facing address should not say when a piece
+     * of work began, and unguessability is not authorization either way.
+     */
+    publicId: text("public_id").notNull(),
+
+    /** One Workroom per Project, enforced by the unique index below. */
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "restrict" }),
+
+    /** Written for the client. Never a copy of an internal field. */
+    title: text("title").notNull(),
+    summary: text("summary").notNull().default(""),
+
+    status: text("status").notNull().default("draft").$type<WorkroomStatus>(),
+    /** When it was first opened to the client. Null while it never has been. */
+    publishedAt: timestamp("published_at", { withTimezone: true }),
+
+    /** Optimistic concurrency; see the note on `clients.version`. */
+    version: integer("version").notNull().default(1),
+
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+
+    createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
+    updatedBy: text("updated_by").references(() => user.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("workrooms_public_id_idx").on(table.publicId),
+    uniqueIndex("workrooms_project_id_idx").on(table.projectId),
+    index("workrooms_status_idx").on(table.status),
+    index("workrooms_archived_at_idx").on(table.archivedAt),
+    index("workrooms_updated_at_idx").on(table.updatedAt.desc()),
+
+    check("workrooms_status_check", sql.raw(`status IN (${quoted(WORKROOM_STATUSES)})`)),
+    check("workrooms_title_length_check", sql.raw("char_length(title) BETWEEN 1 AND 160")),
+    check("workrooms_summary_length_check", sql.raw("char_length(summary) <= 4000")),
+    check("workrooms_public_id_length_check", sql.raw("char_length(public_id) = 26")),
+  ],
+);
+
+/** Access to one Workroom, for one person. Revoked, never removed. */
+export const WORKROOM_MEMBER_STATUSES = ["active", "revoked"] as const;
+export type WorkroomMemberStatus = (typeof WORKROOM_MEMBER_STATUSES)[number];
+
+export const workroomMembers = pgTable(
+  "workroom_members",
+  {
+    id: uuid("id").primaryKey(),
+    workroomId: uuid("workroom_id")
+      .notNull()
+      .references(() => workrooms.id, { onDelete: "restrict" }),
+    contactId: uuid("contact_id")
+      .notNull()
+      .references(() => contacts.id, { onDelete: "restrict" }),
+
+    status: text("status").notNull().default("active").$type<WorkroomMemberStatus>(),
+
+    grantedAt: timestamp("granted_at", { withTimezone: true }).notNull().defaultNow(),
+    grantedBy: text("granted_by").references(() => user.id, { onDelete: "set null" }),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    revokedBy: text("revoked_by").references(() => user.id, { onDelete: "set null" }),
+
+    /** Optimistic concurrency; see the note on `clients.version`. */
+    version: integer("version").notNull().default(1),
+
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    // One row per person per Workroom, whose status carries the current state.
+    // Re-granting reactivates it rather than adding a second row, so "have they
+    // ever had access" has exactly one answer. The history is in the audit log.
+    uniqueIndex("workroom_members_pair_idx").on(table.workroomId, table.contactId),
+    index("workroom_members_contact_id_idx").on(table.contactId),
+    index("workroom_members_status_idx").on(table.status),
+
+    check(
+      "workroom_members_status_check",
+      sql.raw(`status IN (${quoted(WORKROOM_MEMBER_STATUSES)})`),
+    ),
+  ],
+);
+
+/**
+ * One invitation, to one Workroom, for one Contact.
+ *
+ * Only the digest of the token is stored, so a database read yields no usable
+ * link — the same arrangement as `staff_invitations`.
+ */
+export const workroomInvitations = pgTable(
+  "workroom_invitations",
+  {
+    id: uuid("id").primaryKey(),
+    workroomId: uuid("workroom_id")
+      .notNull()
+      .references(() => workrooms.id, { onDelete: "restrict" }),
+    contactId: uuid("contact_id")
+      .notNull()
+      .references(() => contacts.id, { onDelete: "restrict" }),
+
+    /**
+     * The address this link was sent to, snapshotted. Acceptance verifies this
+     * address rather than whatever the Contact record says by then, so an
+     * invitation cannot be redirected to a different mailbox by an edit.
+     */
+    email: text("email").notNull(),
+
+    tokenHash: text("token_hash").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+
+    acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+
+    createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("workroom_invitations_token_hash_idx").on(table.tokenHash),
+    index("workroom_invitations_workroom_id_idx").on(table.workroomId),
+    index("workroom_invitations_contact_id_idx").on(table.contactId),
+    index("workroom_invitations_expires_at_idx").on(table.expiresAt),
+
+    check("workroom_invitations_email_length_check", sql.raw("char_length(email) BETWEEN 3 AND 254")),
+  ],
+);
+
+/* -------------------------------------------------------------- activity */
+
+/**
+ * What the client sees has happened. Five values now; Build 005 adds its own.
+ * The whole vocabulary is here so no page can invent a sixth.
+ */
+export const ACTIVITY_KINDS = [
+  "workroom.opened",
+  "workroom.joined",
+  "workroom.access_granted",
+  "workroom.access_ended",
+  "project.status_changed",
+] as const;
+export type ActivityKind = (typeof ACTIVITY_KINDS)[number];
+
+/**
+ * The client-facing timeline. **Not** `audit_events`, permanently: audit is who
+ * changed what and is immutable; this is curated context for people outside the
+ * company. Both are written from the same business event, in the same
+ * transaction, with different content. See docs/activity.md.
+ *
+ * There is no `metadata` column, and that is the design. A row holds a value
+ * from a fixed vocabulary and two short safe labels, so there is nowhere for an
+ * internal note to be pasted by accident — the guarantee is structural rather
+ * than a policy somebody has to remember at review time.
+ */
+export const workroomActivity = pgTable(
+  "workroom_activity",
+  {
+    id: uuid("id").primaryKey(),
+    workroomId: uuid("workroom_id")
+      .notNull()
+      .references(() => workrooms.id, { onDelete: "restrict" }),
+
+    occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull().defaultNow(),
+
+    kind: text("kind").notNull().$type<ActivityKind>(),
+
+    /** A person's name as it was then. History does not rewrite itself. */
+    actorLabel: text("actor_label"),
+    /** One safe word or short label — a status, a title. Never free text. */
+    subject: text("subject"),
+  },
+  (table) => [
+    index("workroom_activity_workroom_idx").on(table.workroomId, table.occurredAt.desc()),
+
+    check("workroom_activity_kind_check", sql.raw(`kind IN (${quoted(ACTIVITY_KINDS)})`)),
+    check(
+      "workroom_activity_actor_label_length_check",
+      sql.raw("actor_label IS NULL OR char_length(actor_label) <= 160"),
+    ),
+    check(
+      "workroom_activity_subject_length_check",
+      sql.raw("subject IS NULL OR char_length(subject) <= 160"),
     ),
   ],
 );

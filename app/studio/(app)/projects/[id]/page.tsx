@@ -13,7 +13,10 @@ import { listEntityAudit } from "@/lib/db/audit";
 import { selectableContacts } from "@/lib/db/contacts";
 import { leadForProject } from "@/lib/db/leads";
 import { findProject, projectContactRows } from "@/lib/db/projects";
+import { workroomForProject } from "@/lib/db/workrooms";
 import { listStaff } from "@/lib/db/staff";
+import WorkroomFields from "@/components/studio/WorkroomFields";
+import { createWorkroomAction } from "../../workrooms/actions";
 import { formatDate } from "@/lib/studio-format";
 import styles from "@/app/studio/studio.module.css";
 
@@ -25,6 +28,12 @@ import {
   updateProjectAction,
   updateProjectContactAction,
 } from "../actions";
+
+const WORKROOM_STATE: Record<string, string> = {
+  draft: "Draft",
+  published: "Published",
+  unpublished: "Unpublished",
+};
 
 /**
  * The tab says which record this is — but only to somebody entitled to know.
@@ -54,11 +63,12 @@ export default async function StudioProject({ params }: { params: Promise<{ id: 
   if (!project) notFound();
 
   const isOwner = viewer.role === "owner";
-  const [people, contacts, lead, staff, history] = await Promise.all([
+  const [people, contacts, lead, staff, workroom, history] = await Promise.all([
     projectContactRows(id),
     selectableContacts(),
     leadForProject(id),
     listStaff(),
+    workroomForProject(id),
     isOwner ? listEntityAudit("project", id) : Promise.resolve([]),
   ]);
   const active = staff.filter((person) => person.status === "active");
@@ -141,6 +151,64 @@ export default async function StudioProject({ params }: { params: Promise<{ id: 
               </span>
             </div>
           </div>
+        </section>
+
+        <section className={styles.section}>
+          <div className={styles.sectionHead}>
+            <h2 className={styles.sectionTitle}>Client workroom</h2>
+            <span className={styles.sectionNote}>The private space for this work</span>
+          </div>
+
+          {workroom ? (
+            <ul className={`${styles.list} ${styles.listThreeUp}`}>
+              <li className={styles.row}>
+                <span className={styles.rowPrimary}>
+                  <Link className={styles.rowLink} href={`/studio/workrooms/${workroom.id}`}>
+                    {workroom.title}
+                  </Link>
+                </span>
+                <span className={styles.rowSecondary}>
+                  {workroom.memberCount} {workroom.memberCount === 1 ? "member" : "members"}
+                </span>
+                <span className={styles.rowMeta}>
+                  <span
+                    className={`${styles.tag} ${workroom.status === "published" ? styles.tagStrong : ""}`}
+                  >
+                    {WORKROOM_STATE[workroom.status]}
+                  </span>
+                  {workroom.archivedAt ? <span className={styles.tag}> Archived</span> : null}
+                </span>
+              </li>
+            </ul>
+          ) : project.archivedAt ? (
+            <p className={styles.empty}>
+              This project is archived, so there is nothing to open a workroom for.
+            </p>
+          ) : (
+            <>
+              <p className={styles.empty}>
+                No workroom yet. Opening one gives this client a private place for the work —
+                nobody sees it until it is published.
+              </p>
+              <span className={styles.pageActions}>
+                <FormDialog
+                  trigger="Open a workroom"
+                  title={`A workroom for ${project.clientName}`}
+                  note="It starts as a draft. You choose when the client can see it."
+                  submitLabel="Create workroom"
+                  busyLabel="Creating"
+                  variant="quiet"
+                  action={createWorkroomAction}
+                >
+                  <input type="hidden" name="projectId" value={project.id} />
+                  <WorkroomFields
+                    id="new-workroom"
+                    defaults={{ title: project.name, summary: "" }}
+                  />
+                </FormDialog>
+              </span>
+            </>
+          )}
         </section>
 
         {project.description ? (

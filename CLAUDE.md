@@ -32,9 +32,10 @@ that has not been on `beta` first, and never leave `beta` behind `main`.
 ## Platform state — settled, do not re-litigate
 
 **Phases 1, 2 and 3 are complete and verified in production**, released as
-**Build 001**, **Build 002** and **Build 003**. These are facts about the
-running system, not proposals. Changing any of them is a deliberate decision,
-not a cleanup.
+**Build 001**, **Build 002** and **Build 003**. **Build 004, client workrooms,
+is on beta and awaiting verification.** These are facts about the running
+system, not proposals. Changing any of them is a deliberate decision, not a
+cleanup.
 
 - **PostgreSQL is the system of record for contact inquiries.** Email is a
   notification, not the record. An inquiry is persisted before it is emailed.
@@ -61,6 +62,25 @@ not a cleanup.
 - **Production now holds real client data.** Clients, Contacts, Leads and
   Projects are live business records, not test rows. Treat every operation
   against the production database accordingly.
+- **A client is never a row in `user`.** Clients sign in through a second,
+  isolated Better Auth instance with its own tables, cookie name, secret and
+  API path. A client session must never satisfy `requireStaff` or
+  `requireOwner`, and a Studio session must never open a Workroom. The model is
+  `docs/client-auth.md`.
+- **`client_identities.email` is a verified credential, not a business field.**
+  Editing `contacts.email` never moves somebody's access. Changing an access
+  email means revoke and re-invite, deliberately.
+- **A Workroom is not its Project.** It carries its own client-facing title and
+  summary; `projects.description` and every `notes` field are internal and never
+  shown. Nothing reaches a client surface except through
+  `toClientWorkroomView` in `lib/workrooms/view.ts`. The model is
+  `docs/workrooms.md`.
+- **`workroom_activity` is the client-facing timeline and has no `metadata`
+  column, deliberately** — there is nowhere for an internal note to be pasted.
+  It is not `audit_events` and must never be merged with it. See
+  `docs/activity.md`.
+- **Workroom access is explicit, per person, per Workroom.** Being a Contact at
+  the Client grants nothing, and revocation takes effect on the next request.
 - **Studio is live at `studio.yiddiweller.com`**, invite-only, magic-link
   sign-in, Owner and Member roles. The same application serves both worlds and
   tells them apart by `Host`: production has `STUDIO_HOST=studio.yiddiweller.com`

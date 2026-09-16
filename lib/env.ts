@@ -89,6 +89,33 @@ export function appUrl(): string {
 }
 
 /**
+ * Secret used by the **client** Better Auth instance, which is a different
+ * instance from the staff one and must never share its secret. Per
+ * environment, like `BETTER_AUTH_SECRET`: one shared between beta and
+ * production would make a beta client session valid in production.
+ */
+export function clientAuthSecret(): string {
+  return requireAll(["CLIENT_AUTH_SECRET"]).CLIENT_AUTH_SECRET;
+}
+
+/**
+ * The public origin clients reach, e.g. `https://yiddiweller.com`.
+ *
+ * Deliberately separate from `APP_URL`, which in production is the *Studio*
+ * origin. Workroom invitations and client sign-in links are built from this, so
+ * a wrong value sends a client a link into the other environment — or, worse,
+ * to a host their session cookie was never scoped to.
+ */
+export function clientAuthUrl(): string {
+  return requireAll(["CLIENT_AUTH_URL"]).CLIENT_AUTH_URL.replace(/\/+$/, "");
+}
+
+/** Absolute base for a link into a Workroom. */
+export function workroomUrl(path = ""): string {
+  return `${clientAuthUrl()}/workrooms${path}`;
+}
+
+/**
  * Host that serves Studio at its root, e.g. `studio.yiddiweller.com`.
  * Unset while the subdomain is disconnected, which is the current state: Studio
  * is then reachable only at the `/studio` path on non-public hosts.

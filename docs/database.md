@@ -85,6 +85,13 @@ These apply to every table added from Phase 1 onward. They are enforced in
 | `projects` | 003 | Work, always for a client. |
 | `project_contacts` | 003 | Who is on a project, with at most one primary each. |
 | `audit_events` | 003 | Append-only. Who changed what, when. Never what it said. |
+| `workrooms` | 004 | The client-facing container around one project. |
+| `workroom_members` | 004 | Access, per person per workroom. Revoked, never removed. |
+| `workroom_invitations` | 004 | One invitation, one workroom, one contact. Token stored as a digest. |
+| `workroom_activity` | 004 | The client-facing timeline. No metadata column, deliberately. |
+| `client_identities` | 004 | How somebody outside the company signs in. Never a row in `user`. |
+| `client_sessions`, `client_credentials`, `client_verifications` | 004 | The client Better Auth instance's own tables. |
+| `client_rate_limits`, `auth_rate_limits` | 004 | Database-backed rate limiting, one table per auth instance. |
 
 The model behind the Build 003 tables is [`business-core.md`](./business-core.md);
 the audit policy is [`audit.md`](./audit.md).
@@ -107,6 +114,28 @@ depends on and the database has to be the one enforcing them:
 
 The migration contains no destructive statement of any kind, and applies to a
 database holding Build 002 production data without touching a row of it.
+
+### What `0003_client_workrooms.sql` adds, and its one `DROP`
+
+Ten new tables, plus three additive changes to `audit_events`: an `actor_type`
+defaulting to `team_user`, a `client_actor_id` pointing at the new identity
+table, and a `CHECK` that refuses a row claiming one kind of actor while
+carrying the other.
+
+**There is exactly one `DROP` in the file**, and it is
+`audit_events_entity_type_check`, re-added three statements later with four more
+allowed values. PostgreSQL has no way to widen a `CHECK` — constraints are
+ANDed, so adding a second would leave the old one still rejecting — which makes
+drop-and-replace the only way to say it. No data is read, moved or removed by
+either statement, and it was rehearsed against a Build 003-shaped database
+carrying data: every pre-existing audit row came back byte-identical across the
+columns that existed before, and the append-only triggers still refused
+`UPDATE`, `DELETE` and `TRUNCATE` afterwards.
+
+By hand at the end: `bump_version` triggers for `workrooms` and
+`workroom_members`, `set_updated_at` for the invitation and client-auth tables,
+the partial unique index that allows at most one open invitation per workroom
+and contact, and a `lower(email)` index on `client_identities`.
 
 ---
 

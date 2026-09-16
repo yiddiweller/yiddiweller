@@ -198,7 +198,7 @@ sequence and is kept because it is what earlier documents cite.
 | 001 | Core foundation, inquiry persistence | **In production** |
 | 002 | Studio foundation, authentication, and the permanent Studio design system | **In production, verified** |
 | 003 | Business core: clients, contacts, leads, projects | **In production, verified** |
-| 004 | Client workrooms: private client collaboration and controlled access | **Next** |
+| 004 | Client workrooms: private client collaboration and controlled access | **On beta** |
 | 005 | Files, presentations, reviews and approvals | |
 | 006 | Money: estimates, invoices, payment requests, the public pay flow | |
 | 007 | Communications: conversation, Studio inbox, notifications | |
@@ -221,10 +221,11 @@ first risks stalling the programme before it earns anything. The roadmap
 resolves that deliberately — **Money is Build 006 and Communications is Build
 007** — rather than leaving the question open.
 
-The other open dependency is unchanged and still real: **files sit inside
-workrooms**, so Build 004 delivers a container that Build 005 fills. Either
-bring file storage forward into 004 or accept that 004 ships incomplete. That
-is a decision for when 004 is planned, not now.
+The files dependency is now settled. **Build 004 delivered the complete
+container and no file storage**, deliberately: a Workroom is useful without
+files because it answers what the project is, where it has got to, who is
+involved and what has happened — and an empty Files tab would have been worse
+than no tab. Build 005 fills it, attaching to `workrooms.id`.
 
 ### What Build 003 locked for everything after it
 
@@ -265,7 +266,7 @@ These are settled by running code holding real data, not by preference. Build
 | 1 | Core foundation, inquiry persistence | **Complete — production verified**, released as **Build 001** |
 | 2 | Studio foundation, authentication, Studio design system | **Complete — production verified**, released as **Build 002** |
 | 3 | Clients, contacts, leads, projects | **Complete — production verified**, released as **Build 003** |
-| 4 | Workrooms and private client access | |
+| 4 | Workrooms and private client access | **On beta**, released as **Build 004** |
 | 5 | Files, presentations, approvals | |
 | 6 | Conversation hub, Studio inbox, email | |
 | 7 | Invoices and payments | |

@@ -18,6 +18,7 @@ test("navigation lists only what exists", () => {
     "/studio/contacts",
     "/studio/leads",
     "/studio/projects",
+    "/studio/workrooms",
     "/studio/search",
     "/studio/team",
     "/studio/audit",
@@ -27,7 +28,7 @@ test("navigation lists only what exists", () => {
 
   // Nothing unbuilt may appear. A greyed-out module is dead navigation.
   const labels = STUDIO_NAV.flatMap((g) => g.items.map((i) => i.label.toLowerCase()));
-  for (const unbuilt of ["invoices", "files", "reports", "inbox", "payments"]) {
+  for (const unbuilt of ["invoices", "files", "reports", "inbox", "payments", "presentations"]) {
     assert.ok(!labels.includes(unbuilt), `${unbuilt} is not built and must not be listed`);
   }
 });

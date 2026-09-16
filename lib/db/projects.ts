@@ -15,7 +15,9 @@ import {
   type SQL,
 } from "drizzle-orm";
 
+import { label } from "../business.ts";
 import { record, type AuditActor, changedFields } from "./audit.ts";
+import { publishedWorkroomFor, recordProjectStatusForClients } from "./workrooms.ts";
 import { db, type Tx } from "./index.ts";
 import { uuidv7 } from "./id.ts";
 import { ok, refuse, expectUnchanged, type Outcome } from "./outcome.ts";
@@ -253,6 +255,13 @@ export async function updateProject(
       },
     });
 
+    // One business event, two records with different content: the audit entry
+    // above carries the actor and the field names, and this carries the status
+    // and nothing else. See docs/activity.md.
+    if (before.status !== input.status) {
+      await recordProjectStatusForClients(tx, id, label(input.status));
+    }
+
     return ok(undefined);
   });
 }
@@ -275,6 +284,16 @@ export async function archiveProject(
     return refuse(
       "blocked",
       `${project.name} is still live. Mark it completed or cancelled before archiving it.`,
+    );
+  }
+
+  // A client can still open a published workroom, and archiving the work behind
+  // one would leave them looking at a project the studio has put away.
+  const open = await publishedWorkroomFor(id);
+  if (open) {
+    return refuse(
+      "blocked",
+      `${open} is open to its members. Unpublish the workroom first, so nobody loses access by accident.`,
     );
   }
 
@@ -375,6 +394,25 @@ export async function countLiveProjects(): Promise<number> {
     .from(projects)
     .where(and(isNull(projects.archivedAt), inArray(projects.status, PROJECT_LIVE_STATUSES)));
   return row?.n ?? 0;
+}
+
+/**
+ * The two dates a client is shown, and nothing else from the project.
+ *
+ * A separate, deliberately tiny read rather than handing the whole project row
+ * to the client surface: `description` and `notes` are written by the studio
+ * for the studio, and the safest way not to leak them is not to fetch them.
+ */
+export async function projectDatesFor(
+  projectId: string,
+): Promise<{ startsOn: string | null; targetOn: string | null }> {
+  const [row] = await db()
+    .select({ startsOn: projects.startsOn, targetOn: projects.targetOn })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .limit(1);
+
+  return row ?? { startsOn: null, targetOn: null };
 }
 
 /* ------------------------------------------------------ project ↔ contact */

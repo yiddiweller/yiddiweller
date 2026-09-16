@@ -30,7 +30,9 @@ feed, and no future build may repurpose it as one.
 | --- | --- |
 | `id` | UUIDv7. |
 | `occurred_at` | `timestamptz`, UTC. |
+| `actor_type` | `team_user`, `client_user` or `anonymous_session`. Defaults to `team_user`, which is what every event written before Build 004 was. |
 | `actor_id` | The staff member, nullable. `SET NULL` if they are ever removed. |
+| `client_actor_id` | The client identity, when a client caused it. A second column rather than a widening of `actor_id`, because a client is a row in a different table and a schema that pretended otherwise would be the first place that rule broke. A `CHECK` refuses a row that claims one kind and carries the other. |
 | `actor_name` | A snapshot of their name, so history stays readable afterwards. |
 | `action` | `noun.verb_past_tense` — `lead.stage_changed`. |
 | `entity_type` | `client`, `contact`, `lead`, `project`, `client_contact`, `project_contact`, `inquiry`, `staff`. |
@@ -134,6 +136,22 @@ who owns it, never as a side effect of ordinary code.
 
 ---
 
+## History makes its actors undeletable
+
+A consequence worth knowing, because it is stronger than the schema says.
+
+Both actor columns declare `ON DELETE SET NULL`. That `SET NULL` is an `UPDATE`
+of `audit_events`, and the append-only trigger refuses it — so deleting a staff
+member or a client identity that appears in the log **fails** rather than
+quietly blanking their name out of it.
+
+Nothing in the product ever deletes a person: staff are deactivated and client
+identities are disabled, both of which keep the row. So in practice this only
+ever catches a mistake, and catching it is the right outcome: an actor cannot be
+erased from the record of what they did.
+
+---
+
 ## Written in the same transaction
 
 A business change and its audit row are written together. If the change rolls
@@ -155,6 +173,12 @@ not-found response as any other Owner-only surface, per
 Filterable by actor, entity type and action, paginated, and written as sentences
 rather than raw JSON. It reads as a record, not as a feed — a deliberate
 difference from the Activity surface that arrives later.
+
+Client actions appear here with their own attribution: a client accepting an
+invitation is `workroom_invitation.accepted` by a `client_user`, and the Audit
+page marks it. **A client opening a Workroom writes nothing** — audit records
+what changes who can reach what, not who looked at what, and a page-view log
+would turn an accountability record into traffic.
 
 Each record also carries its own history on its page, under **History**, for
 Owners only. It is the same data, scoped to one entity, and it is not fetched at

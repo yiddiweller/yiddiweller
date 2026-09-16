@@ -1,0 +1,327 @@
+/* The client's private space.
+
+   A third expression of the same company, and deliberately not the other two.
+   The public site is a gallery: one column, enormous type, air. Studio is an
+   operating surface: a rail, density, information first. A Workroom is a room
+   somebody has been invited into — quiet, unhurried, and obviously theirs.
+
+   No rail. No dashboard chrome. No counters, no badges, no widgets. One header
+   line, one column of content, and enough space around it that nothing feels
+   like software. It inherits the same tokens as everything else: the same
+   black, the same white at reduced opacity, the reader's own system font. */
+
+.tokens {
+  --w-gutter: clamp(24px, 6vw, 72px);
+  --w-max: 720px;
+  --w-hit: 44px;
+
+  /* Deliberately looser than Studio's four-pixel operating scale. */
+  --w-1: 8px;
+  --w-2: 16px;
+  --w-3: 24px;
+  --w-4: 40px;
+  --w-5: 64px;
+  --w-6: 96px;
+
+  --w-fs-display: clamp(1.75rem, 4vw, 2.75rem);
+  --w-fs-title: clamp(1.25rem, 2.4vw, 1.5rem);
+  --w-fs-body: 1.0625rem;
+  --w-fs-ui: var(--fs-ui);
+  --w-fs-label: var(--fs-label);
+
+  --w-fg: var(--white);
+  --w-fg-2: var(--w-72);
+  --w-fg-3: var(--w-45);
+  --w-edge: var(--rule);
+  --w-edge-faint: var(--rule-faint);
+
+  --w-dur: 200ms;
+  --w-ease: var(--ease);
+}
+
+/* ------------------------------------------------------------------ shell */
+
+.shell {
+  min-height: 100svh;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  grid-template-columns: minmax(0, 1fr);
+  background: var(--black);
+}
+
+/* One line. The wordmark, and the way out. Nothing else earns a place. */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--w-3);
+  padding: var(--w-3) var(--w-gutter);
+  border-bottom: 1px solid var(--w-edge-faint);
+}
+
+.mark {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: var(--w-fs-label);
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--w-fg);
+}
+.markSub { color: var(--w-fg-3); }
+
+.headerRight { display: flex; align-items: center; gap: var(--w-3); }
+
+.who {
+  font-size: var(--w-fs-ui);
+  color: var(--w-fg-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 40vw;
+}
+
+.main {
+  width: 100%;
+  max-width: calc(var(--w-max) + var(--w-gutter) * 2);
+  margin: 0 auto;
+  padding: var(--w-5) var(--w-gutter) var(--w-6);
+}
+
+.footer {
+  padding: var(--w-3) var(--w-gutter) var(--w-4);
+  font-size: var(--w-fs-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--w-fg-3);
+}
+
+/* ------------------------------------------------------------------- page */
+
+.eyebrow {
+  font-size: var(--w-fs-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--w-fg-3);
+  margin-bottom: var(--w-1);
+}
+
+.display {
+  font-size: var(--w-fs-display);
+  font-weight: 300;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  color: var(--w-fg);
+  overflow-wrap: anywhere;
+}
+
+.lede {
+  margin-top: var(--w-3);
+  font-size: var(--w-fs-body);
+  line-height: 1.7;
+  color: var(--w-fg-2);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-width: 62ch;
+}
+
+.sections { display: flex; flex-direction: column; gap: var(--w-5); margin-top: var(--w-5); }
+
+.section { display: flex; flex-direction: column; gap: var(--w-2); }
+
+.sectionTitle {
+  font-size: var(--w-fs-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--w-fg-3);
+  font-weight: 400;
+}
+
+.rule { height: 1px; background: var(--w-edge-faint); }
+
+/* --------------------------------------------------------------- details */
+
+/* Status and dates. A short list, not a row of dashboard tiles. */
+.facts { display: grid; gap: var(--w-2) var(--w-4); grid-template-columns: minmax(0, 1fr); }
+
+.fact { display: flex; flex-direction: column; gap: 4px; }
+
+.factLabel {
+  font-size: var(--w-fs-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--w-fg-3);
+}
+
+.factValue { font-size: var(--w-fs-body); color: var(--w-fg); font-variant-numeric: tabular-nums; }
+
+/* ---------------------------------------------------------------- people */
+
+.people { list-style: none; display: flex; flex-direction: column; gap: var(--w-2); }
+
+.person { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--w-1) var(--w-2); }
+.personName { font-size: var(--w-fs-body); color: var(--w-fg); }
+.personRole { font-size: var(--w-fs-ui); color: var(--w-fg-3); }
+
+/* -------------------------------------------------------------- activity */
+
+/* A timeline, not a feed: no avatars, no icons, no unread dots. */
+.timeline { list-style: none; display: flex; flex-direction: column; }
+
+.event {
+  display: grid;
+  gap: 2px var(--w-3);
+  grid-template-columns: minmax(0, 1fr);
+  padding: var(--w-2) 0;
+  border-bottom: 1px solid var(--w-edge-faint);
+}
+.event:first-child { border-top: 1px solid var(--w-edge-faint); }
+
+.eventText { font-size: var(--w-fs-body); color: var(--w-fg-2); overflow-wrap: anywhere; }
+
+.eventWhen {
+  font-size: var(--w-fs-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--w-fg-3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ----------------------------------------------------------------- index */
+
+.rooms { list-style: none; display: flex; flex-direction: column; gap: var(--w-2); }
+
+.room {
+  display: block;
+  padding: var(--w-3) 0;
+  border-bottom: 1px solid var(--w-edge-faint);
+  transition: opacity var(--w-dur) var(--w-ease);
+}
+.room:first-child { border-top: 1px solid var(--w-edge-faint); }
+.room:hover { opacity: 0.72; }
+
+.roomTitle { font-size: var(--w-fs-title); color: var(--w-fg); overflow-wrap: anywhere; }
+.roomMeta { margin-top: 4px; font-size: var(--w-fs-ui); color: var(--w-fg-3); }
+
+/* -------------------------------------------------------------- entrance */
+
+/* Sign-in, invitations and every way they can fail. Centred, and as quiet as
+   the room itself: a client is not joining software. */
+.entrance {
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--w-3);
+  max-width: 480px;
+  margin: 0 auto;
+  padding: var(--w-5) var(--w-gutter);
+  background: var(--black);
+}
+
+.entranceMark { margin-bottom: var(--w-4); }
+
+.entranceTitle {
+  font-size: var(--w-fs-display);
+  font-weight: 300;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  color: var(--w-fg);
+}
+
+.entranceNote {
+  font-size: var(--w-fs-body);
+  line-height: 1.7;
+  color: var(--w-fg-2);
+  max-width: 46ch;
+}
+
+/* --------------------------------------------------------------- controls */
+
+.form { display: flex; flex-direction: column; gap: var(--w-3); margin-top: var(--w-2); }
+
+.field { display: flex; flex-direction: column; gap: var(--w-1); }
+
+.label {
+  font-size: var(--w-fs-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--w-fg-3);
+}
+
+.input {
+  width: 100%;
+  min-height: var(--w-hit);
+  padding: var(--w-1) 0;
+  font-size: var(--w-fs-body);
+  color: var(--w-fg);
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--w-fg-3);
+  border-radius: 0;
+  transition: border-color var(--w-dur) var(--w-ease);
+}
+.input:focus { outline: none; border-bottom-color: var(--w-fg); }
+.input:focus-visible { outline: 1px solid var(--w-fg); outline-offset: 4px; }
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--w-hit);
+  padding: 0 var(--w-3);
+  font-size: var(--w-fs-body);
+  color: var(--black);
+  background: var(--white);
+  border: 1px solid var(--white);
+  border-radius: 0;
+  cursor: pointer;
+  transition: opacity var(--w-dur) var(--w-ease);
+}
+.button:hover { opacity: 0.86; }
+.button:disabled { opacity: 0.5; cursor: default; }
+
+.quiet {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--w-hit);
+  padding: 0;
+  font-size: var(--w-fs-ui);
+  color: var(--w-fg-3);
+  background: none;
+  border: 0;
+  cursor: pointer;
+  text-decoration-line: underline;
+  text-decoration-color: var(--w-edge);
+  text-underline-offset: 4px;
+  transition: color var(--w-dur) var(--w-ease);
+}
+.quiet:hover { color: var(--w-fg); }
+
+.status { font-size: var(--w-fs-ui); line-height: 1.6; color: var(--w-fg-2); min-height: 1.5em; }
+
+.empty {
+  padding: var(--w-3) 0;
+  font-size: var(--w-fs-body);
+  line-height: 1.7;
+  color: var(--w-fg-3);
+  max-width: 52ch;
+}
+
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--w-3); }
+
+/* ------------------------------------------------------------- responsive */
+
+@media (min-width: 640px) {
+  .facts { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .event { grid-template-columns: minmax(0, 1fr) max-content; align-items: baseline; }
+  .eventWhen { text-align: right; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .room,
+  .input,
+  .button,
+  .quiet { transition: none; }
+}

@@ -15,6 +15,7 @@ import {
 
 import { record, type AuditActor, changedFields } from "./audit.ts";
 import { db, type Tx } from "./index.ts";
+import { activeAccessFor } from "./workrooms.ts";
 import { uuidv7 } from "./id.ts";
 import { ok, refuse, expectUnchanged, type Outcome } from "./outcome.ts";
 import {
@@ -304,6 +305,16 @@ export async function archiveContact(
     return refuse(
       "blocked",
       `${contact.name} is still the primary contact for ${primaryFor.join(", ")}. Name somebody else there first.`,
+    );
+  }
+
+  // Archiving somebody who can still open a workroom would leave a live door
+  // belonging to a person the studio thinks has gone. See docs/workrooms.md.
+  const access = await activeAccessFor(id);
+  if (access.length > 0) {
+    return refuse(
+      "blocked",
+      `${contact.name} still has access to ${access.join(", ")}. Take that away first.`,
     );
   }
 

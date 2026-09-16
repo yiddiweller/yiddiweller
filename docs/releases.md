@@ -17,10 +17,10 @@ tooling, nothing to keep in sync.
 | Environment | Build | Commit |
 | --- | --- | --- |
 | Production | **Build 003** | `1e4af21` |
-| Beta | **Build 003** | `1e4af21` |
+| Beta | **Build 004** | see the log below |
 
-Both environments run the identical commit. The active human-readable platform
-version is **Build 003**.
+Beta is a number ahead while Build 004 is verified. That is the normal state
+during testing, not a discrepancy.
 
 ---
 
@@ -68,6 +68,47 @@ trustworthy.
 ---
 
 ## Build log
+
+### Build 004 — Client workrooms
+
+**On beta, awaiting verification.** Production stays on Build 003 until it is
+approved.
+
+Phase 4, and the first client-facing build. Each project can now have one
+private space the client is invited into. Nothing about the public site
+changed, and nothing about Studio changed except gaining a way to run these.
+
+- **A Workroom is not the Project.** It has its own client-facing title and
+  summary, written for the client, and `projects.description` and every `notes`
+  field stay where they were written. Nothing reaches a client surface except
+  through one named projection.
+- **A client is never a row in `user`.** Clients have their own Better Auth
+  instance: separate tables, cookie name, secret and API path. A client session
+  cannot satisfy a Studio guard, a Studio session cannot open a Workroom, and
+  holding both at once confuses neither.
+- **Access is explicit, per person, per Workroom.** Being a contact at the
+  client grants nothing. Revoking is immediate, because membership is read on
+  every request rather than trusted from a session, and it never signs anybody
+  out of their other Workrooms.
+- **Invitations are single-use, expiring, revocable and resendable**, stored as
+  a digest, at most one open per person per Workroom. A `GET` never consumes
+  one — mail scanners open links before people do — so the link renders a page
+  and a `POST` accepts. Acceptance is one transaction and the session is issued
+  only after it commits, by Better Auth's own primitives.
+- **The URL is an opaque 26-character identifier**, not the row's UUIDv7, whose
+  first bits are the moment the work began. It is unguessable, and it is not
+  authorization: every read behind it checks membership server-side.
+- **Activity arrived as its own table**, five values from a fixed vocabulary and
+  two short labels, with no `metadata` column at all — there is nowhere for an
+  internal note to be pasted. Audit records the same business events with the
+  actor and the field names; neither reads the other.
+- **Audit learned who a client is**, by a second actor column rather than by
+  pretending a client is a staff row.
+- Rate limiting moved to Better Auth's database-backed limiter for **both**
+  instances, in separate tables, which closes an item open since Build 002.
+- Fixed in Build 002's own code while building this: a mail **delivery** failure
+  threw, turning a real address into a 500 and an unknown one into a 200 — an
+  enumeration oracle in the endpoint most carefully written not to be one.
 
 ### Build 003 — Business core
 

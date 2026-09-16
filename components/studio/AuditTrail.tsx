@@ -36,6 +36,21 @@ const ACTIONS: Record<string, string> = {
   "project_contact.attached": "Added to a project",
   "project_contact.updated": "Relationship edited",
   "project_contact.detached": "Removed from a project",
+  "workroom.created": "Workroom created",
+  "workroom.updated": "Workroom edited",
+  "workroom.published": "Workroom published",
+  "workroom.unpublished": "Workroom unpublished",
+  "workroom.archived": "Workroom archived",
+  "workroom.restored": "Workroom restored",
+  "workroom_invitation.created": "Invitation sent",
+  "workroom_invitation.resent": "Invitation resent",
+  "workroom_invitation.revoked": "Invitation revoked",
+  "workroom_invitation.accepted": "Invitation accepted",
+  "workroom_member.granted": "Access given",
+  "workroom_member.revoked": "Access taken away",
+  "client_identity.created": "Client sign-in created",
+  "client_identity.disabled": "Client sign-in switched off",
+  "client_identity.enabled": "Client sign-in switched on",
 };
 
 export function describeAction(action: string): string {
@@ -74,7 +89,13 @@ export default function AuditTrail({
           <span className={styles.rowSecondary}>
             {showEntity ? (event.entityLabel ?? "—") : (detail(event) ?? "")}
           </span>
-          <span className={styles.rowMeta}>{event.actorName ?? "Someone since removed"}</span>
+          <span className={styles.rowMeta}>
+            {event.actorName ?? "Someone since removed"}
+            {/* Who it was is half the record; which side of the company they
+                were on is the other half, and the two identity systems are
+                deliberately different tables. */}
+            {event.actorKind === "client_user" ? <span className={styles.tag}> Client</span> : null}
+          </span>
           <Moment className={styles.rowMeta} iso={event.occurredAt.toISOString()} />
         </li>
       ))}

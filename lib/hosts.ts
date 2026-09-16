@@ -18,6 +18,9 @@ export type HostKind = "studio" | "public" | "internal";
 
 export const STUDIO_PREFIX = "/studio";
 
+/** Where a client's private space lives, on the public and client host. */
+export const WORKROOM_PREFIX = "/workrooms";
+
 function hostname(host: string | null): string {
   if (!host) return "";
   // Strip the port; Host carries it on localhost and in some proxies.

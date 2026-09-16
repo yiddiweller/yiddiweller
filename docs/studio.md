@@ -21,6 +21,8 @@ question goes back to Yiddi Weller rather than being settled in code.
 | Contacts | `/studio/contacts`, `/studio/contacts/[id]` | All staff. Archive and restore: Owner only. |
 | Leads | `/studio/leads`, `/studio/leads/[id]` | All staff. Archive and restore: Owner only. |
 | Projects | `/studio/projects`, `/studio/projects/[id]` | All staff. Archive and restore: Owner only. |
+| Workrooms | `/studio/workrooms`, `/studio/workrooms/[id]` | All staff. Archive and restore: Owner only. |
+| Client preview | `/studio/workrooms/[id]/preview` | All staff. The client's view, rendered through the client's own projection. |
 | Search | `/studio/search` | Any active staff member. |
 | Team | `/studio/team` | Roster: all staff. Invitations and deactivation: Owner only. |
 | Audit | `/studio/audit` | **Owner only.** A Member receives a genuine 404. |
@@ -459,9 +461,11 @@ own data. Ordered by what it would actually cost to be wrong.
    the `version` triggers, the migration ledger and an application boot against
    the restored copy — see [`restore-rehearsal.md`](./restore-rehearsal.md),
    which lists them.
-4. **Rate limiting is in memory.** Better Auth's default store, so the counters
-   reset on every deploy and do not span instances. Correct enough for one
-   instance; it needs a shared store before Studio runs on more than one.
+4. ~~**Rate limiting is in memory.**~~ **Closed in Build 004.** Both auth
+   instances now use Better Auth's database-backed limiter, each in its own
+   table — `auth_rate_limits` and `client_rate_limits`. The counters survive a
+   deploy and would survive a second instance. Separate tables because both
+   expose `/sign-in/magic-link` and the limiter keys by path and address.
 5. **`npm run audit` still reports four moderate findings** that the runtime
    image does not carry, because the Dockerfile prunes the package they come
    from. Re-check when Better Auth stops asking for `drizzle-kit` as an
@@ -473,6 +477,20 @@ Two defects found during Build 003 hardening are fixed and held by tests: a
 record's name travelling in the response that refused the request, and a
 double-press on an inquiry creating one lead but two people. Neither reached
 production.
+
+Build 004 found a third, in Build 002's own code: a mail **delivery** failure
+threw, which turned a real address into a 500 and an unknown one into a 200 —
+an enumeration oracle in the one endpoint most carefully written not to be one.
+Both instances now log the failure and answer identically.
+
+### Clients are not staff, and the separation is structural
+
+Build 004 put people outside the company behind their own Better Auth instance:
+separate tables, cookie, secret and API path. A client session cannot satisfy
+`requireStaff`, a Studio session cannot open a Workroom, and holding both at
+once confuses neither. Signing out of one leaves the other alone. See
+[`client-auth.md`](./client-auth.md), and `tests/workroom-isolation.test.ts`,
+which asserts all four against a running deployment.
 
 ---
 

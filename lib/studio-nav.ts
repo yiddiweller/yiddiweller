@@ -28,6 +28,10 @@ export const STUDIO_NAV: StudioNavGroup[] = [
     ],
   },
   {
+    label: "Delivery",
+    items: [{ href: "/studio/workrooms", label: "Workrooms" }],
+  },
+  {
     label: "Studio",
     items: [
       { href: "/studio/search", label: "Search" },

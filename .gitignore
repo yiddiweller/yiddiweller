@@ -41,3 +41,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# scratch scripts written while investigating something, which have to live in
+# the repository to import from `lib/` and must never be committed with it. One
+# reached 787163e before this line existed.
+/scripts/tmp/

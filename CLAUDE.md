@@ -32,9 +32,10 @@ that has not been on `beta` first, and never leave `beta` behind `main`.
 ## Platform state — settled, do not re-litigate
 
 **Phases 1, 2, 3 and 4 are complete and verified in production**, released as
-**Build 001**, **Build 002**, **Build 003** and **Build 004**. Build 005 has not
-begun. These are facts about the running system, not proposals. Changing any of
-them is a deliberate decision, not a cleanup.
+**Build 001**, **Build 002**, **Build 003** and **Build 004**. **Build 005's
+architecture is locked in `docs/delivery.md` and no Build 005 code exists.**
+These are facts about the running system, not proposals. Changing any of them is
+a deliberate decision, not a cleanup.
 
 - **PostgreSQL is the system of record for contact inquiries.** Email is a
   notification, not the record. An inquiry is persisted before it is emailed.
@@ -93,6 +94,25 @@ them is a deliberate decision, not a cleanup.
   `docs/activity.md`.
 - **Workroom access is explicit, per person, per Workroom.** Being a Contact at
   the Client grants nothing, and revocation takes effect on the next request.
+  There are **no member roles**: any active member may review and approve.
+- **Client-facing routes are nested under `/workrooms/...`, never at the root.**
+  The blueprint once reserved `/files/...` and `/approve/...` as root
+  namespaces; that is revised. `middleware.ts` scopes the private cache headers
+  to `/workrooms/:path*` and `robots.txt` disallows that one prefix, so a second
+  private namespace would fall outside both silently. Still no new subdomain,
+  and **never `files.yiddiweller.com`**.
+- **Build 005 delivery objects attach to `workrooms.id`, never to a Project**,
+  and every child table carries `workroom_id` inside a **composite foreign key**
+  so PostgreSQL itself refuses a cross-Workroom reference. The model is
+  `docs/delivery.md`.
+- **An approval names a Presentation Revision, never a Presentation.** Revisions
+  and their items are immutable; a terminal approval refuses UPDATE, DELETE and
+  TRUNCATE. A new decision about changed work requires a new Revision.
+- **File bytes live in Cloudflare R2, never in PostgreSQL and never on a Railway
+  volume** — a volume sits outside the database backup story, so a restore would
+  return every file's metadata and none of its bytes. Uploads land in
+  `pending/`, are verified by an authenticated HEAD, then **server-side copied**
+  to a permanent key that is never a presigned upload target.
 - **Studio is live at `studio.yiddiweller.com`**, invite-only, magic-link
   sign-in, Owner and Member roles. The same application serves both worlds and
   tells them apart by `Host`: production has `STUDIO_HOST=studio.yiddiweller.com`

@@ -165,43 +165,41 @@ cookie lands where the sign-in link does. It took no code change. Recorded in
 
 ---
 
-## Reserved slugs
+## Reserved slugs — superseded, and kept as the reasoning
 
-Client workrooms will live at `yiddiweller.com/<slug>`, for example
-`yiddiweller.com/avio`. A root-level dynamic segment resolves *after* static
-routes in Next.js, so `/contact` already wins over `/[slug]`. Relying on that
-implicitly is fragile: a client slug matching a future route would silently
-shadow it, and the collision would appear only when that route was added.
+**This section described a design that was not built. It is kept because the
+argument it records is the argument that chose the design we did build.**
 
-**Rule: a client slug is validated against a reserved list at creation time, and
-the workroom route checks the list before lookup.** Two independent guards, so a
-slug created by some future admin path cannot bypass the routing one.
+The plan was: client workrooms at `yiddiweller.com/<slug>`, for example
+`yiddiweller.com/avio`, defended by a reserved list validated at creation time
+and re-checked by the workroom route — two independent guards, so a slug created
+by some future admin path could not bypass the routing one. The reserved list
+was to become a database table "when workrooms are built". The second row of it
+held the client-facing namespaces the blueprint reserved at the root:
+`/pay/...`, `/invoice/...`, `/files/...`, `/approve/...`.
 
-Reserved at minimum:
+The section closed with an alternative:
 
-```
-api  work  contact  studio  admin  dashboard  login  logout  auth
-account  settings  privacy  terms  sitemap.xml  robots.txt
-manifest.webmanifest  favicon.ico  opengraph-image.png  _next  .well-known
+> **The alternative, honestly.** A prefix such as `/c/avio` removes the
+> collision risk entirely at the cost of a less elegant URL.
 
-pay  invoice  invoices  files  approve  approval
-```
+**Build 004 took the alternative.** Workrooms live at
+`/workrooms/{26-char opaque id}`. Build 005 makes that the locked design and
+extends it: delivery routes nest beneath the Workroom that authorizes them, and
+there are no root `/files/...` or `/approve/...` routes. The reasoning, and the
+three technical arguments that had accumulated behind the prefix by then, are in
+[`blueprint.md`](./blueprint.md) and [`delivery.md`](./delivery.md).
 
-The second row is the client-facing namespaces the blueprint reserves at the
-root: `/pay/...`, `/invoice/...`, `/files/...`, `/approve/...`. They are not
-built yet, and they are reserved now precisely because a client slug claimed
-before they exist would silently shadow them later.
+**Therefore:**
 
-Plus a buffer of plausible future pages: `about`, `services`, `journal`,
-`press`, `careers`, `clients`, `projects`, `blog`, `search`.
-
-The list becomes a database table when workrooms are built, not a constant, so
-it can grow without a deploy. No table is needed yet.
-
-**The alternative, honestly.** A prefix such as `/c/avio` removes the collision
-risk entirely at the cost of a less elegant URL. The bare slug was chosen
-deliberately; it buys a permanent discipline. A workroom link sent to a client
-lives in their inbox forever, so this is expensive to change later.
+- **No reserved-slug table exists and none is needed.** It protected a bare-slug
+  address. There is no bare-slug address.
+- **No root namespace is reserved for a client-facing route.** A future one —
+  `/pay`, `/invoice` — is decided when Build 006 plans it, with the presumption
+  that it is prefixed too.
+- **The collision risk this section existed to manage is gone**, not managed.
+  That is the difference worth noticing: the guard was not removed, the thing it
+  guarded was.
 
 ---
 
@@ -217,11 +215,28 @@ unbuilt, and this table is why it will not collide with either.
 | Purpose | Human-readable timeline | Accountability record |
 | Shown to | Team, and sometimes the client | Nobody, in normal use |
 | Mutable | Can be filtered, softened, hidden | Never edited or deleted |
-| Examples | `presentation.viewed`, `approval.submitted`, `invoice.opened` | `auth.login_failed`, `permission.granted`, `workroom.pin_failed` |
+| Examples | `presentation.published`, `approval.decided`, `review.received` | `auth.login_failed`, `approval.granted`, `client_identity.disabled` |
 | Retention | Product decision | Compliance decision |
 
 Conflating them produces either a feed full of security noise or an audit trail
 that can be edited. Event names are `noun.verb_past_tense`.
+
+**The examples above were replaced with the real vocabulary** once Builds 004
+and 005 defined one. They previously read `presentation.viewed`,
+`approval.submitted`, `invoice.opened` and `workroom.pin_failed` — illustrations
+written before either table existed. Two of them are worth a note rather than a
+silent swap:
+
+- **`presentation.viewed` is deliberately not built**, in either table. Activity
+  is the *client's* timeline, so a row recording that they opened something
+  shows them a log of their own reading — surveillance, in a product whose
+  principle is *personal everywhere*. See [`delivery.md`](./delivery.md).
+- **`workroom.pin_failed` describes a mechanism that never shipped.** Client
+  access is an authenticated identity, not a PIN. The *attribution* rule below
+  survives it intact and is enforced by a CHECK constraint.
+
+The live vocabularies are in [`activity.md`](./activity.md) and
+[`audit.md`](./audit.md), and neither page may invent a value outside them.
 
 **Attribution rule.** Every event carries an `actor_type`, one of `team_user`,
 `client_user` or `anonymous_session`, with a nullable actor id. A shared PIN

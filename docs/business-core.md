@@ -159,9 +159,22 @@ Work for a Client. Every Project has one — that is the point of a Project.
 Contacts attach through `project_contacts`, with the same shape and the same
 two invariants as Client ↔ Contact: one row per pair, at most one primary.
 
-**No files, presentations, approvals, phases or tasks.** Build 005, and they
-attach to a Project — which is why nothing here is a JSON attachment blob that
-would have to be unpicked.
+**No files, presentations, approvals, phases or tasks.** Build 005 — and the
+reason nothing here is a JSON attachment blob is that they attach as real rows
+with real foreign keys.
+
+**Corrected 2026-09-16:** this sentence used to say they attach *to a Project*.
+It was written before Workrooms existed. They attach to **`workrooms.id`**, the
+client-facing container Build 004 introduced, because that is the authorization
+boundary: hanging a client-visible file off an internal Project record would put
+that record in the middle of every client read and add a hop to the chain for
+nothing. [`blueprint.md`](./blueprint.md) and [`workrooms.md`](./workrooms.md)
+already said `workrooms.id`; this file was the outlier. The model is
+[`delivery.md`](./delivery.md).
+
+A Project still reaches them, one join away through its Workroom — which is the
+same relationship the Workroom itself has to the Client, and for the same
+reason.
 
 ---
 
@@ -343,6 +356,7 @@ written.
 | **A Client relationship ends** | `status: inactive` while work finishes; archive once nothing is live. |
 | **A staff member is deactivated** | Their Leads and Projects keep `owner_id` — history stays readable. Their Studio access ends immediately, as in Build 002. Reassignment is an ordinary edit. |
 | **Build 004 workrooms** | Attach to `projects.id` and `clients.id`, both stable UUIDs. No migration gymnastics. |
+| **Build 005 delivery** | Files, presentations, reviews and approvals attach to `workrooms.id`, not to a Project. A Workroom is the authorization boundary; a Project is the internal record. See [`delivery.md`](./delivery.md). |
 | **Build 006 money** | Invoices reference `clients.id` and `projects.id`. Nothing financial is squatting in those rows now. |
 | **Build 007 communications** | Messages reference `contacts.id`, and a Contact is already one canonical person rather than a copy inside each Client. |
 

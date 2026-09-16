@@ -67,9 +67,36 @@ Build 004 writes five kinds:
 | `workroom.access_ended` | *Sam Fox's access ended* | A membership is revoked. |
 | `project.status_changed` | *Status changed to Active* | A Project with a live Workroom changes status. |
 
-Build 005 adds file, presentation, review and approval events. Build 007 may add
-communication events. None of them is written now, and there is no placeholder
-for them.
+Build 005 adds seven, specified in [`delivery.md`](./delivery.md) and **not
+written until Build 005 is built** — there is no placeholder for them:
+
+| `kind` | Reads as |
+| --- | --- |
+| `file.shared` | *Brand guidelines was shared* |
+| `presentation.published` | *Identity concepts is ready* |
+| `presentation.revised` | *Identity concepts was updated* |
+| `review.requested` | *Your thoughts were requested on Identity concepts* |
+| `review.received` | *Ana Alder sent feedback* |
+| `approval.requested` | *Approval was requested for Identity concepts* |
+| `approval.decided` | *Ana Alder approved Identity concepts* |
+
+`subject` carries a File's `display_name` or a Presentation's `title` — both
+already client-facing fields, never internal ones. **`approval.decided` is one
+kind, not two**: the verb comes from the approval record, and a decline is not a
+separate species of event.
+
+**`presentation.viewed` is deliberately absent.** `architecture.md` once gave it
+as an example of business activity. It is not built, here or in `audit_events`:
+this table is the *client's* timeline, so a row saying they opened something
+shows a client a log of their own reading. That is surveillance in a product
+whose principle is *personal everywhere*, and the decision is recorded so nobody
+later reads the old example as an intention.
+
+**Twenty files shared at once is twenty rows.** Collapse consecutive same-kind
+events **in the reader** — *"6 files were shared"* — while the table keeps one
+row per file and stays honest. Collapse in the projection, never in the table.
+
+Build 007 may add communication events.
 
 **`project.status_changed` carries the status and nothing else.** Not who inside
 the studio changed it, not why, not the note they wrote next to it. The internal

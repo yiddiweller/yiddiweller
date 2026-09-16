@@ -61,21 +61,51 @@ before the DNS record exists.
 
 ## Client URL namespaces
 
-Client-facing routes live at the root of `yiddiweller.com`:
+Client-facing routes live under `yiddiweller.com`, on **one prefixed
+namespace**:
 
 ```
-/avio            a client workroom
-/pay/...         a payment flow
-/invoice/...     an invoice
-/files/...       a file
-/approve/...     an approval
+/workrooms/{opaque id}                       a client workroom
+/workrooms/{opaque id}/files                 its files
+/workrooms/{opaque id}/files/{id}/download   one file
+/workrooms/{opaque id}/presentations/{id}    a presentation, review, approval
 ```
 
-A workroom at a bare slug is the point: it should feel like a private room built
-for that client. The cost is a permanent reserved-slug discipline, because a
-client slug must never be able to shadow a real application route. See
-[`architecture.md`](./architecture.md) for the list and the two guards that
-enforce it.
+**Revised 2026-09-16, and this replaces an earlier locked design.** This
+document previously specified a workroom at a bare slug — `/avio` — with
+`/pay/...`, `/invoice/...`, `/files/...` and `/approve/...` reserved as
+sibling namespaces at the root, defended by a reserved-slug table.
+
+Build 004 shipped `/workrooms/{26-char opaque id}` instead, which is the option
+[`architecture.md`](./architecture.md) described as *"The alternative,
+honestly."* The blueprint was not revised at the time, so a locked document and
+production disagreed for an entire build. Build 005 settles it in favour of what
+production does, because three technical reasons had already accumulated behind
+it:
+
+- `middleware.ts` scopes `Cache-Control: private, no-store` and
+  `Referrer-Policy: same-origin` to `/workrooms/:path*`. A sibling root
+  namespace falls outside that silently — private bytes, no cache header, and
+  nothing failing loudly.
+- `robots.txt` disallows `/workrooms`. A second private namespace needs its own
+  line, and that line was wrong for two builds before it was caught.
+- Every authorization guard would need a second entry point. Two doors into one
+  room is how the second door gets forgotten.
+
+**Consequences, all locked:**
+
+- **Delivery objects are reached beneath the Workroom that authorizes them.**
+  There are no root `/files/...` or `/approve/...` routes, and Build 005 does
+  not build any. `/pay/...` and `/invoice/...` are re-decided when Build 006
+  plans them; the presumption is now that they are prefixed too.
+- **The reserved-slug table is not built and is not needed.** It existed to
+  protect a bare-slug address. The prefix removes the collision risk entirely,
+  which was the original argument for the alternative.
+- **The opaque identifier stays.** No project name, client name or timestamp in
+  a client-facing URL, and the identifier is never authorization. See
+  [`workrooms.md`](./workrooms.md).
+- **Still no new subdomain, for any of it.** The forbidden list below is
+  unchanged and `files.` is on it.
 
 ### Access levels
 
@@ -88,6 +118,18 @@ enforce it.
 **A shared PIN is never equivalent to verified identity.** Activity from a PIN
 session is attributed to the workroom, never to a named person. The data model
 must make overclaiming impossible rather than merely discouraged.
+
+**Levels 1 and 2 are roads not taken.** Build 004 went straight to Level 3:
+every client reaches a Workroom through a named, authenticated client identity,
+invite-only, with per-person membership checked on every request. There is no
+unique-link mode and no PIN mode anywhere in the product, and Build 005 does not
+add one — a delivery object is reached by a person, not by whoever holds a URL.
+References to PIN sessions elsewhere (`architecture.md`'s `workroom.pin_failed`
+example, the attribution rule above) describe a mechanism that was designed for
+and never built. They are kept because the *attribution* rule they exist to
+state is still correct and still enforced: `audit_events.actor_type` is one of
+`team_user`, `client_user` or `anonymous_session`, and a CHECK constraint refuses
+a row claiming more than is known.
 
 ---
 
@@ -199,7 +241,7 @@ sequence and is kept because it is what earlier documents cite.
 | 002 | Studio foundation, authentication, and the permanent Studio design system | **In production, verified** |
 | 003 | Business core: clients, contacts, leads, projects | **In production, verified** |
 | 004 | Client workrooms: private client collaboration and controlled access | **In production, verified** |
-| 005 | Files, presentations, reviews and approvals | Not begun |
+| 005 | Files, presentations, reviews and approvals | **Architecture locked**, not begun — [`delivery.md`](./delivery.md) |
 | 006 | Money: estimates, invoices, payment requests, the public pay flow | |
 | 007 | Communications: conversation, Studio inbox, notifications | |
 | 008 | Reports, analytics and useful automation | |
@@ -225,7 +267,9 @@ The files dependency is now settled. **Build 004 delivered the complete
 container and no file storage**, deliberately: a Workroom is useful without
 files because it answers what the project is, where it has got to, who is
 involved and what has happened — and an empty Files tab would have been worse
-than no tab. Build 005 fills it, attaching to `workrooms.id`.
+than no tab. Build 005 fills it, attaching to `workrooms.id` — the model is
+[`delivery.md`](./delivery.md), and file bytes live in Cloudflare R2 rather than
+anywhere Railway can lose them.
 
 ### What Build 003 locked for everything after it
 
@@ -267,7 +311,7 @@ These are settled by running code holding real data, not by preference. Build
 | 2 | Studio foundation, authentication, Studio design system | **Complete — production verified**, released as **Build 002** |
 | 3 | Clients, contacts, leads, projects | **Complete — production verified**, released as **Build 003** |
 | 4 | Workrooms and private client access | **Complete — production verified**, released as **Build 004** |
-| 5 | Files, presentations, approvals | Not begun |
+| 5 | Files, presentations, reviews and approvals | **Architecture locked**, not begun — [`delivery.md`](./delivery.md) |
 | 6 | Conversation hub, Studio inbox, email | |
 | 7 | Invoices and payments | |
 | 8 | Activity, notifications, automation | |

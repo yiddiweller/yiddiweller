@@ -1,0 +1,915 @@
+# Delivery
+
+Files, Presentations, Reviews and Approvals — the four things Build 005 puts
+**inside** the Workroom that Build 004 built.
+
+Written before the schema, and reviewed against the situations at the end of
+this file before a migration is generated. That order is not ceremony: it is why
+Build 004's migration needed no corrections. Where a rule here is marked
+**invariant**, PostgreSQL enforces it and no application path can reach around
+it.
+
+The container is in [`workrooms.md`](./workrooms.md); client identity and
+sessions in [`client-auth.md`](./client-auth.md); the client-facing timeline in
+[`activity.md`](./activity.md); the internal record in [`audit.md`](./audit.md);
+the business records underneath in [`business-core.md`](./business-core.md).
+
+> **Quiet outside. Powerful inside. Personal everywhere.**
+
+---
+
+## The rule everything else follows
+
+```
+An approval names a Revision, never a Presentation.
+```
+
+A Presentation is a thing the studio keeps working on. A Revision is what one
+person saw at one moment. Attaching a client's decision to the mutable object is
+how "approved" quietly comes to mean something nobody agreed to — and in this
+product the approval **is** the business record, not a UI state.
+
+Everything below is downstream of that sentence.
+
+---
+
+## The model
+
+```
+Client ──▶ Project ──▶ Workroom ──▶ Membership ──▶ Contact ──▶ Client identity
+                          │
+                          ├──▶ Files                       flat. no folders.
+                          │      pending → ready
+                          │      visibility: internal | shared
+                          │      supersedes ──▶ an earlier File
+                          │
+                          └──▶ Presentations               mutable draft
+                                 │
+                                 └──▶ Revisions            IMMUTABLE
+                                        ├──▶ Revision items  IMMUTABLE, ordered
+                                        │      kind=file ──▶ File
+                                        ├──▶ Reviews         feedback
+                                        └──▶ Approvals       decision
+```
+
+**Delivery objects attach to `workrooms.id`, not to `projects.id`.** The
+Workroom is the client-facing container and the authorization boundary; a
+Project is the internal record of the work. Hanging a client-visible file off a
+Project would put an internal record in the middle of every client read and add
+a hop to the authorization chain for nothing. `business-core.md` carried an
+older sentence saying these attach to a Project; it was written before Workrooms
+existed and is corrected there.
+
+**No member roles.** `workrooms.md` left this open — *"Reviewer, Approver and
+the rest are Build 005's problem, if Build 005 actually needs them."* It does
+not. Any active member may review and approve; who did it is recorded on the
+record. A permissions system for client teams of three people is machinery
+serving nobody. Revisit when a client asks, not before.
+
+---
+
+## Routing — decided, and the blueprint is corrected to match
+
+**Client delivery routes are nested under `/workrooms/...`. There are no root
+`/files/...` or `/approve/...` routes, and there is no new subdomain.**
+
+```
+/workrooms/{roomPublicId}                                 overview
+/workrooms/{roomPublicId}/files                           shared files
+/workrooms/{roomPublicId}/files/{filePublicId}/download   302 → presigned GET
+/workrooms/{roomPublicId}/presentations                   list
+/workrooms/{roomPublicId}/presentations/{pubId}           one, latest revision
+```
+
+`blueprint.md` reserved `/files/...` and `/approve/...` as **root** namespaces on
+`yiddiweller.com`, alongside a bare-slug workroom address (`/avio`). Build 004
+did not build that: workrooms shipped at `/workrooms/{26-char opaque id}`, which
+is the option `architecture.md` itself described as *"The alternative,
+honestly."* The blueprint was never revised to record it, so a locked document
+and production disagreed for a whole build. That is now corrected in
+`blueprint.md` and `architecture.md` rather than left for the next reader to
+trip over.
+
+Three reasons nesting is right, none of them aesthetic:
+
+1. **`middleware.ts` scopes `Cache-Control: private, no-store` and
+   `Referrer-Policy: same-origin` to `/workrooms/:path*`.** A root `/files/`
+   route falls outside that silently — private bytes with no cache header and
+   nothing failing loudly.
+2. **`robots.txt` disallows `/workrooms`.** A second private namespace needs its
+   own line, and that line was wrong for two builds before it was caught.
+3. **Every guard would need a second entry point.** Two doors into one room is
+   how the second door gets forgotten.
+
+A file is meaningless outside its Workroom's authorization context, so its
+address says so.
+
+**The reserved-slug table is not built and is not needed.** `architecture.md`
+said the reserved list *"becomes a database table when workrooms are built"* —
+that was true of the bare-slug design. The `/workrooms/` prefix removes the
+collision risk entirely, which was the whole argument for the alternative.
+
+---
+
+## Storage — Cloudflare R2
+
+**Locked:** private bucket, no public access, separate buckets **and separate
+credentials** for beta and production, **no custom `yiddiweller.com` domain on
+the bucket, and specifically never `files.yiddiweller.com`** — which the
+blueprint's forbidden-subdomain list already names.
+
+That last one is written down because it is the tidy-looking improvement a
+future session will reach for. Presigned URLs live on
+`*.r2.cloudflarestorage.com`. That is Cloudflare's domain, not ours, and it
+stays that way.
+
+| | |
+| --- | --- |
+| Provider | Cloudflare R2, S3-compatible API |
+| Client | `@aws-sdk/client-s3` + `@aws-sdk/s3-request-presigner` |
+| Buckets | `yw-delivery-production`, `yw-delivery-beta` |
+| Credentials | Separate per environment, same reasoning as `BETTER_AUTH_SECRET` |
+| Public access | None. No bucket policy permits anonymous GET |
+| Lifecycle rule | Delete objects under `pending/` after 24 hours |
+
+**Why R2 and not a Railway volume.** A volume attaches to one service in one
+region and is **outside the PostgreSQL backup story**. Production Postgres has
+PITR and a rehearsed restore; a volume would mean a restore brings back every
+file's metadata and none of its bytes — a verified restore that is silently
+broken. `restore-rehearsal.md` exists precisely so that cannot happen.
+
+**Why R2 and not S3.** Zero egress fees, which is the cost shape when clients
+re-download video and large design files. S3-compatible, so the code ports to S3
+or Backblaze by changing an endpoint.
+
+**PostgreSQL stores metadata, relationships, authorization, history and
+integrity values. R2 stores bytes.** A 2 GB video in a `bytea` column bloats
+every backup, every PITR window and every restore rehearsal — and Postgres is
+the one part of this system whose recoverability has been proven.
+
+Environment variables, runtime-only and **never build arguments**:
+`R2_ACCOUNT_ID`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`.
+`scripts/check-env.mjs` reports them.
+
+---
+
+## Files
+
+Flat. **No folders and no collections in Build 005.** A Workroom is one project,
+and the *organised* view of its files is a Presentation — that is what
+Presentations are for. Folders would be a second, competing organisation scheme
+over tens of files. If a Workroom ever genuinely holds hundreds, a flat table
+migrates into a foldered one cleanly; the reverse does not.
+
+| Field | |
+| --- | --- |
+| `public_id` | 26-char Crockford base32, same generator as Workrooms |
+| `display_name` | Client-facing. Editable. What a client sees |
+| `original_filename` | Recorded. **Never shown to a client**, never used to build a key or a URL |
+| `content_type` | Recorded. **Never trusted for rendering** |
+| `byte_size` | Verified against R2, not taken from the browser |
+| `storage_key` | Permanent, immutable, internal |
+| `storage_etag` | R2's own value, read by an authenticated HEAD |
+| `preview_key` | Optional second object; images only |
+| `status` | `pending` → `ready` |
+| `visibility` | `internal` \| `shared` |
+| `supersedes_file_id` | The File this one replaces |
+
+Visibility is two values, not three and not a matrix. A file is either something
+the studio is holding or something the client has been given.
+
+### `original_filename` stays internal
+
+It is where `final_v7_CLIENTNAME_dontsend.pdf` lives. The client sees
+`display_name`, which somebody chose on purpose.
+
+---
+
+## Upload: pending, verify, promote
+
+**No file bytes pass through the Railway/Next server, in either direction.**
+
+### The correction this flow exists to make
+
+An **R2 presigned PUT does not enforce a `content-length-range`.** That
+condition belongs to S3's browser POST **policy**, which is a different
+mechanism, and assuming otherwise would have left the 2 GB ceiling resting on
+the browser's good behaviour. Signing `Content-Length` as a signed header binds
+what the client *declares*; it is defence in depth, not the guarantee.
+
+**The guarantee is an authenticated HEAD after the bytes land.**
+
+```
+1. staff choose a file
+2. browser reports name, declared size, declared type
+3. server validates the DECLARED values, refuses early if obviously wrong
+   → creates a `pending` row
+   → issues upload authorization for   pending/{upload_id}
+4. bytes go browser → R2 directly
+5. browser calls finalize
+6. server performs an AUTHENTICATED HEAD on pending/{upload_id}
+      actual byte_size == declared size ?
+      actual byte_size <= 2 GB ?
+      object exists ?
+   any answer no  →  finalize FAILS, pending object deleted, row stays pending
+7. server-side COPY  pending/{upload_id}  →  w/{workroom}/f/{file}
+8. server DELETES the pending object
+9. row records verified byte_size and storage_etag, becomes `ready`
+```
+
+Nothing is `ready` until step 9. A row that never gets there is an abandoned
+upload and is the one thing in Build 005 that may be **hard-deleted** (§Archive).
+
+### Why pending and permanent are different keys — invariant
+
+**An upload never writes to the permanent key.** If the presigned URL pointed at
+`w/{workroom}/f/{file}`, then that URL — which lived in a browser, in a network
+log, possibly in a crash report — could overwrite the permanent object for as
+long as it stayed valid. A File referenced by a decided Revision would be
+mutable through a stale link.
+
+So uploads land in `pending/{upload_id}`, and the permanent object is created by
+a **server-side copy** the browser never has a URL for. The permanent key is
+never the target of any presigned upload, ever, and is therefore not writable by
+anything outside our own credentials.
+
+Only `pending/` carries the 24-hour lifecycle rule. Nothing under `w/` is ever
+expired by a bucket policy.
+
+### Keys
+
+```
+pending/{upload_id}                 transient, lifecycle-expired at 24h
+w/{workroom_id}/f/{file_id}         permanent, immutable, never overwritten
+w/{workroom_id}/f/{file_id}/preview optional image preview
+```
+
+Server-generated throughout. No caller-supplied string reaches a key, so path
+traversal is not defended against — it is structurally impossible.
+
+### Multipart
+
+**Threshold: 100 MB. Part size: 16 MiB.**
+
+Above 100 MB the browser uses S3 multipart upload against `pending/{upload_id}`:
+`CreateMultipartUpload` server-side, a presigned `UploadPart` URL per part,
+`CompleteMultipartUpload` server-side. Below it, one presigned PUT.
+
+16 MiB parts put a 2 GB file at 128 parts — far under the 10,000-part limit,
+with a failed part costing at most 16 MiB of re-upload. One enormous PUT of a
+2 GB file has no resume: a dropped connection at 94% starts again, which is the
+difference between a studio that ships video and one that gives up and uses
+WeTransfer.
+
+`storage_etag` for a multipart object is not an MD5 of the content — it is
+`{md5-of-part-md5s}-{n}`. It is treated as **an opaque integrity value from
+R2**, compared only against itself, never computed or interpreted by us.
+
+### Why there is no browser-computed SHA-256
+
+It was considered and rejected. The browser could hash during upload and report
+it, but we cannot verify that claim without streaming the bytes through our own
+server — the one thing this design exists to avoid. It would detect corruption
+and not tampering, and the uploader is trusted staff, so the threat it defends
+against is not in the model. The verified `byte_size` plus R2's `storage_etag`,
+both read by our own authenticated HEAD, are facts rather than claims.
+
+### Image previews — included, browser-only
+
+**Locked:** previews are generated **in the browser**, for image formats the
+browser can safely decode, and stored as a **separate private object**.
+
+- **No server-side image processing.** No `sharp`, no transform service.
+- **No PDF rasterization. No video transcoding.**
+- **Unsupported originals remain download-only** — a typed, sized row.
+- **SVG is never decoded for a preview and never rendered inline.** An SVG
+  served from our origin is stored XSS.
+
+Without this, a phone opening a Workroom downloads a 40 MB original to look at a
+thumbnail. With it, one canvas call and roughly 80 KB. The preview is a
+convenience, never the artefact: every download serves the original bytes.
+
+---
+
+## Presentations
+
+A Presentation is **a deliberate delivery moment** — the studio saying *here is
+what we have made, please look at it*. Not a slideshow builder, not a folder.
+
+Lifecycle mirrors the Workroom's, which staff already know, plus one thing
+Workrooms do not need: **publishing writes a Revision.**
+
+| | |
+| --- | --- |
+| `title` | Client-facing |
+| `intro` | Optional client-safe paragraph; the role `workrooms.summary` plays |
+| `status` | `draft` \| `published` \| `unpublished` |
+| `current_revision_id` | The Revision a client sees now |
+| `version`, `archived_at` | As every editable business record |
+
+**Draft items** are mutable and invisible to clients. Two kinds only: a **file**
+reference and a **note** (a caption or short section heading). A presentation of
+design work is files with words between them.
+
+**Publishing is deliberate**, exactly as it is for a Workroom. Creating one
+exposes nothing.
+
+**Staff preview** renders through the *same* `toClientPresentationView`
+projection the client page uses, so the preview cannot drift from the thing it
+previews. It issues no client session — staff authority is staff authority, and
+there is no "sign in as this client" anywhere in this product.
+
+---
+
+## Revisions — immutable
+
+Publishing freezes the presentation's current contents into a Revision.
+
+```
+presentation_revisions        revision_number 1, 2, 3 …
+        ├── snapshot          jsonb: the frozen client-safe projection
+        ├── content_hash      sha256 over the canonical snapshot
+        └── presentation_revision_items   ← ordered, relational, immutable
+```
+
+**Both tables are immutable. PostgreSQL refuses `UPDATE` and `DELETE` on both**,
+by trigger, in the manner `audit_events` has been protected since Build 003.
+Immutability that only the application believes in is not immutability.
+
+### Why relational items exist, and a snapshot alone does not
+
+A JSON snapshot can show what somebody was looking at. It cannot:
+
+- carry a **foreign key**, so nothing stops the File it names being deleted
+- support an **archive guard** — "is this File referenced by a decided
+  Revision?" is a query, not a JSON scan
+- give a **Review** a real target to point at
+- **prove which physical file** belonged to a decision
+
+So `presentation_revision_items` is the record of what a Revision contained:
+`workroom_id`, `presentation_revision_id`, `position`, `kind`, `file_id` when
+`kind = 'file'`, and the **snapshots of what the client was shown** —
+`display_name_snapshot`, `caption`, `body`. Snapshots, because renaming a File
+afterwards must not silently rewrite what a decided Revision says.
+
+The `snapshot` JSONB stays, as the canonical frozen rendering — the exact bytes
+of the client-safe projection at that moment, so "what were they shown" needs no
+reconstruction. **Relational items are the integrity record; the snapshot is the
+frozen view.** Both, not either.
+
+### The snapshot's one weakness, named
+
+`workroom_activity` guarantees structurally that no internal note can be pasted
+into it: there is no column to paste one into. A JSONB snapshot cannot make that
+promise. So it is held two ways instead, and this is written down rather than
+glossed:
+
+1. The snapshot is written **only** by serialising the return value of
+   `toClientPresentationView`. Never assembled by hand, never from an ORM row.
+2. A test asserts that no marker seeded into any internal field ever appears in
+   any revision row.
+
+That is one level weaker than a structural guarantee and it should be read as
+such.
+
+---
+
+## Reviews
+
+**Request → response → resolution. No threads.**
+
+A Review attaches to a **Revision**, optionally narrowing to one **revision
+item** within it.
+
+| `status` | |
+| --- | --- |
+| `requested` | Staff asked. A client cannot open one unprompted in Build 005 |
+| `responded` | The client wrote back, once |
+| `resolved` | The studio recorded what it did about it |
+| `withdrawn` | Staff took the request back before an answer |
+
+### The tradeoff, argued rather than asserted
+
+Threaded replies are what a client will occasionally want, and what will
+reliably become chat. Once there are threads there are unread counts, then
+notifications, then mentions, then attachments inside replies — and the studio
+has built a worse Slack inside its delivery tool. `blueprint.md` places
+Communications at Build 007 for a reason.
+
+The cost is real: a client with two separate thoughts gets one field. The
+argument for accepting it is that the studio's answer is to make the change and
+publish Revision 2 with a fresh review request. The conversation moves the
+deliverable forward instead of sprawling underneath it, and anything needing
+genuine discussion happens on a call — where it already happens — with the
+*outcome* landing in the resolution note.
+
+Adding `review_notes` later is additive. Starting with threads and removing them
+is not.
+
+**Reviews block nothing.** A Revision can be approved with an open review, or
+reviewed and never approved. Two different acts, two independent records.
+
+---
+
+## Approvals
+
+A **business decision**, recorded once and never edited. Not a status field on a
+Presentation, and not an audit event.
+
+It answers, by construction:
+
+| Question | Answered by |
+| --- | --- |
+| What was approved? | `presentation_revision_id` |
+| Which exact version? | The Revision **is** the version |
+| Which physical files? | `presentation_revision_items.file_id` |
+| Who? | `decided_by_identity_id` + `decided_by_name` snapshot |
+| When? | `decided_at` |
+| Superseded? | A later Revision of the same Presentation exists |
+| Requested, or spontaneous? | `requested_at` / `requested_by` are nullable |
+| What were they shown? | The Revision's items and snapshot |
+
+**Declining requires a short reason.** `decline_reason` is `NOT NULL` when
+`status = 'declined'`, enforced by CHECK. A decline with no reason is a dead end
+for both sides, and the reason is the most useful sentence in the whole record.
+
+### Transitions — invariant, enforced in PostgreSQL
+
+```
+requested ──▶ granted     terminal
+          ──▶ declined    terminal
+          ──▶ withdrawn   terminal
+```
+
+**Once granted, declined or withdrawn: no UPDATE, no DELETE.** A `BEFORE UPDATE`
+trigger refuses any row whose old status is terminal, and refuses any transition
+that is not one of the three above. A `BEFORE DELETE` trigger refuses outright. A
+statement-level `BEFORE TRUNCATE` trigger refuses that too — the same three-way
+protection `audit_events` carries, for the same reason: business history that can
+be truncated is not history.
+
+**A new decision about changed work requires a new Revision.** There is no path
+that rewrites a terminal one, and that is the point of the whole design.
+
+**Double approval is impossible** — a partial unique index over
+`presentation_revision_id WHERE status IN ('requested','granted','declined')`.
+Two tabs pressing Approve produce one approval and one clean refusal, decided by
+the database rather than by a read both of them passed. The same mechanism as
+`workroom_invitations_one_open_idx`, which has already survived a real race test.
+
+---
+
+## Files are immutable once ready
+
+**A `ready` File is never replaced in place.** Replacement creates a **new File
+row and a new R2 object**; the old row gains nothing and the new one records
+`supersedes_file_id`.
+
+**If any Revision references a File:**
+
+- it cannot be hard-deleted
+- it cannot be archived in a way that breaks that Revision
+- its storage key can never be overwritten
+
+The third is structural (§Upload): the permanent key is never a presigned upload
+target. The first two are guards in the domain layer plus `ON DELETE restrict` on
+`presentation_revision_items.file_id`.
+
+`storage_key`, `storage_etag` and `original_filename` are **never exposed to a
+client**, in any projection, in any response.
+
+---
+
+## A decided Revision stays reachable — invariant
+
+Once a Revision carries a terminal approval decision, it is part of the
+Workroom's business history.
+
+**Staff may:**
+
+- create and publish a newer Revision
+- see the older Revision marked *superseded* by context — computed from the
+  existence of a later Revision, never stored as mutable state on the old row
+
+**Staff may not:**
+
+- mutate the decided Revision or any of its items
+- replace the files it references
+- erase, edit or withdraw the approval
+- unpublish or archive the Presentation in a way that makes the decided
+  Revision disappear
+
+The last one has a precise meaning. **Unpublishing a Presentation that has a
+decided Revision is refused**, naming the decision — the same shape as the
+Build 003 refusal that blocks archiving a Project whose Workroom is open, and
+for the same reason: it would take something away from a client without anyone
+deciding to. Unpublishing before any decision is ordinary and allowed.
+
+**Archiving a Presentation with a decided Revision is refused** for staff, and
+**archiving a Workroom holding one is refused** as well. Archive is the studio
+tidying up; it is not a way to make a signature disappear.
+
+---
+
+## Composite-FK tenancy — invariant
+
+Every delivery object belongs to exactly one Workroom, and PostgreSQL enforces
+the chain rather than trusting that every future code path remembers to.
+
+```
+workroom_files              UNIQUE (workroom_id, id)
+presentations               UNIQUE (workroom_id, id)
+presentation_revisions      UNIQUE (workroom_id, id)
+presentation_revision_items UNIQUE (workroom_id, id)
+
+presentation_items          FK (workroom_id, presentation_id)          →  presentations
+presentation_items          FK (workroom_id, file_id)                  →  workroom_files
+presentation_revisions      FK (workroom_id, presentation_id)          →  presentations
+presentation_revision_items FK (workroom_id, presentation_revision_id) →  presentation_revisions
+presentation_revision_items FK (workroom_id, file_id)                  →  workroom_files
+presentation_reviews        FK (workroom_id, presentation_revision_id) →  presentation_revisions
+presentation_reviews        FK (workroom_id, revision_item_id)         →  presentation_revision_items
+presentation_approvals      FK (workroom_id, presentation_revision_id) →  presentation_revisions
+```
+
+A Revision in Workroom A cannot reference a File in Workroom B. Not "should
+not" — cannot. The insert fails.
+
+### This is not the `client_id` mistake
+
+`workrooms.md` rejects a `client_id` column on `workrooms` because *"it would be
+a second copy of `projects.client_id` that could drift from it."* The word doing
+the work is **drift**.
+
+`workroom_id` on a revision item is also a second copy — but one the composite
+foreign key makes it **impossible** to diverge: a row whose `workroom_id`
+disagrees with its parent's is rejected by PostgreSQL. Redundant-and-
+unconstrained is a liability. Redundant-and-constrained is an invariant. The
+distinction is the whole difference, and it is recorded here so the next reader
+does not mistake one for the other.
+
+---
+
+## Client-safe projections
+
+`lib/workrooms/delivery-view.ts`, following `view.ts` exactly: **whitelists, not
+filters.** No ORM row is ever spread into a client component.
+
+```
+ClientFile          { id, name, kind, size, previewPath?, downloadPath }
+ClientPresentation  { id, title, intro, publishedAt, revision, items[] }
+ClientRevisionItem  { id, kind, caption, body?, file? }
+ClientReview        { id, status, requestedAt, response?, resolution?, resolvedAt? }
+ClientApproval      { id, status, requestedAt, decidedAt?, decidedBy?, declineReason? }
+```
+
+**Deliberately absent, and never fetched on a client request:** `storage_key`,
+`preview_key`, `storage_etag`, `original_filename`, raw `content_type` (a coarse
+`kind` of `image | pdf | video | document | other` instead), raw byte counts
+(formatted server-side), `uploaded_by`, every internal id, every `internal` file,
+every draft Presentation, every draft item, every `notes` field anywhere, every
+`audit_events` row, and every other Workroom's anything.
+
+Adding a field to a client surface means adding it here first, deliberately, in
+review.
+
+---
+
+## Activity vocabulary
+
+Seven additions, keeping the shape exactly: a fixed `kind`, an `actor_label`, a
+`subject` that is one safe label. **There is no `metadata` column and there is
+not going to be one.**
+
+| `kind` | Reads as | Written when |
+| --- | --- | --- |
+| `file.shared` | *Brand guidelines was shared* | A File's visibility becomes `shared` |
+| `presentation.published` | *Identity concepts is ready* | First publication |
+| `presentation.revised` | *Identity concepts was updated* | A later Revision is published |
+| `review.requested` | *Your thoughts were requested on Identity concepts* | Staff request a review |
+| `review.received` | *Ana Alder sent feedback* | A client responds |
+| `approval.requested` | *Approval was requested for Identity concepts* | Staff request approval |
+| `approval.decided` | *Ana Alder approved Identity concepts* | A client grants or declines |
+
+`subject` carries a File's `display_name` or a Presentation's `title` — both
+already client-facing fields, never internal ones.
+
+**`approval.decided` is one kind, not two.** The verb comes from the approval
+record the reader already holds; a decline is not a separate species of event.
+`architecture.md` gave `approval.submitted` as an illustration; "decided"
+describes what the business record now holds rather than which button was
+pressed, and still satisfies `noun.verb_past_tense`.
+
+**`presentation.revised` is separate from `presentation.published`**, because
+"we updated this" and "here is something new" are different messages, and
+collapsing them makes a revision look like a fresh deliverable.
+
+**`presentation.viewed` is not built — not as Activity, not as Audit.** It was
+considered. A studio wants to know whether work was looked at, but
+`workroom_activity` is *the client's* timeline, so such a row shows a client a
+log of their own reading, which reads as surveillance in a product whose
+principle is *personal everywhere*. Not in Build 005, and not by accident.
+
+### Noise
+
+Sharing twenty files at once writes twenty rows into a timeline designed to be
+calm. **Collapse consecutive same-kind events in the reader** — *"6 files were
+shared"* — while the table keeps one row per file and stays honest. Collapse in
+the projection, never in the table.
+
+---
+
+## Audit
+
+Internal, append-only, Owner-readable. Written in the same transaction as the
+business change and the activity row, from the same event, with different
+content.
+
+New entity types: `workroom_file`, `presentation`, `presentation_revision`,
+`presentation_review`, `presentation_approval`.
+
+New actions:
+
+```
+file.uploaded  file.renamed  file.shared  file.unshared  file.replaced
+file.archived  file.restored
+presentation.created  presentation.updated  presentation.published
+presentation.unpublished  presentation.archived  presentation.restored
+review.requested  review.responded  review.resolved  review.withdrawn
+approval.requested  approval.granted  approval.declined  approval.withdrawn
+```
+
+Client-caused actions — `review.responded`, `approval.granted`,
+`approval.declined` — are written with `actor_type = 'client_user'` and
+`client_actor_id` set. The `audit_events_actor_shape_check` makes it
+structurally impossible to file a client under the staff foreign key.
+
+**`metadata` carries field names and ids only, never values.**
+`{ "fields": ["display_name"] }`, `{ "revision": 3 }`. Never a caption, never a
+review body, never a filename, never a storage key, never a decline reason,
+never a presigned URL. `entity_label` carries a name or a title and nothing else.
+
+**Approval history lives in `presentation_approvals`, not here.** Audit records
+*that* an approval happened; the approval record *is* the business fact.
+`audit.md` is explicit that audit "records that something changed, never what it
+now says" — and an approval is precisely a thing whose content matters.
+
+---
+
+## Archive, and the one thing that may be deleted
+
+**Nothing that became part of the Workroom is ever deleted through the
+interface.** Archive and restore, Owner-only, refused where it would leave the
+data nonsensical — the business-core rule, unchanged.
+
+| Object | Archive | Hard delete |
+| --- | --- | --- |
+| File, `pending` | n/a | **Yes.** It never became part of the Workroom |
+| File, `ready`, unreferenced | Owner | No |
+| File, `ready`, in any Revision | **Refused**, naming the Revision | No |
+| Draft Presentation | Owner | No |
+| Presentation with any Revision | Owner | No |
+| Presentation with a decided Revision | **Refused**, naming the decision | No |
+| Revision, revision item | Never. Immutable | Never |
+| Review | Follows its Presentation | No |
+| Approval | Never | Never |
+
+The abandoned upload is the whole of the delete surface: a `pending` row whose
+bytes never arrived or never verified, plus its `pending/` object, expired by
+the bucket after 24 hours and removable by a sweep before that. A file that was
+presented and approved and a file that was never really uploaded are not the
+same kind of thing, and the schema says so.
+
+---
+
+## Notifications
+
+**Publishing never implicitly sends client email.** *Publish* and *Publish &
+notify* are two separate, explicit actions. A studio that emails on every save
+teaches clients to ignore its emails.
+
+| Trigger | To | Automatic? |
+| --- | --- | --- |
+| Publish & notify | Active members | **No** — a distinct button |
+| Request review | Active members | No — the request is the action |
+| Request approval | Active members | No — same |
+| Review answered | `CONTACT_EMAIL` | Yes. Rare and consequential |
+| Approval decided | `CONTACT_EMAIL` | Yes. Rare and consequential |
+
+Everything else — a file shared, a Presentation revised, a review resolved —
+appears in Activity only.
+
+**Emails link to the Workroom, never to a file, and never carry a presigned
+URL.** A presigned URL in an inbox is a credential in an inbox. Delivery
+failures are logged and never change what staff see, and the address is
+redacted, as `lib/auth-delivery.ts` established.
+
+No digests, no preferences, no notification centre, no unsubscribe machinery.
+These are transactional messages to people who were deliberately invited.
+
+---
+
+## Authorization
+
+Enforced server-side in the domain module, re-checked in every server action.
+**Never by hiding a button.**
+
+| | Owner | Member | Client member | Client non-member | Anonymous |
+| --- | --- | --- | --- | --- | --- |
+| Upload, rename, replace file | ✓ | ✓ | — | — | — |
+| See / download **internal** file | ✓ | ✓ | — | — | — |
+| Set file visibility | ✓ | ✓ | — | — | — |
+| See / download **shared** file | ✓ | ✓ | ✓ | — | — |
+| Archive / restore file | ✓ | — | — | — | — |
+| Create, edit, reorder draft | ✓ | ✓ | — | — | — |
+| See **draft** Presentation | ✓ | ✓ | **—** | — | — |
+| Preview as client | ✓ | ✓ | — | — | — |
+| Publish / unpublish | ✓ | ✓ | — | — | — |
+| See **published** Presentation | ✓ | ✓ | ✓ | — | — |
+| Archive / restore Presentation | ✓ | — | — | — | — |
+| Request review | ✓ | ✓ | — | — | — |
+| **Respond to review** | — | — | **✓** | — | — |
+| Resolve / withdraw review | ✓ | ✓ | — | — | — |
+| Request approval | ✓ | ✓ | — | — | — |
+| **Grant / decline approval** | — | — | **✓** | — | — |
+| Withdraw approval request | ✓ | ✓ | — | — | — |
+| See archived delivery content | ✓ | ✓ read-only | — | — | — |
+
+Three rows deserve naming.
+
+**Staff cannot approve.** An approval is the client's decision; a studio able to
+record one on their behalf has built a forgery tool.
+
+**Staff cannot respond to a review.** The resolution note is the studio's voice;
+the response is the client's.
+
+**Archive is Owner-only**, matching every other archive in the business core.
+
+Every client-facing read goes through **one query** that joins
+`workroom_members.status = 'active'`, `workrooms.status = 'published'` and
+`workrooms.archived_at IS NULL` — the `workroomForViewer` pattern. Membership is
+read from the database on every request and never from the session, so
+revocation takes effect on the next click.
+
+**The guard is called inside the component that reads, before it reads**, and
+there is no `loading.tsx` anywhere under `/workrooms` or `/studio`. A Suspense
+boundary above a guarded page turns a refusal into a 200. Measured; see
+`studio.md`.
+
+---
+
+## Security
+
+| Threat | Defence |
+| --- | --- |
+| Guessed file id | 26-char opaque public id **and** a membership-joined query |
+| Guessed storage key | Keys never exposed, never derived from input; bucket has no public access |
+| Signed URL leakage | 60-second TTL, minted per request, never in HTML, never in email, never logged |
+| Expired signed URL | The client retries through the authorized route, which re-checks membership |
+| **Old upload URL reused after finalize** | It points at `pending/`, which no longer exists and is not the permanent key. It can never write to `w/` |
+| Revoked membership | Membership read per request; next download is a 404 |
+| Unpublished Presentation | `status = 'published'` is in the query, not a filter afterwards |
+| Cross-tenant anything | Composite foreign keys. The database refuses it |
+| Forged approval | Requires an active client session **and** membership **and** the Revision resolving to that Workroom |
+| Double approval | Partial unique index |
+| Stale approval | Approvals anchor to Revisions; a new Revision cannot inherit an old decision |
+| Rewritten approval | Terminal rows refuse UPDATE, DELETE and TRUNCATE, by trigger |
+| File replaced after approval | Permanent keys are never upload targets; replacement creates a new File |
+| Archived content | `archived_at IS NULL` in every client query |
+| Metadata / RSC leak | Static titles on every new route — `"Presentation"`, never the title. Whole-response leak tests |
+| Filename injection | Disposition forced at presign time: sanitised ASCII name plus RFC 5987 `filename*` |
+| Malicious MIME | `content_type` recorded, **never trusted for rendering**. Everything downloads as an attachment |
+| Uploaded SVG / HTML | Never rendered inline, never previewed. An SVG from our origin is stored XSS |
+| Oversize upload | Verified by authenticated HEAD at finalize, not by a presign condition |
+| Path traversal | Structurally impossible — no caller string reaches a key |
+
+**Malware scanning is out of scope, and the boundary is stated.** Files move
+studio → client inside an invited relationship, and nothing is rendered inline
+or executed. The real exposure would be *client* uploads, which Build 005 does
+not have. **If clients ever upload, scanning becomes a prerequisite, not an
+enhancement.**
+
+### Limits
+
+| | |
+| --- | --- |
+| Single file | **2 GB**, verified after upload |
+| Workroom | **50 GB soft threshold — a warning to staff, never a wall** |
+| Multipart above | 100 MB, 16 MiB parts |
+| Files per Presentation | 100 |
+
+**Type policy is an allowlist for *rendering*, not for *accepting*.** A studio's
+files are unpredictable — `.sketch`, `.fig`, `.ai`, `.indd`, `.psd`, `.zip`,
+`.mov`, `.aep` — and refusing an unfamiliar extension is how a tool becomes
+useless on a Tuesday.
+
+- **Accept almost anything.** Recorded, downloadable.
+- **Render inline only** `image/jpeg|png|webp|gif|avif` and `video/mp4|webm`.
+- **Refuse outright** only the genuinely hostile: `.exe`, `.dll`, `.bat`,
+  `.cmd`, `.sh`, `.msi`, `.app`, `.scr`, and anything declaring `text/html`.
+- **`image/svg+xml` is accepted, never rendered inline, never previewed.**
+
+**No Presentation ZIP download in Build 005.** It would mean server-side
+archiving of files that otherwise never touch our process, which is the one
+thing this storage design avoids.
+
+---
+
+## Migration shape
+
+One migration, `0004_delivery.sql`, generated then extended by hand as `0003`
+was. **Additive throughout.** No column is dropped, renamed or retyped anywhere
+in Builds 001–004.
+
+- Six `CREATE TABLE`, their indexes and composite unique keys
+- `bump_version()` on the versioned tables; `set_updated_at()` on the rest
+- Append-only triggers on `presentation_revisions` and
+  `presentation_revision_items`
+- Transition + immutability triggers on `presentation_approvals`, including
+  `BEFORE TRUNCATE`
+- Two CHECK replacements
+
+**Operations that take a lock, called out because they must be:**
+
+| Statement | Lock | Cost |
+| --- | --- | --- |
+| Replace `audit_events_entity_type_check` | ACCESS EXCLUSIVE | Full scan of `audit_events`. Small now, and **grows for ever** — the table is append-only. Measure before every future widening |
+| Replace `workroom_activity_kind_check` | ACCESS EXCLUSIVE | Full scan of `workroom_activity`. Small |
+| `CREATE TABLE`, `CREATE INDEX` on empty tables | Trivial | — |
+
+PostgreSQL has no way to widen a CHECK, so both are `DROP CONSTRAINT` then
+`ADD CONSTRAINT` — the pattern `0003` used and documented.
+
+**Build 004 code tolerates the Build 005 schema.** Everything is a new table or
+a widened constraint; no existing insert becomes invalid. A code rollback
+without a schema rollback is safe — the property Build 004 proved by direct test
+and Build 005 must prove the same way.
+
+**Rehearsal before promotion:** rebuild a Build 004-shaped database with
+realistic volumes, apply `0004`, assert row-for-row data identity, diff
+`pg_dump --schema-only` against a from-scratch build to zero, then run the
+**full suite against the migrated database**.
+
+### Review uniqueness and NULL semantics
+
+An open review may be revision-level (`revision_item_id IS NULL`) or item-level.
+A conventional unique index treats NULLs as **distinct**, so a single index on
+`(presentation_revision_id, revision_item_id)` would permit unlimited
+revision-level reviews — the exact case it was meant to prevent.
+
+**Two partial unique indexes, not one:**
+
+```sql
+CREATE UNIQUE INDEX presentation_reviews_open_revision_idx
+  ON presentation_reviews (presentation_revision_id)
+  WHERE revision_item_id IS NULL AND status IN ('requested','responded');
+
+CREATE UNIQUE INDEX presentation_reviews_open_item_idx
+  ON presentation_reviews (presentation_revision_id, revision_item_id)
+  WHERE revision_item_id IS NOT NULL AND status IN ('requested','responded');
+```
+
+PostgreSQL 16 also offers `NULLS NOT DISTINCT`, which would work. Two partial
+indexes are chosen because they say what they mean at the point of definition
+and do not depend on a server-version feature flag being remembered.
+
+**This is tested directly at the PostgreSQL level** — two revision-level review
+inserts must raise — rather than through the domain layer, which would pass for
+the wrong reason.
+
+---
+
+## Reviewed against real situations
+
+| Situation | How the model holds it |
+| --- | --- |
+| **Staff edit after approval** | The draft changes; the decided Revision does not. Its items and snapshot are immutable and the database refuses UPDATE. Publishing creates Revision N+1 with no approval on it |
+| **Client approves, then asks for a change** | The approval stands — it was true when made. The change produces a new Revision and, if wanted, a new approval request. Nothing rewrites the first decision |
+| **File replaced during an open review** | Replacement creates a **new** File. The Revision under review still points at the original, so the client's feedback keeps its subject. The new File reaches the client only in a later Revision |
+| **Member revoked with an open approval request** | The request stays; the person cannot reach it. Another active member may decide. If nobody can, the request sits unanswered — visibly, which is correct. Revocation never silently resolves a decision |
+| **Presentation unpublished before any decision** | Ordinary and allowed. The client stops seeing it; Revisions remain |
+| **Unpublish attempted after a terminal decision** | **Refused**, naming the decision. Taking a decided deliverable away from a client is not a side effect of tidying |
+| **Archive attempted on a File inside a Revision** | **Refused**, naming the Revision. `ON DELETE restrict` blocks the delete; the guard blocks the archive |
+| **Double approval** | Partial unique index. One approval, one clean refusal, decided by the database |
+| **Double publish** | Unique `(presentation_id, revision_number)`. Two presses produce two distinct numbers or one refusal — never a duplicate number, never a lost Revision |
+| **Abandoned upload** | Row stays `pending`, never appears anywhere, object expires from `pending/` after 24 hours. The only hard-deletable thing here |
+| **Oversize upload** | Declared size refused early; actual size caught by authenticated HEAD at finalize. Finalize fails, pending object is deleted, row never becomes `ready` |
+| **Cross-Workroom file reference** | Composite foreign key. The insert fails in PostgreSQL |
+| **Old upload URL reused after finalization** | It targets `pending/{upload_id}`, which was deleted and was never the permanent key. The permanent object is not writable by any presigned URL that has ever existed |
+| **Client with two Workrooms** | Files and Presentations are per Workroom. Nothing joins across, and the composite keys make it impossible to try |
+| **Contact archived while holding a decided approval** | Already refused by Build 004's guard — a Contact with live access cannot be archived. The approval keeps `decided_by_name` as a snapshot regardless |
+| **A Revision's File is also shared directly** | Fine. One File, two places. Visibility is the File's; the Revision carries its own snapshot of the name |
+
+---
+
+## What Build 005 is not
+
+Chat. Slack-style comments. Threaded review replies. Client uploads. Folders or
+collections. Server-side media processing. PDF rasterization. Video transcoding.
+Presentation ZIP downloads. Workroom member roles. `presentation.viewed`
+tracking. A notification centre. Public file sharing. External anonymous
+approvals. Per-file roles. A Dropbox replacement. A DAM. Invoicing, payments,
+contracts or e-signatures — those are Build 006. Inbound email — Build 007.
+
+Each of these was considered against the blueprint and excluded on purpose, not
+forgotten.

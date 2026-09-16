@@ -299,3 +299,40 @@ reasons worth checking rather than trusting:
 
 Re-check when drizzle-kit drops `@esbuild-kit` in favour of `tsx`, which its
 own deprecation notice says is where that package moved.
+
+---
+
+## What Build 005 adds
+
+Six tables, planned in [`delivery.md`](./delivery.md) and **not created until
+Build 005 is built**: `workroom_files`, `presentations`, `presentation_items`,
+`presentation_revisions`, `presentation_revision_items`,
+`presentation_reviews`, `presentation_approvals`.
+
+Three conventions they introduce, recorded here because they are new to this
+schema and the next table that needs one should copy rather than reinvent:
+
+- **Composite foreign keys for tenancy.** Every delivery table carries
+  `workroom_id` and references its parent by `(workroom_id, parent_id)` against
+  a `UNIQUE (workroom_id, id)` on that parent. PostgreSQL then refuses a row
+  that reaches into another Workroom. The redundant column does not violate the
+  no-second-copy rule that kept `client_id` off `workrooms`, because the FK
+  makes it **impossible to drift** — redundant-and-unconstrained is a liability,
+  redundant-and-constrained is an invariant.
+- **Immutable tables.** `presentation_revisions` and
+  `presentation_revision_items` refuse `UPDATE` and `DELETE` by trigger, as
+  `audit_events` has since Build 003. `presentation_approvals` adds a
+  transition trigger: a row whose status is already terminal refuses every
+  write, and `BEFORE TRUNCATE` refuses that too.
+- **Partial unique indexes over a nullable column need two indexes, not one.** A
+  conventional unique index treats NULLs as distinct, so
+  `(revision_id, item_id)` would permit unlimited revision-level reviews.
+  Build 005 uses one partial index `WHERE item_id IS NULL` and another
+  `WHERE item_id IS NOT NULL`. PostgreSQL 16's `NULLS NOT DISTINCT` would also
+  work; two partial indexes say what they mean at the point of definition.
+
+**Bytes are not stored here.** File contents live in Cloudflare R2; PostgreSQL
+holds metadata, relationships, authorization, history and the integrity values
+read back from storage. A 2 GB object in a `bytea` column would bloat every
+backup, every PITR window and every restore rehearsal — and this database is the
+one part of the system whose recoverability has been proven.

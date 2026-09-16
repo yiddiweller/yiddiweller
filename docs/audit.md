@@ -10,13 +10,19 @@ what happened after it.
 
 This distinction is permanent and the two must never become one table.
 
-| | **Audit** | **Activity** — later |
+| | **Audit** | **Activity** — built in Build 004 |
 | --- | --- | --- |
 | Answers | Who changed what, when? | What happened around this Client or Project? |
 | Read by | Owners, rarely, deliberately | The team, and sometimes the client |
 | Mutable | **Never.** Append-only. | Filtered, softened, hidden |
-| Examples | `client.archived`, `lead.converted`, `staff.deactivated` | A presentation viewed, an approval submitted, an invoice opened |
+| Examples | `client.archived`, `lead.converted`, `staff.deactivated` | `workroom.opened`, `presentation.published`, `approval.decided` |
 | Retention | A compliance decision | A product decision |
+
+The Activity column read "later" and gave *a presentation viewed, an approval
+submitted, an invoice opened* until Build 005 planning replaced it with the real
+vocabulary. Activity exists — `workroom_activity`, since Build 004 — and **a
+presentation viewed is not in it**, deliberately: see the note under *Reading
+it* below, and [`delivery.md`](./delivery.md).
 
 Merged, they produce either a feed full of security noise or an audit trail
 somebody can edit. `audit_events` is **not** the future client-facing activity
@@ -35,7 +41,7 @@ feed, and no future build may repurpose it as one.
 | `client_actor_id` | The client identity, when a client caused it. A second column rather than a widening of `actor_id`, because a client is a row in a different table and a schema that pretended otherwise would be the first place that rule broke. A `CHECK` refuses a row that claims one kind and carries the other. |
 | `actor_name` | A snapshot of their name, so history stays readable afterwards. |
 | `action` | `noun.verb_past_tense` — `lead.stage_changed`. |
-| `entity_type` | `client`, `contact`, `lead`, `project`, `client_contact`, `project_contact`, `inquiry`, `staff`. |
+| `entity_type` | Build 003: `client`, `contact`, `lead`, `project`, `client_contact`, `project_contact`, `inquiry`, `staff`. Build 004 added `workroom`, `workroom_member`, `workroom_invitation`, `client_identity`. A CHECK constraint holds the list; widening it is a migration. |
 | `entity_id` | `text`, not `uuid`: business records use UUIDs, Better Auth's staff ids are strings, and both need recording. |
 | `entity_label` | A safe human label — a Client's name, a Lead's title. Never a note or a message. |
 | `metadata` | `jsonb`, structured, small, deliberate. |
@@ -178,9 +184,38 @@ Client actions appear here with their own attribution: a client accepting an
 invitation is `workroom_invitation.accepted` by a `client_user`, and the Audit
 page marks it. **A client opening a Workroom writes nothing** — audit records
 what changes who can reach what, not who looked at what, and a page-view log
-would turn an accountability record into traffic.
+would turn an accountability record into traffic. **The same rule covers a
+client opening a Presentation**, which is why Build 005 has no
+`presentation.viewed` in either table; see [`delivery.md`](./delivery.md).
 
 Each record also carries its own history on its page, under **History**, for
 Owners only. It is the same data, scoped to one entity, and it is not fetched at
 all for anybody else rather than fetched and hidden in markup that ships either
 way.
+
+---
+
+## What Build 005 adds
+
+Planned in [`delivery.md`](./delivery.md), **not written until Build 005 is
+built**. Entity types `workroom_file`, `presentation`, `presentation_revision`,
+`presentation_review` and `presentation_approval`, and these actions:
+
+```
+file.uploaded  file.renamed  file.shared  file.unshared  file.replaced
+file.archived  file.restored
+presentation.created  presentation.updated  presentation.published
+presentation.unpublished  presentation.archived  presentation.restored
+review.requested  review.responded  review.resolved  review.withdrawn
+approval.requested  approval.granted  approval.declined  approval.withdrawn
+```
+
+Three are client-caused — `review.responded`, `approval.granted`,
+`approval.declined` — and carry `actor_type = 'client_user'` with
+`client_actor_id` set. The shape CHECK makes it structurally impossible to file
+a client under the staff foreign key.
+
+**The approval record itself is not audit.** `presentation_approvals` is a
+business record whose *content* matters: which revision, which person, what
+reason. Audit says an approval happened; it never says what it said. That is
+this document's whole rule, applied to the first object that tests it.

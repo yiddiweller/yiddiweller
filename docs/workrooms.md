@@ -87,8 +87,8 @@ choose to publish it. Both the publish and the unpublish are audited.
 
 **Lifecycle is not tied to Project status.** A Project reaching `completed` does
 not close the Workroom, because the moment work finishes is exactly when a
-client goes back to look at it — and from Build 005 that is where their files
-will be. Closing access is a separate, deliberate act.
+client goes back to look at it — and from Build 005 that is where their files,
+presentations and approvals live. Closing access is a separate, deliberate act.
 
 ---
 
@@ -112,7 +112,10 @@ the row rather than trusted from the session. Revoking Workroom A does not touch
 the person's access to Workroom B, and does not sign them out.
 
 There are no member roles. A client is an authorized participant. Reviewer,
-Approver and the rest are Build 005's problem, if Build 005 actually needs them.
+Approver and the rest were left as Build 005's problem, if Build 005 actually
+needed them — **and it does not.** Any active member may review and approve, and
+the record carries who did. A permissions system for client teams of three
+people is machinery serving nobody; revisit when a client asks, not before.
 
 ---
 
@@ -257,8 +260,8 @@ and switching off a person's identity everywhere at once.
 | **Archived Contact** | Cannot happen while they hold active access — the archive is refused, naming the Workrooms. |
 | **Archived Project** | Refused while its Workroom is published. |
 | **Completed project, client still needs access** | Nothing closes. Project status is a word on the overview; access is a separate decision. |
-| **Build 005 files** | Attach to `workrooms.id`. Membership already answers "may this person see it". |
-| **Build 005 approvals** | A membership row is already the place a capability would hang, if one is ever needed. |
+| **Build 005 files** | Attach to `workrooms.id`, as planned. Membership already answers "may this person see it". See [`delivery.md`](./delivery.md). |
+| **Build 005 approvals** | No capability was needed. Build 005 adds **no member roles**: any active member may review and approve, and who did it is on the record. |
 | **Build 006 billing** | References `clients.id` and `projects.id`, as Build 003 locked. Nothing financial is squatting here. |
 | **Build 007 communications** | References `contacts.id` and `workrooms.id`. Activity stays a system timeline and does not become a message list. |
 
@@ -281,3 +284,8 @@ journey was not. Treat it as unproven there until somebody runs it.
 This model is now load-bearing. It describes Workrooms that exist in the
 production database. Changing a rule here is a migration and a decision, not a
 refactor.
+
+**What goes inside a Workroom is [`delivery.md`](./delivery.md)** — files,
+presentations, reviews and approvals, all attaching to `workrooms.id`, all
+reached beneath `/workrooms/{public_id}`, and all authorized by the membership
+row this document defines. That architecture is locked; Build 005 is not built.

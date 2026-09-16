@@ -30,6 +30,7 @@ import {
   workrooms,
   type WorkroomStatus,
 } from "./schema.ts";
+import { log, redactEmail } from "../log.ts";
 import { workroomPublicId } from "../workrooms/id.ts";
 
 /**
@@ -892,20 +893,67 @@ export async function acceptWorkroomInvitation(
 
       if (existing?.status === "inactive") throw new NotAccepted("unavailable");
 
-      const identityId = existing?.id ?? uuidv7(now.getTime());
+      /**
+       * Creating the identity has to survive two collisions, because the read
+       * above cannot see either of them.
+       *
+       * The same person accepting invitations to two workrooms in the same
+       * moment: neither transaction sees the other's uncommitted row, both
+       * insert, and one used to die on `client_identities_contact_id_idx` —
+       * a 500 on a legitimate click. Measured, in a test that races two
+       * acceptances.
+       *
+       * And two different Contacts carrying one address: `contacts` does not
+       * make email unique (a shared inbox is a real thing, and so are
+       * duplicate rows), but a client identity's email is a credential and
+       * `client_identities_email_idx` does. That one is not a race at all — it
+       * is simply impossible — and it must be a refusal somebody can act on
+       * rather than a crash.
+       *
+       * So the insert yields rather than fights, and then the row is read back:
+       * present under this Contact means somebody else got there first and we
+       * reuse it; absent means the address belongs to another Contact.
+       */
+      const inserted = existing
+        ? []
+        : await tx
+            .insert(clientIdentity)
+            .values({
+              id: uuidv7(now.getTime()),
+              name: displayName,
+              // The verified access email is the address this link was sent to,
+              // and nothing afterwards copies `contacts.email` into it.
+              email: invite.email,
+              emailVerified: true,
+              contactId: invite.contactId,
+              status: "active",
+            })
+            .onConflictDoNothing()
+            .returning({ id: clientIdentity.id });
+
+      let identityId = existing?.id ?? inserted[0]?.id;
+
+      if (!identityId) {
+        const [raced] = await tx
+          .select({ id: clientIdentity.id, status: clientIdentity.status })
+          .from(clientIdentity)
+          .where(eq(clientIdentity.contactId, invite.contactId))
+          .limit(1);
+
+        if (!raced) {
+          log.warn("client.identity_email_taken", {
+            contact_id: invite.contactId,
+            email: redactEmail(invite.email),
+          });
+          throw new NotAccepted("unavailable");
+        }
+        if (raced.status === "inactive") throw new NotAccepted("unavailable");
+        identityId = raced.id;
+      }
+
       const actor: AuditActor = { id: identityId, name: displayName, kind: "client_user" };
 
-      if (!existing) {
-        await tx.insert(clientIdentity).values({
-          id: identityId,
-          name: displayName,
-          // The verified access email is the address this link was sent to,
-          // and nothing afterwards copies `contacts.email` into it.
-          email: invite.email,
-          emailVerified: true,
-          contactId: invite.contactId,
-          status: "active",
-        });
+      if (inserted.length > 0) {
         await recordAudit(tx, actor, {
           action: "client_identity.created",
           entityType: "client_identity",

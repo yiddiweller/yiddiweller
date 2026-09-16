@@ -187,6 +187,38 @@ async function joined(t: Tenant): Promise<string> {
   return accepted.identityId;
 }
 
+/**
+ * Everything an acceptance touches, counted in one place.
+ *
+ * Build 003's lesson, written down: a losing transaction had rolled back its
+ * lead and left its contact behind, and the test passed because it only counted
+ * leads. So a race is never asserted on its primary record alone — every table
+ * the winning path writes to is counted, including the two it writes history
+ * into, which have different rules from each other and from everything else.
+ */
+async function sideEffects() {
+  // Through the reader Studio itself uses, so this counts what an Owner would
+  // actually be shown rather than what is merely in the table.
+  const byAction = async (action: string) => (await listAuditEvents({ action })).total;
+  const count = async (query: Promise<unknown[]>) => (await query).length;
+
+  return {
+    identities: await count(db().select().from(clientIdentity)),
+    members: await count(db().select().from(workroomMembers)),
+    accepted: await count(
+      db().select().from(workroomInvitations).where(sql`accepted_at IS NOT NULL`),
+    ),
+    invitations: await count(db().select().from(workroomInvitations)),
+    joinedActivity: await count(
+      db().select().from(workroomActivity).where(sql`kind = 'workroom.joined'`),
+    ),
+    activity: await count(db().select().from(workroomActivity)),
+    auditIdentityCreated: await byAction("client_identity.created"),
+    auditAccepted: await byAction("workroom_invitation.accepted"),
+    auditInvited: await byAction("workroom_invitation.created"),
+  };
+}
+
 /* -------------------------------------------------------------- the model */
 
 test("a project has at most one workroom, whoever presses first", async () => {
@@ -325,18 +357,119 @@ test("two tabs accepting at the same moment produce one person and one membershi
 
   assert.equal([a, b].filter((r) => r.ok).length, 1, "exactly one may win");
 
-  // Assert every related count, not only the primary record: Build 003 was
-  // caught by a losing transaction leaving a contact behind.
-  assert.equal((await db().select().from(clientIdentity)).length, 1);
-  assert.equal((await db().select().from(workroomMembers)).length, 1);
-  assert.equal(
-    (await db().select().from(workroomInvitations).where(sql`accepted_at IS NOT NULL`)).length,
-    1,
+  // Every table the winning path writes to, not only the primary record:
+  // Build 003 was caught by a losing transaction leaving a contact behind.
+  assert.deepEqual(await sideEffects(), {
+    identities: 1,
+    members: 1,
+    accepted: 1,
+    invitations: 1,
+    joinedActivity: 1,
+    // Plus the `workroom.opened` line publishing wrote. The client's timeline
+    // gains one entry from this, not two.
+    activity: 2,
+    auditIdentityCreated: 1,
+    auditAccepted: 1,
+    auditInvited: 1,
+  });
+
+  // And the loser was told why, rather than handed a half-built world.
+  const loser = [a, b].find((r) => !r.ok)!;
+  assert.equal(loser.ok === false && loser.reason, "already_used");
+});
+
+test("the same person joining two workrooms at once gets one identity and both", async () => {
+  // Two projects for one client, two invitations, accepted in the same moment.
+  // The identity is created by whichever transaction gets there first and
+  // reused by the other, so the interesting number is 1 and not 2.
+  const first = await published("A", "Alder & Co", "Ana Alder", "ana@alder.test");
+  const second = await createProject(actor, {
+    clientId: first.clientId,
+    name: "Alder & Co signage",
+    status: "active",
+    description: "MARKER-PROJECT-DESCRIPTION-A2",
+    notes: "MARKER-PROJECT-NOTE-A2",
+    ownerId: null,
+    startsOn: null,
+    targetOn: null,
+  });
+  assert.ok(second.ok);
+  const room = await createWorkroom(actor, {
+    projectId: second.value,
+    title: "Alder & Co signage",
+    summary: "A second private space, same person.",
+  });
+  assert.ok(room.ok);
+  const made = await findWorkroom(room.value);
+  assert.ok((await publishWorkroom(actor, room.value, made!.version)).ok);
+
+  const tokens = await Promise.all([
+    invite(first),
+    invite({ ...first, workroomId: room.value }),
+  ]);
+
+  const results = await Promise.all(
+    tokens.map((token) => acceptWorkroomInvitation({ token, name: "Ana Alder" })),
   );
-  assert.equal(
-    (await db().select().from(workroomActivity).where(sql`kind = 'workroom.joined'`)).length,
-    1,
-  );
+  assert.equal(results.filter((r) => r.ok).length, 2, "these do not compete");
+  assert.equal(new Set(results.map((r) => (r.ok ? r.identityId : ""))).size, 1, "one person");
+
+  assert.deepEqual(await sideEffects(), {
+    identities: 1,
+    members: 2,
+    accepted: 2,
+    invitations: 2,
+    joinedActivity: 2,
+    activity: 4, // two `workroom.opened` from publishing, two joins.
+    auditIdentityCreated: 1,
+    auditAccepted: 2,
+    auditInvited: 2,
+  });
+});
+
+test("an acceptance racing its own revocation leaves no half state", async () => {
+  // Whichever order PostgreSQL settles on, there is never a membership without
+  // an accepted invitation behind it, and never an identity without a
+  // membership.
+  for (let run = 0; run < 5; run++) {
+    await wipe();
+    const t = await published("A", "Alder & Co", "Ana Alder", "ana@alder.test");
+    const token = await invite(t);
+    const open = (await db().select().from(workroomInvitations))[0]!;
+
+    const [accepted, revoked] = await Promise.all([
+      acceptWorkroomInvitation({ token, name: "Ana Alder" }),
+      revokeWorkroomInvitation(actor, open.id),
+    ]);
+
+    const counts = await sideEffects();
+    if (accepted.ok) {
+      assert.deepEqual(
+        {
+          identities: counts.identities,
+          members: counts.members,
+          accepted: counts.accepted,
+          joinedActivity: counts.joinedActivity,
+          auditAccepted: counts.auditAccepted,
+        },
+        { identities: 1, members: 1, accepted: 1, joinedActivity: 1, auditAccepted: 1 },
+        `run ${run}: accepted`,
+      );
+    } else {
+      assert.ok(revoked.ok, `run ${run}: one of the two must have happened`);
+      assert.deepEqual(
+        {
+          identities: counts.identities,
+          members: counts.members,
+          accepted: counts.accepted,
+          joinedActivity: counts.joinedActivity,
+          auditAccepted: counts.auditAccepted,
+        },
+        { identities: 0, members: 0, accepted: 0, joinedActivity: 0, auditAccepted: 0 },
+        `run ${run}: refused`,
+      );
+    }
+  }
 });
 
 test("two simultaneous invitations to the same person produce one", async () => {
@@ -348,7 +481,17 @@ test("two simultaneous invitations to the same person produce one", async () => 
   ]);
 
   assert.equal([a, b].filter((r) => r.ok).length, 1);
-  assert.equal((await db().select().from(workroomInvitations)).length, 1);
+
+  // The loser wrote nothing: not a second row, not a second audit line, and
+  // above all not a second live token for the same person.
+  const counts = await sideEffects();
+  assert.equal(counts.invitations, 1);
+  assert.equal(counts.auditInvited, 1);
+  assert.equal(counts.accepted, 0);
+  assert.equal(counts.members, 0);
+  assert.equal(counts.identities, 0);
+  assert.equal(counts.joinedActivity, 0, "an invitation is not yet news for the client");
+  assert.equal(counts.activity, 1, "only the line publishing wrote");
 });
 
 test("resending replaces the old link, and the old one stops working", async () => {
@@ -471,6 +614,52 @@ test("one person, one identity, however many workrooms they are invited to", asy
   assert.equal(firstIdentity, secondIdentity, "never a second account per project");
   assert.equal((await db().select().from(clientIdentity)).length, 1);
   assert.equal((await workroomsForViewer(a.contactId)).length, 2);
+});
+
+test("two Contacts sharing one address cannot both hold access to it", async () => {
+  // `contacts` does not make email unique, deliberately: a shared inbox is a
+  // real thing and so are duplicate rows. A client identity's email is a
+  // credential and is unique, so the second person to accept cannot be given
+  // one — and must be refused in a way somebody can act on, not crashed.
+  const t = await published("A", "Alder & Co", "Ana Alder", "office@alder.test");
+  assert.ok(await joined(t));
+
+  const twin = await createContact(actor, {
+    name: "Alder Front Desk",
+    email: "office@alder.test",
+    emailNormalized: "office@alder.test",
+    phone: null,
+    title: "Office",
+    notes: "MARKER-CONTACT-NOTE-TWIN",
+  });
+  assert.ok(twin.ok);
+  assert.ok(
+    (await attachContactToClient(actor, {
+      clientId: t.clientId,
+      contactId: twin.value,
+      role: "Reception",
+      isPrimary: false,
+    })).ok,
+  );
+
+  const issued = await inviteToWorkroom(actor, {
+    workroomId: t.workroomId,
+    contactId: twin.value,
+  });
+  assert.ok(issued.ok, "the studio may still send it; the collision is not visible here");
+
+  const accepted = await acceptWorkroomInvitation({ token: issued.value.token, name: "" });
+  assert.equal(accepted.ok, false);
+  assert.equal(accepted.ok === false && accepted.reason, "unavailable");
+
+  // And the refusal rolled everything back: one identity, one membership, and
+  // the second invitation still unaccepted rather than spent.
+  const counts = await sideEffects();
+  assert.equal(counts.identities, 1);
+  assert.equal(counts.members, 1);
+  assert.equal(counts.accepted, 1);
+  assert.equal(counts.invitations, 2);
+  assert.equal(counts.auditIdentityCreated, 1);
 });
 
 test("an edit to a contact's email never moves their access", async () => {

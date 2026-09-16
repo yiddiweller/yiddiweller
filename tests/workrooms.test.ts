@@ -427,6 +427,36 @@ test("the same person joining two workrooms at once gets one identity and both",
   });
 });
 
+test("a failure at the very last write undoes everything before it", async () => {
+  // Audit and activity are written last, inside the same transaction as the
+  // data. That is easy to believe and worth proving, so the last write is made
+  // to fail and everything earlier is counted afterwards: the invitation must
+  // still be unspent, with no identity and no membership behind it.
+  const t = await published("A", "Alder & Co", "Ana Alder", "ana@alder.test");
+  const token = await invite(t);
+
+  await db().execute(
+    sql`ALTER TABLE workroom_activity ADD CONSTRAINT tmp_no_joins CHECK (kind <> 'workroom.joined')`,
+  );
+  try {
+    await assert.rejects(() => acceptWorkroomInvitation({ token, name: "Ana Alder" }));
+  } finally {
+    await db().execute(sql`ALTER TABLE workroom_activity DROP CONSTRAINT tmp_no_joins`);
+  }
+
+  const counts = await sideEffects();
+  assert.equal(counts.identities, 0, "an identity survived a failed acceptance");
+  assert.equal(counts.members, 0);
+  assert.equal(counts.accepted, 0, "the invitation was spent on a failure");
+  assert.equal(counts.joinedActivity, 0);
+  assert.equal(counts.auditIdentityCreated, 0, "audit is inside the transaction, not beside it");
+  assert.equal(counts.auditAccepted, 0);
+
+  // And the link still works, which is the point of rolling back rather than
+  // failing halfway.
+  assert.ok((await acceptWorkroomInvitation({ token, name: "Ana Alder" })).ok);
+});
+
 test("an acceptance racing its own revocation leaves no half state", async () => {
   // Whichever order PostgreSQL settles on, there is never a membership without
   // an accepted invitation behind it, and never an identity without a

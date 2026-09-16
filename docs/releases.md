@@ -16,11 +16,17 @@ tooling, nothing to keep in sync.
 
 | Environment | Build | Commit |
 | --- | --- | --- |
-| Production | **Build 003** | `1e4af21` |
-| Beta | **Build 004** | `787163e` |
+| Production | **Build 003** | `8d0fd80` |
+| Beta | **Build 004** | `b4ba8f8` |
 
 Beta is a number ahead while Build 004 is verified. That is the normal state
 during testing, not a discrepancy.
+
+The commits above are what each branch actually points at, which is not always
+the commit that claimed the number. Production's head is `8d0fd80`, the
+unnumbered commit recording Build 003's verification, sitting on top of
+`1e4af21`, which is Build 003 itself. A documentation commit changes nothing
+about the running system, so it claims no number and does not move the build.
 
 ---
 
@@ -71,7 +77,7 @@ trustworthy.
 
 ### Build 004 — Client workrooms
 
-Commits `53d07fd` … `787163e`. **Verified on beta, awaiting production
+Commits `53d07fd` … `b4ba8f8`. **Verified on beta, awaiting production
 promotion.** Production stays on Build 003 until it is approved.
 
 **Beta acceptance.** Exercised by hand against the running beta deployment:

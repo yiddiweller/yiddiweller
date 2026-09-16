@@ -1,4 +1,5 @@
 import { betterAuth } from "better-auth";
+import { createAuthMiddleware } from "better-auth/api";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { nextCookies } from "better-auth/next-js";
 import { magicLink } from "better-auth/plugins";
@@ -11,6 +12,7 @@ import { sendWorkroomLinkEmail } from "../emails.ts";
 import { describeError, log, redactEmail } from "../log.ts";
 
 import { workroomInvitation } from "./invitation-plugin.ts";
+import { workroomRedirect } from "./redirect.ts";
 
 /**
  * Client authentication. Everyone outside the company.
@@ -104,6 +106,39 @@ function createClientAuth() {
 
     emailAndPassword: { enabled: false },
     socialProviders: {},
+
+    hooks: {
+      /**
+       * A client authentication flow may only ever land inside the client
+       * world.
+       *
+       * Better Auth already refuses a `callbackURL` on another origin, a
+       * protocol-relative one and a `javascript:` one — measured. What it
+       * cannot know is that on *this* origin, `/studio` is a different product
+       * with a different identity system. A same-origin `/studio/...` callback
+       * is harmless today (the public host answers 404 and Studio would ask for
+       * a staff session anyway), but relying on host routing for that is
+       * relying on something two files away.
+       *
+       * So the rule is stated where it belongs: anything that is not a path
+       * under `/workrooms` becomes `/workrooms`.
+       */
+      before: createAuthMiddleware(async (ctx) => {
+        // Both halves of the flow carry one: the sign-in POST in its body, and
+        // the verification GET in its query string. Measured — sanitising only
+        // the body left `/magic-link/verify?callbackURL=/studio/clients`
+        // redirecting a client straight out of their own world.
+        const body = ctx.body as { callbackURL?: unknown } | undefined;
+        if (body && typeof body.callbackURL === "string") {
+          body.callbackURL = workroomRedirect(body.callbackURL);
+        }
+
+        const query = ctx.query as { callbackURL?: unknown } | undefined;
+        if (query && typeof query.callbackURL === "string") {
+          query.callbackURL = workroomRedirect(query.callbackURL);
+        }
+      }),
+    },
 
     plugins: [
       magicLink({

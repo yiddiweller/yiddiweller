@@ -150,3 +150,38 @@ test("public pages are untouched by any of it", { skip }, async () => {
   const sitemap = await get("/sitemap.xml");
   assert.ok(!sitemap.body.includes("workroom"), "a private path reached the sitemap");
 });
+
+/**
+ * The same rule as `workroom-redirect.test.ts`, asserted on the wire.
+ *
+ * That file proves the predicate; this proves it is actually wired into both
+ * halves of the flow. The token is deliberately invalid: Better Auth still
+ * honours `callbackURL` when it refuses one, which is exactly the redirect an
+ * attacker would want, and is how the original `/studio/clients` hole was
+ * found.
+ *
+ * Costs five of the ten `/magic-link/verify` attempts the limiter allows in
+ * five minutes, so run it once per window.
+ */
+test("a sign-in can only ever land inside the client world", { skip }, async () => {
+  const cases: Array<[string, string]> = [
+    ["/studio/clients", "/workrooms"],
+    ["/workrooms/../studio/clients", "/workrooms"],
+    ["https://evil.test/anywhere", "/workrooms"],
+    ["//evil.test/anywhere", "/workrooms"],
+    // A real destination survives untouched, so this is a rule and not a wall.
+    [`/workrooms/${roomA}`, `/workrooms/${roomA}`],
+  ];
+
+  for (const [asked, expected] of cases) {
+    const response = await fetch(
+      `${base}/api/client-auth/magic-link/verify?token=invalid&callbackURL=${encodeURIComponent(asked)}`,
+      { redirect: "manual" },
+    );
+    assert.equal(response.status, 302, `${asked} — limiter spent?`);
+
+    const location = new URL(response.headers.get("location") ?? "", base);
+    assert.equal(location.origin, new URL(base!).origin, asked);
+    assert.equal(location.pathname, expected, asked);
+  }
+});

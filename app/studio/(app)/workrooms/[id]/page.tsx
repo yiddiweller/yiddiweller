@@ -11,6 +11,7 @@ import { isId, label } from "@/lib/business";
 import { listActivity } from "@/lib/db/activity";
 import { listEntityAudit } from "@/lib/db/audit";
 import { listFiles, workroomBytes } from "@/lib/db/files";
+import { listPresentations } from "@/lib/db/presentations";
 import {
   findWorkroom,
   invitableContacts,
@@ -60,7 +61,8 @@ export default async function StudioWorkroom({ params }: { params: Promise<{ id:
   if (!room) notFound();
 
   const isOwner = viewer.role === "owner";
-  const [members, invitations, invitable, activity, history, files, stored] = await Promise.all([
+  const [members, invitations, invitable, activity, history, files, stored, presentations] =
+    await Promise.all([
     listWorkroomMembers(id),
     listOpenInvitations(id),
     invitableContacts(id),
@@ -68,6 +70,7 @@ export default async function StudioWorkroom({ params }: { params: Promise<{ id:
     isOwner ? listEntityAudit("workroom", id) : Promise.resolve([]),
     listFiles(id),
     workroomBytes(id),
+    listPresentations(id),
   ]);
 
   const timeline = toClientActivity(activity);
@@ -324,6 +327,38 @@ export default async function StudioWorkroom({ params }: { params: Promise<{ id:
                       busyLabel="Revoking"
                       confirm={`Revoke the invitation to ${invite.email}? Their link stops working straight away.`}
                     />
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        {/* Presentations above Files, because a presentation is the thing the
+            studio delivers and Files is the library underneath it. Managed on
+            its own page; this is enough to know where the work stands. */}
+        <section className={styles.section}>
+          <div className={styles.sectionHead}>
+            <h2 className={styles.sectionTitle}>Presentations</h2>
+            <Link className={styles.sectionNote} href={`/studio/workrooms/${room.id}/presentations`}>
+              {presentations.length === 0 ? "Make one →" : `${presentations.length} →`}
+            </Link>
+          </div>
+          {presentations.length === 0 ? (
+            <p className={styles.empty}>
+              Nothing yet. A presentation is how selected work is put in front of a client.
+            </p>
+          ) : (
+            <ul className={`${styles.list} ${styles.listPair}`}>
+              {presentations.slice(0, 3).map((presentation) => (
+                <li key={presentation.id} className={styles.row}>
+                  <span className={styles.rowSecondary}>{presentation.title}</span>
+                  <span className={styles.rowMeta}>
+                    {presentation.status === "published"
+                      ? "Open to the client"
+                      : presentation.status === "unpublished"
+                        ? "Withdrawn"
+                        : "Draft"}
                   </span>
                 </li>
               ))}

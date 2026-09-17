@@ -775,6 +775,49 @@ the domain, because a CHECK cannot read another table.
 
 ---
 
+### The publish transaction — what actually ships
+
+One transaction, in `lib/db/presentations.ts`, and every refusal inside it is
+**raised as a throw rather than returned**. That is not style: returning an
+`Outcome` from a transaction callback commits it, which is right for a single
+guarded UPDATE and wrong for something that writes to five tables.
+
+```
+SELECT … FOR UPDATE on the Presentation      serialises concurrent publishes
+re-read the draft under the lock             what is there now, not at render time
+validate every file: workroom, ready, unarchived
+share every internal file it references      + file.shared activity and audit each
+project → canonical JSON → SHA-256
+allocate revision_number under the lock
+INSERT presentation_revisions                immutable from this moment
+INSERT presentation_revision_items           ordered, immutable
+UPDATE presentations … WHERE version = ?     the optimistic gate, deliberately last
+presentation.published | presentation.revised
+audit presentation.published
+```
+
+**The version check is the last write on purpose.** A publish that lost a race
+has by then shared files, written activity and inserted two immutable tables —
+so the gate has to be somewhere a failure unwinds all of it, and the last
+statement of the transaction is exactly that place. A test forces the *final*
+statement to fail and asserts that nothing survives: no half-shared file, no
+orphan Revision, no activity for a publication that did not happen, and a
+`current_revision_id` still null. Then the same Presentation publishes cleanly.
+
+**Revision numbers are never allocated by reading a MAX and hoping.** Three
+layers, all in the database: the row lock serialises publishes of this
+Presentation, the optimistic `version` refuses the loser cleanly, and
+`UNIQUE (presentation_id, revision_number)` is the last line if both were ever
+wrong. Two simultaneous publishes produce one Revision, one `conflict`, and one
+`file.shared` row — measured, not assumed.
+
+**The draft is one document, so it carries one version.** Retitling it,
+rewording a note and reordering it all pass the Presentation's `version` and all
+refuse a stale writer. Per-item versions would let two people reorder the same
+list at once and both appear to win.
+
+---
+
 ## Revisions — immutable
 
 Publishing freezes the presentation's current contents into a Revision.
@@ -1377,14 +1420,20 @@ realistic volumes, apply `0004`, assert row-for-row data identity, diff
 `pg_dump --schema-only` against a from-scratch build to zero, then run the
 **full suite against the migrated database**.
 
-### What Stage B still has to migrate — three gaps found by this review
+### `0005_delivery_integrity.sql` — three gaps, closed
 
 `0004` created the Presentation tables in Stage A so the model could be reasoned
 about whole. Reading them again against the benchmark found three places where
-the schema trusts the application where it could have made PostgreSQL refuse.
-**Stage B carries one small additive migration, `0005`, and does so before any
-Presentation code is written** — retrofitting an integrity constraint after rows
-exist is how a constraint gets weakened to fit the data.
+the schema trusted the application where it could have made PostgreSQL refuse.
+**`0005` closed all three, and it was applied before the first line of
+Presentation domain code was written** — retrofitting an integrity constraint
+after rows exist is how a constraint gets weakened to fit the data.
+
+It is additive: two `ADD CONSTRAINT`, one `ADD CONSTRAINT` on a unique key, and
+one CHECK replaced. Rehearsed on both paths — a Build 004 database through
+`0004` and `0005`, and a Stage A database that already held Presentation rows
+through `0005` alone. Every row survived both, and the upgraded schema is
+byte-identical to one built from scratch.
 
 **1. `presentations.current_revision_id` has no foreign key at all.** Not to
 `presentation_revisions`, not to anything. Today it is an unconstrained `uuid`
@@ -1423,8 +1472,12 @@ ALTER TABLE presentations ADD CONSTRAINT presentations_published_shape_check
 prove what name the client read can be absent on exactly the rows that need it.
 It belongs in the shape check beside `file_id` and `body`.
 
-None of the three is reachable by the code that exists, because no code reads or
-writes these tables yet. That is the whole reason to fix them now.
+None of the three was reachable by the code that existed, because nothing read
+or wrote these tables yet. That was the whole reason to fix them then. Each is
+tested directly against PostgreSQL rather than through the domain: a
+Presentation naming another Presentation's Revision, a `published` row with
+nothing to show, and a file revision item with no snapshotted name are all
+refused by the database with the code removed from the question.
 
 ### Review uniqueness and NULL semantics
 

@@ -4,6 +4,7 @@ import WorkroomOverview from "@/components/workrooms/WorkroomOverview";
 import { requireViewer } from "@/lib/client-auth/guard";
 import { listActivity } from "@/lib/db/activity";
 import { filesForViewer } from "@/lib/db/files";
+import { presentationsForViewer } from "@/lib/db/presentations";
 import { workroomForViewer, workroomPeople, workroomsForViewer } from "@/lib/db/workrooms";
 import { projectDatesFor } from "@/lib/db/projects";
 import { toClientFiles } from "@/lib/workrooms/delivery-view";
@@ -29,12 +30,13 @@ export default async function Workroom({ params }: { params: Promise<{ id: strin
   const room = await workroomForViewer(viewer.contactId, id);
   if (!room) notFound();
 
-  const [people, activity, dates, others, files] = await Promise.all([
+  const [people, activity, dates, others, files, presentations] = await Promise.all([
     workroomPeople(room.id),
     listActivity(room.id),
     projectDatesFor(room.projectId),
     workroomsForViewer(viewer.contactId),
     filesForViewer(viewer.contactId, id),
+    presentationsForViewer(viewer.contactId, id),
   ]);
 
   return (
@@ -42,6 +44,7 @@ export default async function Workroom({ params }: { params: Promise<{ id: strin
       view={toClientWorkroomView(room, dates)}
       people={toClientPeople(people)}
       files={toClientFiles(files, id)}
+      presentations={presentations}
       timeline={toClientActivity(activity)}
       otherRooms={others.length}
     />

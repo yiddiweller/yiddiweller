@@ -505,3 +505,108 @@
 
 .fileAction:hover { color: var(--w-fg); }
 .fileActionPrimary { color: var(--w-fg); }
+
+/* ---------------------------------------------------------- presentation */
+
+/* A document, not a dashboard. One column, generous vertical rhythm, and
+   nothing that competes with the work: no grid, no carousel, no side rail. */
+.presentation { display: block; }
+
+.presentationNotice {
+  margin-bottom: var(--w-3);
+  padding: var(--w-2) var(--w-3);
+  border: 1px solid var(--w-edge);
+  font-size: var(--w-fs-ui);
+  color: var(--w-fg-2);
+}
+
+.presentationMeta {
+  margin-top: var(--w-2);
+  font-size: var(--w-fs-ui);
+  color: var(--w-fg-3);
+}
+
+/* The editorial sequence. Wider spacing than anything else in this world,
+   because the gap between two pieces of work is what makes each one read as
+   its own moment rather than a row in a list. */
+.presentationFlow {
+  display: flex;
+  flex-direction: column;
+  gap: var(--w-6);
+  margin-top: var(--w-5);
+}
+
+.presentationNote { display: flex; flex-direction: column; gap: var(--w-2); }
+
+.presentationHeading {
+  font-size: var(--w-fs-title);
+  font-weight: 400;
+  color: var(--w-fg);
+  overflow-wrap: anywhere;
+}
+
+.presentationBody {
+  font-size: var(--w-fs-body);
+  line-height: 1.7;
+  color: var(--w-fg-2);
+  /* Preserved, never parsed: a paragraph break somebody typed reads as one,
+     and nothing a note holds is ever treated as markup. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.presentationPiece { display: flex; flex-direction: column; gap: var(--w-2); }
+
+.presentationCaption { display: flex; flex-direction: column; gap: var(--w-1); }
+
+.presentationCaptionText {
+  font-size: var(--w-fs-body);
+  color: var(--w-fg-2);
+  overflow-wrap: anywhere;
+}
+
+.presentationFile {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--w-1) var(--w-3);
+}
+
+.presentationHistory {
+  display: flex;
+  flex-direction: column;
+  gap: var(--w-2);
+  margin-top: var(--w-6);
+  padding-top: var(--w-4);
+  border-top: 1px solid var(--w-edge-faint);
+}
+
+/* A list of what is here, one row each. The same restraint as the Workroom
+   index: a title, a date, nothing about what changed. */
+.presentationRow {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: var(--w-3) 0;
+  border-bottom: 1px solid var(--w-edge-faint);
+}
+
+.presentationRow:first-child { border-top: 1px solid var(--w-edge-faint); }
+
+.presentationRowTitle {
+  font-size: var(--w-fs-title);
+  color: var(--w-fg);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.presentationRowTitle:hover { opacity: 0.72; }
+
+.presentationRowMeta { font-size: var(--w-fs-ui); color: var(--w-fg-3); }
+
+.presentationRowIntro {
+  margin-top: var(--w-1);
+  font-size: var(--w-fs-ui);
+  color: var(--w-fg-2);
+  overflow-wrap: anywhere;
+}

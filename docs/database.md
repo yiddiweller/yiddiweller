@@ -333,14 +333,23 @@ schema and the next table that needs one should copy rather than reinvent:
   `WHERE item_id IS NOT NULL`. PostgreSQL 16's `NULLS NOT DISTINCT` would also
   work; two partial indexes say what they mean at the point of definition.
 
-**One thing `0004` did not constrain, and `0005` will.**
-`presentations.current_revision_id` carries no foreign key — it is a bare
-`uuid` that could name a Revision of another Presentation or of another
-Workroom. It is unreachable today because nothing reads these tables, and it is
-fixed before Stage B writes the first row, by a composite key binding the column
-to *its own* Presentation rather than merely to the table. Two smaller CHECK
-gaps travel with it. The statements and the reasoning are in
+**One thing `0004` did not constrain, and `0005` does.**
+`presentations.current_revision_id` shipped with no foreign key — a bare `uuid`
+that could name a Revision of another Presentation or of another Workroom.
+`0005_delivery_integrity.sql` binds it by a composite key to *its own*
+Presentation rather than merely to the table, and two smaller CHECK gaps travel
+with it. It was applied before Stage B wrote its first row, which is the only
+time an integrity constraint is free. The statements and the reasoning are in
 [`delivery.md`](./delivery.md).
+
+A fourth convention arrived with it, worth copying rather than rediscovering:
+**two tables that reference each other are fine when one side is nullable.**
+`presentations` names a Revision and `presentation_revisions` names a
+Presentation; the Presentation is inserted with the column null, its first
+Revision is inserted against it, and the `UPDATE` closes the loop inside the
+publish transaction. No deferral, no chicken and egg. Drizzle cannot express it
+— `foreignKey()` needs its target defined first — so it lives in the migration's
+hand-written tail beside the triggers.
 
 **Bytes are not stored here.** File contents live in a private, S3-compatible
 Railway Storage Bucket; PostgreSQL holds metadata, relationships, authorization,

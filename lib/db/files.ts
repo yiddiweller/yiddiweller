@@ -7,6 +7,8 @@ import { uuidv7 } from "./id.ts";
 import { ok, refuse, expectUnchanged, type Outcome } from "./outcome.ts";
 import {
   presentationRevisionItems,
+  presentationRevisions,
+  presentations,
   workroomFiles,
   workroomMembers,
   workrooms,
@@ -472,6 +474,22 @@ export async function renameFile(
  * was shown something and then was not is told by its absence, and a line
  * saying "this was taken away from you" is worse than the silence.
  */
+/**
+ * Share a file with the client, or stop.
+ *
+ * **Unsharing is refused while a published Presentation shows the file.** One
+ * predicate decides what a client may see — `ready`, `shared`, unarchived — and
+ * a Revision published two years ago is read through exactly that predicate,
+ * with no union and no second route. Which means unsharing would silently
+ * empty a Revision somebody may have approved. So it is refused, naming the
+ * Presentation, and the way to take back what a client was shown is to
+ * unpublish it.
+ *
+ * Deliberately narrower than the archive guard, which is unconditional:
+ * sharing is a live authorization state, so an unpublished Presentation
+ * releases its files; history must not lose its subject whatever the
+ * Presentation's status is today.
+ */
 export async function setFileVisibility(
   actor: AuditActor,
   id: string,
@@ -487,6 +505,33 @@ export async function setFileVisibility(
     return refuse("blocked", "That file is archived. Restore it before sharing it.");
   }
   if (file.visibility === visibility) return ok(undefined);
+
+  if (visibility === "internal") {
+    const [needed] = await db()
+      .select({ title: presentations.title })
+      .from(presentationRevisionItems)
+      .innerJoin(
+        presentationRevisions,
+        eq(presentationRevisions.id, presentationRevisionItems.presentationRevisionId),
+      )
+      .innerJoin(presentations, eq(presentations.id, presentationRevisions.presentationId))
+      .where(
+        and(
+          eq(presentationRevisionItems.fileId, id),
+          eq(presentations.status, "published"),
+          isNull(presentations.archivedAt),
+        ),
+      )
+      .limit(1);
+
+    if (needed) {
+      return refuse(
+        "blocked",
+        `${file.displayName} is part of ${needed.title}, which is open to the client. ` +
+          "Unpublish that presentation first — taking back what somebody was shown is its own decision.",
+      );
+    }
+  }
 
   return db().transaction(async (tx) => {
     const changed = await tx

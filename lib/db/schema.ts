@@ -1226,7 +1226,22 @@ export const presentations = pgTable(
 
     status: text("status").notNull().default("draft").$type<PresentationStatus>(),
     publishedAt: timestamp("published_at", { withTimezone: true }),
-    /** The Revision a client sees now. Null until first publication. */
+    /**
+     * The Revision a client sees now. Null until first publication, and kept
+     * after an unpublish — retracting a Presentation must not erase which
+     * Revision it had reached.
+     *
+     * `0005` binds this to **its own** Presentation, not merely to the
+     * revisions table, with a composite foreign key that PostgreSQL can only
+     * satisfy from a Revision of this Presentation:
+     *
+     *     FOREIGN KEY (id, current_revision_id)
+     *       REFERENCES presentation_revisions (presentation_id, id)
+     *
+     * It lives in SQL alone because the two tables reference each other and
+     * `foreignKey()` needs its target already defined — the same reason the
+     * triggers and partial indexes below are SQL-only.
+     */
     currentRevisionId: uuid("current_revision_id"),
 
     version: integer("version").notNull().default(1),
@@ -1248,6 +1263,15 @@ export const presentations = pgTable(
     check("presentations_public_id_length_check", sql.raw("char_length(public_id) = 26")),
     check("presentations_title_length_check", sql.raw("char_length(title) BETWEEN 1 AND 200")),
     check("presentations_intro_length_check", sql.raw("char_length(intro) <= 4000")),
+    // Published means there is something to show. Deliberately one-directional:
+    // an unpublished Presentation keeps the Revision it had reached.
+    check(
+      "presentations_published_shape_check",
+      sql.raw(
+        "(status = 'published' AND current_revision_id IS NOT NULL AND published_at IS NOT NULL)" +
+          " OR (status <> 'published')",
+      ),
+    ),
   ],
 );
 
@@ -1349,6 +1373,9 @@ export const presentationRevisions = pgTable(
     }).onDelete("restrict"),
 
     unique("presentation_revisions_workroom_id_id_key").on(table.workroomId, table.id),
+    // What `presentations.current_revision_id` points at, so a Presentation
+    // cannot name a Revision belonging to a different Presentation.
+    unique("presentation_revisions_presentation_id_id_key").on(table.presentationId, table.id),
     // Two publishes produce two numbers or one refusal, never a duplicate.
     uniqueIndex("presentation_revisions_number_idx").on(table.presentationId, table.revisionNumber),
     index("presentation_revisions_latest_idx").on(
@@ -1412,11 +1439,15 @@ export const presentationRevisionItems = pgTable(
       "presentation_revision_items_kind_check",
       sql.raw(`kind IN (${quoted(PRESENTATION_ITEM_KINDS)})`),
     ),
+    // `display_name_snapshot` is the proof of what name the client read, so it
+    // is required on exactly the rows that have one and refused on the rest.
     check(
       "presentation_revision_items_shape_check",
       sql.raw(
-        "(kind = 'file' AND file_id IS NOT NULL AND body IS NULL)" +
-          " OR (kind = 'note' AND file_id IS NULL AND body IS NOT NULL)",
+        "(kind = 'file' AND file_id IS NOT NULL AND body IS NULL" +
+          " AND display_name_snapshot IS NOT NULL)" +
+          " OR (kind = 'note' AND file_id IS NULL AND body IS NOT NULL" +
+          " AND display_name_snapshot IS NULL)",
       ),
     ),
     check("presentation_revision_items_position_check", sql.raw("position >= 0")),

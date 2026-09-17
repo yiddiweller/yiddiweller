@@ -113,6 +113,33 @@ and nothing else.
   realistic Build 004 database: every row preserved, upgraded schema identical
   to one built from scratch, Build 004 code still writes cleanly to it.
 
+**Stage B — Presentations and immutable Revisions.** Implemented, not yet
+accepted on beta.
+
+- **`0005_delivery_integrity.sql`**, additive, applied before the first line of
+  Presentation code: `presentations.current_revision_id` bound by composite key
+  to a Revision **of its own Presentation** where it previously carried no
+  foreign key at all, a CHECK that `published` means there is something to show,
+  and `display_name_snapshot` required on exactly the revision items that have
+  one. Rehearsed on both paths — Build 004 → `0004` → `0005`, and a Stage A
+  database already holding Presentation rows → `0005`. Every row preserved;
+  upgraded schema byte-identical to a fresh one.
+- **Publishing is one transaction with its optimistic gate as the last write**,
+  so a loser unwinds the files it shared, the activity it wrote and both
+  immutable tables it filled. A test forces that final statement to fail and
+  asserts nothing survives.
+- **Revision numbers come from a row lock, not a MAX.** Two simultaneous
+  publishes produce one Revision and one clean conflict.
+- **Publishing shares the files it references**, and staff are shown which ones
+  before they press the button. A file a published Presentation shows cannot
+  then be unshared.
+- **Clients may revisit every published version**; the latest is primary and the
+  rest sit behind one quiet control. Withdrawing takes the whole Presentation
+  back, history included, and deletes nothing.
+- **One `PresentationView` renders the client page, the historical version and
+  the staff preview**, with a regression test comparing the structure of two of
+  them — the `WorkroomOverview` lesson, applied before it could be learned twice.
+
 **Beta acceptance.** Migration `0004` deployed and applied. `npm run
 storage:verify` was run **inside the real beta app container against the real
 Railway Storage Bucket** and every check passed: presigned PUT accepted,
@@ -136,11 +163,11 @@ component keeping the Preview and the real client overview aligned.
 - **The viewer has not been accepted on beta by hand.** It passes the full
   automated suite, the responsive sweep and the quality gate locally; the
   by-hand beta acceptance recorded above predates it.
-- **Stage B has not begun.** Presentations, Reviews and Approvals exist as
-  schema and are read by nothing. Its **architecture is locked**, re-benchmarked
-  against Frame.io, Filestage, Ziflow and ReviewStudio, and that review found
-  three integrity gaps in `0004` that a small additive `0005` closes before any
-  Stage B code is written — see [`delivery.md`](./delivery.md).
+- **Stage B has not been accepted on beta by hand either.** Same position: it
+  passes everything locally and has been seen by nobody on the real
+  deployment.
+- **Reviews and Approvals have not begun.** They exist as schema and are read
+  by nothing.
 
 ---
 

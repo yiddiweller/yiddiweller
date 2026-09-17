@@ -34,9 +34,10 @@ that has not been on `beta` first, and never leave `beta` behind `main`.
 **Phases 1, 2, 3 and 4 are complete and verified in production**, released as
 **Build 001**, **Build 002**, **Build 003** and **Build 004**. **Build 005's
 architecture is locked in `docs/delivery.md`, and Stage A — storage and Files —
-is verified on beta against the real Railway bucket. Stage B's architecture is
-locked too, re-benchmarked against professional creative-delivery products; no
-Stage B code exists. Production has no bucket and has not been touched by
+is verified on beta against the real Railway bucket. **Stage B — Presentations
+and immutable Revisions — is implemented and passes the full gate locally; it
+has not had manual beta acceptance yet.** Reviews and Approvals are still schema
+and nothing else. Production has no bucket and has not been touched by
 Build 005.**
 These are facts about the running system, not proposals. Changing any of them is
 a deliberate decision, not a cleanup.
@@ -125,6 +126,16 @@ a deliberate decision, not a cleanup.
   "may the client open Revision 2?" is answered by the row existing, never by a
   flag. Clients may revisit every published Revision; the latest is primary and
   the rest stay behind one quiet control.
+- **Publishing is one transaction and its optimistic version check is the last
+  write in it, deliberately.** By then it has shared files, written activity and
+  inserted two immutable tables, so the gate has to sit where a failure unwinds
+  all of it. Refusals inside that transaction throw rather than return, because
+  returning an `Outcome` from a transaction callback commits it.
+- **Revision numbers are allocated under `SELECT … FOR UPDATE`, never by reading
+  a MAX.** The row lock serialises publishes, the `version` check refuses the
+  loser, and `UNIQUE (presentation_id, revision_number)` is the last line.
+- **A Presentation draft is one document and carries one version.** Retitling,
+  rewording a note and reordering all pass the Presentation's `version`.
 - **Staff Preview renders the *draft* through the same component and projection
   as the client page, and says so.** For a published Presentation it is
   deliberately not what the client currently sees — that is the current

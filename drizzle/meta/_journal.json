@@ -36,6 +36,13 @@
       "when": 1789604572068,
       "tag": "0004_delivery",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1789660196199,
+      "tag": "0005_delivery_integrity",
+      "breakpoints": true
     }
   ]
 }

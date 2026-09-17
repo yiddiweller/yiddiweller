@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import Moment from "@/components/studio/Moment";
 import { type ClientFile } from "@/lib/workrooms/delivery-view";
+import { type ClientPresentationSummary } from "@/lib/db/presentations";
 import { type ClientActivityItem, type ClientWorkroomView } from "@/lib/workrooms/view";
 import { formatDate } from "@/lib/studio-format";
 import styles from "@/app/workrooms/workroom.module.css";
@@ -30,12 +31,14 @@ export default function WorkroomOverview({
   view,
   people,
   files,
+  presentations,
   timeline,
   otherRooms,
 }: {
   view: ClientWorkroomView;
   people: { name: string; role: string | null }[];
   files: ClientFile[];
+  presentations: ClientPresentationSummary[];
   timeline: ClientActivityItem[];
   /** How many Workrooms this person can reach. One means no "back" link. */
   otherRooms: number;
@@ -71,6 +74,40 @@ export default function WorkroomOverview({
             </div>
           </div>
         </section>
+
+        {/* What the studio has actually presented, above Files, because it is
+            the thing somebody came here to look at — Files is the library
+            underneath it. Present only when there is something to open: an
+            empty section inviting somebody to look at nothing is worse than no
+            section, and this world stays quiet. */}
+        {presentations.length > 0 ? (
+          <section className={styles.section}>
+            <h2 className={styles.sectionTitle}>Presentations</h2>
+            <ul>
+              {presentations.slice(0, 3).map((presentation) => (
+                <li key={presentation.id} className={styles.presentationRow}>
+                  <Link
+                    className={styles.presentationRowTitle}
+                    href={`/workrooms/${view.id}/presentations/${presentation.id}`}
+                  >
+                    {presentation.title}
+                  </Link>
+                  <span className={styles.presentationRowMeta}>
+                    <Moment iso={presentation.publishedAt} />
+                    {presentation.revisionCount > 1 ? ` · Version ${presentation.revision}` : ""}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            {presentations.length > 3 ? (
+              <p className={styles.more}>
+                <Link className={styles.quiet} href={`/workrooms/${view.id}/presentations`}>
+                  All {presentations.length} presentations →
+                </Link>
+              </p>
+            ) : null}
+          </section>
+        ) : null}
 
         {/* The client's way into Files. Present only when there is something to
             open — an empty section inviting somebody to look at nothing is

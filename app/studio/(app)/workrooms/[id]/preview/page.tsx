@@ -6,6 +6,7 @@ import { requireStaff } from "@/lib/auth/guard";
 import { isId } from "@/lib/business";
 import { listActivity } from "@/lib/db/activity";
 import { sharedFilesInWorkroom } from "@/lib/db/files";
+import { presentationsInWorkroom } from "@/lib/db/presentations";
 import { projectDatesFor } from "@/lib/db/projects";
 import { findWorkroom, workroomPeople } from "@/lib/db/workrooms";
 import { toClientFiles } from "@/lib/workrooms/delivery-view";
@@ -45,11 +46,12 @@ export default async function WorkroomPreview({ params }: { params: Promise<{ id
   const room = await findWorkroom(id);
   if (!room) notFound();
 
-  const [people, activity, dates, files] = await Promise.all([
+  const [people, activity, dates, files, presentations] = await Promise.all([
     workroomPeople(room.id),
     listActivity(room.id),
     projectDatesFor(room.projectId),
     sharedFilesInWorkroom(room.id),
+    presentationsInWorkroom(room.id),
   ]);
 
   return (
@@ -71,6 +73,7 @@ export default async function WorkroomPreview({ params }: { params: Promise<{ id
           view={toClientWorkroomView(room, dates)}
           people={toClientPeople(people)}
           files={toClientFiles(files, room.publicId)}
+          presentations={presentations}
           timeline={toClientActivity(activity)}
           /* The preview is always of one Workroom, so the "your workrooms" link
              is never shown here — it would be a link out of the preview. */

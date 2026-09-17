@@ -106,7 +106,20 @@ export default async function StudioWorkroomFiles({
           <div className={styles.rows}>
             {live.map((file) => (
               <div key={file.id} className={styles.row}>
-                <span className={styles.rowPrimary}>{file.displayName}</span>
+                <span className={styles.rowPrimary}>
+                  {/* Staff recognise an image at a glance, internal ones
+                      included — that is most of why a thumbnail earns its place
+                      here. Decorative: the name is right beside it. */}
+                  {file.previewKey ? (
+                    <img
+                      className={styles.rowThumb}
+                      src={`/studio/workrooms/${room.id}/files/${file.publicId}/preview`}
+                      alt=""
+                      loading="lazy"
+                    />
+                  ) : null}
+                  {file.displayName}
+                </span>
                 <span className={styles.rowSecondary}>
                   {fileKind(file.contentType)} · {formatBytes(file.byteSize ?? 0)}
                   {file.supersedesFileId ? " · replaces an earlier file" : ""}

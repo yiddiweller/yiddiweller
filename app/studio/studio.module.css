@@ -936,3 +936,14 @@
   color: var(--s-fg-2);
   font-variant-numeric: tabular-nums;
 }
+
+/* A file's thumbnail in a list row. Fixed square so a list of mixed aspect
+   ratios keeps one rhythm and nothing shifts as images arrive. */
+.rowThumb {
+  width: 32px;
+  height: 32px;
+  object-fit: cover;
+  margin-right: var(--s-2);
+  vertical-align: middle;
+  border: 1px solid var(--s-edge-faint);
+}

@@ -579,6 +579,34 @@ Without this, a phone opening a Workroom downloads a 40 MB original to look at a
 thumbnail. With it, one canvas call and roughly 80 KB. The preview is a
 convenience, never the artefact: every download serves the original bytes.
 
+**Where it is shown**, added after manual acceptance found the pipeline built
+and nothing rendering it — the preview object was generated, stored, authorized
+and projected, and no surface consumed it, so a shared image could only be
+downloaded:
+
+| Surface | What an image gets |
+| --- | --- |
+| Client Files page | A framed preview, 16:10, up to 420px, `object-fit: cover` |
+| Client Workroom overview | A 40px square hint beside the name, decorative |
+| Studio Files list | A 32px square, **internal images included** |
+
+Three rules the shape follows. **A fixed frame, so mixed aspect ratios keep one
+rhythm and nothing moves as images load** — `aspect-ratio` reserves the space
+before the bytes arrive, which is why no dimensions need storing. **The `src` is
+one of our own routes, never a signed URL**, so the storage address reaches
+neither the markup nor the address bar; the browser follows the redirect inside
+the `<img>`. And **it stays a list**: one column, capped width, no masonry, no
+lightbox.
+
+`next/image` is refused here and the reason is in `eslint.config.mjs`. It would
+proxy bytes through this server — the one thing this design forbids — and cache
+private work to the container's filesystem, and the source expires in sixty
+seconds anyway.
+
+**The staff preview image route is separate from the client's**, checking
+`currentStaff` and applying no visibility filter, because recognising an
+internal image at a glance is most of why a thumbnail earns its place in Studio.
+
 ---
 
 ## Presentations

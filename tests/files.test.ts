@@ -30,7 +30,9 @@ import {
   createWorkroom,
   findWorkroom,
   inviteToWorkroom,
+  listWorkroomMembers,
   publishWorkroom,
+  revokeMembership,
 } from "../lib/db/workrooms.ts";
 import {
   clientContacts,
@@ -795,4 +797,142 @@ test("a workroom knows how much it is holding", async () => {
   await upload(r, { bytes: Buffer.alloc(2000) });
 
   assert.equal(await workroomBytes(r.workroomId), 3000);
+});
+
+/* --------------------------------------------------------------- previews */
+
+test("a preview is stored beside the original, never instead of it", async () => {
+  const r = await room("A", "Alder & Co", "Ana Alder", "ana@alder.test");
+  const file = await upload(r, {
+    filename: "concept.png",
+    contentType: "image/png",
+    displayName: "Concept",
+    preview: true,
+  });
+
+  assert.equal(file.status, "ready");
+  assert.equal(file.previewKey, `${file.storageKey}/preview`);
+  // Two objects, and the original is untouched by the preview existing.
+  assert.ok(stub.objects.has(file.storageKey));
+  assert.ok(stub.objects.has(file.previewKey!));
+  assert.notEqual(file.storageKey, file.previewKey);
+});
+
+test("a preview that could not be made does not cost the file", async () => {
+  const r = await room("A", "Alder & Co", "Ana Alder", "ana@alder.test");
+  // `preview: false` is exactly what the upload component reports when the
+  // browser refused to decode the image, or the canvas produced nothing, or the
+  // preview PUT failed. The original must be unaffected by any of it.
+  const file = await upload(r, {
+    filename: "concept.png",
+    contentType: "image/png",
+    displayName: "Concept",
+    preview: false,
+  });
+
+  assert.equal(file.status, "ready", "a failed preview failed the upload");
+  assert.equal(file.previewKey, null);
+  assert.ok(stub.objects.has(file.storageKey), "the original was not stored");
+
+  // And it still reaches the client — as a row, without an image.
+  assert.ok((await setFileVisibility(actor, file.id, file.version, "shared")).ok);
+  const view = toClientFile((await filesForViewer(r.contactId, r.publicId))[0]!, r.publicId);
+  assert.equal(view.previewPath, undefined);
+  assert.equal(view.kind, "image");
+});
+
+test("only browser-decodable image types are ever previewed", () => {
+  for (const type of ["image/jpeg", "image/png", "image/webp", "image/gif", "image/avif"]) {
+    assert.equal(previewable(type), true, type);
+  }
+  // SVG is storable, downloadable, and never decoded — rendering one from our
+  // own origin is stored XSS, and decoding one to make a preview runs it.
+  for (const type of ["image/svg+xml", "application/pdf", "video/mp4", "application/zip", "text/plain"]) {
+    assert.equal(previewable(type), false, type);
+  }
+});
+
+test("a client's file view carries a preview path and never a storage key", async () => {
+  const r = await room("A", "Alder & Co", "Ana Alder", "ana@alder.test");
+  const image = await upload(r, {
+    filename: "MARKER-ORIGINAL-FILENAME-shot.png",
+    contentType: "image/png",
+    displayName: "Concept",
+    preview: true,
+  });
+  const document_ = await upload(r, { displayName: "Brief" });
+  for (const file of [image, document_]) {
+    assert.ok((await setFileVisibility(actor, file.id, file.version, "shared")).ok);
+  }
+
+  const rows = await filesForViewer(r.contactId, r.publicId);
+  const views = rows.map((row) => toClientFile(row, r.publicId));
+  const serialised = JSON.stringify(views);
+
+  const shown = views.find((view) => view.name === "Concept")!;
+  assert.equal(shown.previewPath, `/workrooms/${r.publicId}/files/${shown.id}/preview`);
+
+  // A non-image gets no preview path at all, so the page has nothing to render.
+  assert.equal(views.find((view) => view.name === "Brief")!.previewPath, undefined);
+
+  // The path is one of ours. The storage key is not in it, or anywhere else.
+  for (const row of rows) {
+    assert.ok(!serialised.includes(row.storageKey), "a storage key reached the client");
+    if (row.previewKey) {
+      assert.ok(!serialised.includes(row.previewKey), "a preview key reached the client");
+    }
+  }
+  assert.ok(!serialised.includes("MARKER-ORIGINAL-FILENAME"), "an internal filename reached the client");
+});
+
+test("a preview follows the same visibility rules as the file it is of", async () => {
+  const r = await room("A", "Alder & Co", "Ana Alder", "ana@alder.test");
+  const other = await room("B", "Birch Group", "Ben Birch", "ben@birch.test");
+
+  const internal = await upload(r, { contentType: "image/png", displayName: "Internal", preview: true });
+  const archived = await upload(r, { contentType: "image/png", displayName: "Archived", preview: true });
+  const theirs = await upload(other, { contentType: "image/png", displayName: "Theirs", preview: true });
+
+  assert.ok((await setFileVisibility(actor, archived.id, archived.version, "shared")).ok);
+  assert.ok((await setFileVisibility(actor, theirs.id, theirs.version, "shared")).ok);
+  const toArchive = await findFile(archived.id);
+  assert.ok((await archiveFile(actor, archived.id, toArchive!.version)).ok);
+
+  const pending = await beginUpload(actor, {
+    workroomId: r.workroomId,
+    filename: "half.png",
+    contentType: "image/png",
+    declaredSize: 10,
+  });
+  assert.ok(pending.ok);
+
+  // Every one of these resolves to nothing through the same guarded read the
+  // preview route uses, so the route has no separate rule to get wrong.
+  for (const [what, publicId] of [
+    ["internal", internal.publicId],
+    ["archived", archived.publicId],
+    ["another workroom's", theirs.publicId],
+  ] as const) {
+    assert.equal(await fileForViewer(r.contactId, r.publicId, publicId), null, `${what} previewed`);
+  }
+  // A pending file has no public id a client could have been given, and is not
+  // reachable by the one it does have.
+  const pendingRow = await findFile(pending.value.fileId);
+  assert.equal(await fileForViewer(r.contactId, r.publicId, pendingRow!.publicId), null);
+});
+
+test("a revoked member loses the preview with everything else", async () => {
+  const r = await room("A", "Alder & Co", "Ana Alder", "ana@alder.test");
+  const file = await upload(r, { contentType: "image/png", displayName: "Concept", preview: true });
+  assert.ok((await setFileVisibility(actor, file.id, file.version, "shared")).ok);
+  assert.ok(await fileForViewer(r.contactId, r.publicId, file.publicId));
+
+  const [member] = await listWorkroomMembers(r.workroomId);
+  assert.ok((await revokeMembership(actor, member!.id, member!.version)).ok);
+
+  assert.equal(
+    await fileForViewer(r.contactId, r.publicId, file.publicId),
+    null,
+    "a revoked member could still reach a preview",
+  );
 });

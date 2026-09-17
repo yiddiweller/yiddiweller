@@ -31,13 +31,18 @@ const internalA = process.env.WORKROOM_A_INTERNAL_FILE;
 const staff = process.env.STUDIO_OWNER_COOKIE;
 /** The Workroom's internal id, which is what Studio routes are keyed by. */
 const studioRoomA = process.env.STUDIO_WORKROOM_A_ID;
+/** A shared PNG with a browser-made preview, and an SVG with none. */
+const imageA = process.env.WORKROOM_A_IMAGE;
+const svgA = process.env.WORKROOM_A_SVG;
+const internalImageA = process.env.WORKROOM_A_INTERNAL_IMAGE;
 
 const configured = Boolean(
-  base && clientA && clientB && roomA && roomB && fileA && fileB && internalA && staff && studioRoomA,
+  base && clientA && clientB && roomA && roomB && fileA && fileB && internalA && staff &&
+    studioRoomA && imageA && svgA && internalImageA,
 );
 const skip = configured
   ? false
-  : "set WORKROOM_BASE_URL, WORKROOM_{A,B}_COOKIE, WORKROOM_{A,B}_ID, WORKROOM_{A,B}_FILE, WORKROOM_A_INTERNAL_FILE, STUDIO_OWNER_COOKIE and STUDIO_WORKROOM_A_ID";
+  : "set WORKROOM_BASE_URL, WORKROOM_{A,B}_COOKIE, WORKROOM_{A,B}_ID, WORKROOM_{A,B}_FILE, WORKROOM_A_INTERNAL_FILE, STUDIO_OWNER_COOKIE, STUDIO_WORKROOM_A_ID, WORKROOM_A_IMAGE, WORKROOM_A_SVG and WORKROOM_A_INTERNAL_IMAGE";
 
 /** Seeded into every internal field. None may appear in any client response. */
 const MARKERS = [
@@ -224,4 +229,113 @@ test("a client with nothing shared is offered nothing to open", { skip }, async 
   const refused = await get(`/workrooms/${roomB}`, clientA);
   assert.equal(refused.status, 404);
   assert.ok(!refused.body.includes("/files"), "a refusal advertised a files page");
+});
+
+/* ---------------------------------------------------------- image previews */
+
+/**
+ * A shared image should look like the work it is, and everything else should
+ * stay a row. These read the markup, because the whole gap this closed was that
+ * the preview existed in storage and nothing rendered it.
+ */
+
+test("a shared image is shown, and the signed URL is not in the page", { skip }, async () => {
+  const page = await get(`/workrooms/${roomA}/files`, clientA);
+  assert.equal(page.status, 200);
+
+  // Our own route, never a storage address.
+  const src = `/workrooms/${roomA}/files/${imageA}/preview`;
+  assert.ok(page.body.includes(`src="${src}"`), "the image is not rendered");
+  assert.match(page.body, /alt="Preview of [^"]+"/, "the preview has no meaningful alt");
+
+  // The things a signed URL would bring with it, none of which may appear.
+  assert.ok(!page.body.includes("X-Amz-Signature"), "a signed URL reached the page");
+  assert.ok(!page.body.includes("X-Amz-Credential"), "a credential reached the page");
+  // The same regex covers a preview key, which is the file's key plus
+  // `/preview` — so there is no separate check to write, and no way to write
+  // one that would not also match the legitimate route above.
+  assert.ok(!/\bw\/[0-9a-f-]{36}\/f\//.test(page.body), "a storage key reached the page");
+});
+
+test("only decodable images are shown; everything else stays a row", { skip }, async () => {
+  const page = await get(`/workrooms/${roomA}/files`, clientA);
+
+  // An SVG is stored and downloadable and never rendered — decoding one runs
+  // its contents, and serving it inline from our origin is stored XSS.
+  assert.ok(
+    !page.body.includes(`/files/${svgA}/preview`),
+    "an SVG was given a preview",
+  );
+  assert.ok(page.body.includes(`/files/${svgA}/download`), "the SVG lost its download row");
+
+  // And the non-image seeded alongside it.
+  assert.ok(!page.body.includes(`/files/${fileA}/preview`), "a PDF was given a preview");
+  assert.ok(page.body.includes(`/files/${fileA}/download`));
+});
+
+test("a preview is authorized exactly as its file is", { skip }, async () => {
+  const own = await get(`/workrooms/${roomA}/files/${imageA}/preview`, clientA);
+  assert.equal(own.status, 302, "a member could not see their own image");
+  assert.ok(own.location.length > 0);
+  assert.equal(own.body.length, 0);
+
+  const refusals = [
+    [`/workrooms/${roomA}/files/${internalImageA}/preview`, clientA, "an internal image"],
+    [`/workrooms/${roomA}/files/${svgA}/preview`, clientA, "an SVG, which has no preview object"],
+    [`/workrooms/${roomB}/files/${imageA}/preview`, clientB, "another workroom's image"],
+    [`/workrooms/${roomA}/files/00000000000000000000000000/preview`, clientA, "one that never existed"],
+    [`/workrooms/${roomA}/files/${imageA}/preview`, undefined, "nobody"],
+  ] as const;
+
+  for (const [path, cookie, what] of refusals) {
+    const response = await get(path, cookie);
+    if (cookie === undefined) {
+      assert.ok([302, 307].includes(response.status), what);
+      assert.ok(!response.location.includes("X-Amz-Signature"), `${what} was handed a signed URL`);
+    } else {
+      assert.equal(response.status, 404, what);
+      assert.equal(response.body.length, 0, `${what} answered with a body to compare`);
+      assert.equal(response.location, "", `${what} leaked a location`);
+    }
+  }
+});
+
+test("a preview response is never stored by anything in between", { skip }, async () => {
+  const response = await get(`/workrooms/${roomA}/files/${imageA}/preview`, clientA);
+  assert.match(response.cacheControl, /no-store/);
+  assert.match(response.cacheControl, /private/);
+});
+
+test("staff see previews, internal ones included", { skip }, async () => {
+  const page = await get(`/studio/workrooms/${studioRoomA}/files`, staff);
+  assert.equal(page.status, 200);
+
+  // Recognising an internal image at a glance is most of why this is here.
+  assert.ok(
+    page.body.includes(`/studio/workrooms/${studioRoomA}/files/${internalImageA}/preview`),
+    "staff cannot see an internal image",
+  );
+
+  const internal = await get(`/studio/workrooms/${studioRoomA}/files/${internalImageA}/preview`, staff);
+  assert.equal(internal.status, 302);
+
+  // And the staff route is not a way in for a client session.
+  const asClient = await get(`/studio/workrooms/${studioRoomA}/files/${internalImageA}/preview`, clientA);
+  assert.ok([302, 307, 404].includes(asClient.status));
+  assert.ok(!asClient.location.includes("X-Amz-Signature"), "a client was handed an internal image");
+});
+
+test("the overview keeps its hint restrained", { skip }, async () => {
+  const overview = await get(`/workrooms/${roomA}`, clientA);
+  const files = await get(`/workrooms/${roomA}/files`, clientA);
+
+  // A chip on the overview, a framed preview on the Files page. If the overview
+  // ever grows as many images as the library, this is what notices.
+  const count = (body: string) => [...body.matchAll(/\/preview"/g)].length;
+  assert.ok(count(overview.body) >= 1, "the overview lost its visual hint");
+  assert.ok(
+    count(overview.body) <= 3,
+    "the overview is showing more than the three files it summarises",
+  );
+  assert.ok(count(files.body) >= count(overview.body), "the Files page shows fewer images");
 });

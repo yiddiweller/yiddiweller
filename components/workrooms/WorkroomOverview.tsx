@@ -81,13 +81,24 @@ export default function WorkroomOverview({
             <h2 className={styles.sectionTitle}>Files</h2>
             <ul className={styles.files}>
               {files.slice(0, 3).map((file) => (
-                <li key={file.id} className={styles.file}>
-                  <a className={styles.fileLink} href={file.downloadPath}>
-                    {file.name}
-                  </a>
-                  <span className={styles.fileMeta}>
-                    {file.kind} · {file.size}
-                  </span>
+                <li key={file.id} className={`${styles.file} ${styles.fileCompact}`}>
+                  {/* A hint, not a gallery. Forty pixels is enough to recognise
+                      a piece of work and not enough to make the Overview about
+                      images — the Files page is where they are actually shown.
+                      Decorative, because the name beside it already says what
+                      this is and announcing both would say it twice. */}
+                  {file.previewPath ? (
+                    <img className={styles.fileChip} src={file.previewPath} alt="" loading="lazy" />
+                  ) : null}
+
+                  <div className={styles.fileRow}>
+                    <a className={styles.fileLink} href={file.downloadPath}>
+                      {file.name}
+                    </a>
+                    <span className={styles.fileMeta}>
+                      {file.kind} · {file.size}
+                    </span>
+                  </div>
                 </li>
               ))}
             </ul>

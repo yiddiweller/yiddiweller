@@ -298,3 +298,21 @@ re-enabled; Workroom published, unpublished, archived, restored.
   untangle, and whoever holds a dead link may not be the person it was sent to.
   The staff-facing refusal does name the Contact holding the address, because
   that is the only actionable fact in it.
+- **Three layers can refuse a tap, and they must be tellable apart.** The rate
+  limiter answers 429 in front of the handler and consumes nothing; the
+  acceptance refuses with a business reason; and after the transaction commits,
+  issuing the session can still fail — at which point the person's access is
+  **real** and only the sign-in did not finish.
+
+  Each now says the thing that is true, because the right next step is
+  different in each case, and one of them is the opposite of the others: after
+  a session failure a sign-in link genuinely works. Telling somebody "that
+  invitation cannot be used" when they have simply tapped too many times is
+  also what makes them keep tapping, which is what keeps the window spent.
+
+  **The handler logs `workroom.invite_accept_attempted` before it decides
+  anything**, and that line is the diagnosis: no `attempted` means the limiter;
+  `attempted` with `rejected` means a business refusal and names it; `attempted`
+  without `accepted` means the session write failed. It carries no token, no
+  address and no id. Two rounds of beta investigation went into a failure that
+  looked identical from outside whichever layer produced it.

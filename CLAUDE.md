@@ -90,6 +90,15 @@ a deliberate decision, not a cleanup.
   must never promise what the next tap refuses: beta found exactly that, and
   `docs/client-auth.md` records it. `unavailable` means only "the Workroom is
   not published"; `access_off` and `email_taken` are their own reasons.
+- **The acceptance endpoint is driven over HTTP by a test, not only its domain
+  function.** Everything about invitations was tested at the domain layer and
+  nothing had touched the endpoint, so the rate limiter in front of it and the
+  session write after it were the untested parts of the one journey that
+  matters most to somebody outside the company. Three layers can refuse a tap —
+  limiter, acceptance, session write — and each says the thing that is true;
+  after a session failure their access is real and a sign-in link works.
+  `workroom.invite_accept_attempted` is logged before anything is decided, and
+  its presence or absence is the diagnosis.
 - **A client authentication flow may only land under `/workrooms`.** Better
   Auth refuses another origin; it cannot know `/studio` is a second product on
   this one. Every `callbackURL` is sanitised on both halves of the flow, in

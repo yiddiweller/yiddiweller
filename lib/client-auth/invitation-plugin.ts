@@ -40,6 +40,24 @@ export function workroomInvitation() {
           }),
         },
         async (ctx) => {
+          /**
+           * Logged before anything is decided, and this line is the diagnosis.
+           *
+           * Two rounds of beta investigation went into a failure that looked
+           * identical from outside whichever layer produced it. There are three,
+           * and their logs now tell them apart without anybody guessing:
+           *
+           *   no `attempted`              rejected in front of this handler —
+           *                               the rate limiter, which never reaches
+           *                               here and so could never log
+           *   `attempted` + `rejected`    a business refusal, with its reason
+           *   `attempted`, no `accepted`  the acceptance committed and issuing
+           *                               the session then failed
+           *
+           * It carries nothing about who or what: no token, no address, no id.
+           */
+          log.info("workroom.invite_accept_attempted", {});
+
           const outcome = await acceptWorkroomInvitation({
             token: ctx.body.token,
             name: ctx.body.name ?? "",
@@ -47,24 +65,44 @@ export function workroomInvitation() {
 
           if (!outcome.ok) {
             log.info("workroom.invite_accept_rejected", { reason: outcome.reason });
-            // One status and one shape for every refusal. Which of expired,
-            // revoked, already used or never real it was is told on the page
-            // the person came from, not by this endpoint's response.
+            // One status and one shape for every refusal. **Which** refusal it
+            // was travels in `code`, because the page the person is standing on
+            // can say it accurately and telling them nothing sent them back to
+            // the studio for a link that would have failed the same way.
             throw new APIError("BAD_REQUEST", {
               message: "That invitation cannot be used.",
               code: outcome.reason.toUpperCase(),
             });
           }
 
-          const identity = await ctx.context.internalAdapter.findUserById(outcome.identityId);
-          if (!identity) {
-            throw new APIError("INTERNAL_SERVER_ERROR", { message: "Sign-in failed." });
-          }
+          /**
+           * From here the acceptance has **committed**: the invitation is
+           * spent, the membership is live, and the identity exists. A failure
+           * now is not a failure to accept — it is a failure to sign somebody
+           * in to something they already have.
+           *
+           * So it gets its own code rather than a bare 500, because the honest
+           * next step is the opposite of the one a refusal needs: their access
+           * is real and a sign-in link will work. Being told "that invitation
+           * cannot be used" here would be false.
+           */
+          try {
+            const identity = await ctx.context.internalAdapter.findUserById(outcome.identityId);
+            if (!identity) throw new Error("identity missing immediately after acceptance");
 
-          // Headers are picked up from the ambient endpoint context, exactly as the
-          // magic-link plugin does it.
-          const session = await ctx.context.internalAdapter.createSession(identity.id);
-          await setSessionCookie(ctx, { session, user: identity });
+            // Headers are picked up from the ambient endpoint context, exactly as the
+            // magic-link plugin does it.
+            const session = await ctx.context.internalAdapter.createSession(identity.id);
+            await setSessionCookie(ctx, { session, user: identity });
+          } catch (cause) {
+            log.error("workroom.invite_session_failed", {
+              error: cause instanceof Error ? `${cause.name}: ${cause.message}` : "unknown error",
+            });
+            throw new APIError("INTERNAL_SERVER_ERROR", {
+              message: "Your access is ready, but signing you in failed.",
+              code: "SESSION_FAILED",
+            });
+          }
 
           log.info("workroom.invite_accepted", {});
 

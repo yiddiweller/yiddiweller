@@ -21,18 +21,38 @@ const REASONS: InvitationFailure[] = [
 /**
  * What a refused acceptance says.
  *
- * It used to say one thing for all of them — *ask for a sign-in link, or reply
- * to the email* — which is sound advice for an expired link and actively wrong
- * for the two that are about the client identity: a sign-in link would fail for
- * the same reason the acceptance did. So the endpoint's own reason is read and
- * the same copy the landing page would have shown is used, with the old
- * sentence kept for anything unrecognised.
+ * Three layers can refuse this and they used to be indistinguishable — one
+ * sentence for all of them, which cost two rounds of beta investigation. Each
+ * now says the thing that is actually true, because the right next step differs
+ * completely between them:
+ *
+ * **Too many attempts.** The limiter sits in front of the endpoint and answers
+ * 429. Nothing is wrong with the invitation and nothing has been consumed, so
+ * the honest advice is to wait — and being told "this invitation cannot be
+ * used" is what makes somebody keep tapping, which is what keeps it spent.
+ *
+ * **The acceptance was refused.** The endpoint reports which refusal, and the
+ * same copy the landing page would have shown is used. A sign-in link is sound
+ * advice for an expired link and wrong for the two about the client identity,
+ * where it would fail the same way.
+ *
+ * **The acceptance worked and signing in did not.** Their access is real and
+ * already granted; only the session failed. A sign-in link genuinely works
+ * here, which is the opposite of what a refusal needs.
  */
 async function explain(response: Response): Promise<string> {
+  if (response.status === 429) {
+    return "Too many attempts in a short time. Wait a few minutes and open the most recent email again — there is nothing wrong with your invitation.";
+  }
+
   const body = (await response.json().catch(() => null)) as { code?: unknown } | null;
   const code = typeof body?.code === "string" ? body.code.toLowerCase() : "";
-  const reason = REASONS.find((candidate) => candidate === code);
 
+  if (code === "session_failed") {
+    return "Your access is ready, but signing you in did not finish. Ask for a sign-in link and it will let you straight in.";
+  }
+
+  const reason = REASONS.find((candidate) => candidate === code);
   if (!reason) {
     return "That invitation cannot be used. Ask for a sign-in link, or reply to the email it came from.";
   }

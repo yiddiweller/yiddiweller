@@ -3,6 +3,7 @@ import {
   bigint,
   boolean,
   check,
+  foreignKey,
   date,
   index,
   integer,
@@ -10,6 +11,7 @@ import {
   pgTable,
   text,
   timestamp,
+  unique,
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
@@ -292,6 +294,12 @@ export const AUDIT_ENTITY_TYPES = [
   "workroom_member",
   "workroom_invitation",
   "client_identity",
+  // Build 005.
+  "workroom_file",
+  "presentation",
+  "presentation_revision",
+  "presentation_review",
+  "presentation_approval",
 ] as const;
 export type AuditEntityType = (typeof AUDIT_ENTITY_TYPES)[number];
 
@@ -964,8 +972,8 @@ export const workroomInvitations = pgTable(
 /* -------------------------------------------------------------- activity */
 
 /**
- * What the client sees has happened. Five values now; Build 005 adds its own.
- * The whole vocabulary is here so no page can invent a sixth.
+ * What the client sees has happened. Twelve values: five from Build 004 and
+ * seven from Build 005. The whole vocabulary is here so no page can invent one.
  */
 export const ACTIVITY_KINDS = [
   "workroom.opened",
@@ -973,6 +981,14 @@ export const ACTIVITY_KINDS = [
   "workroom.access_granted",
   "workroom.access_ended",
   "project.status_changed",
+  // Build 005. The whole vocabulary lives here so no page can invent one.
+  "file.shared",
+  "presentation.published",
+  "presentation.revised",
+  "review.requested",
+  "review.received",
+  "approval.requested",
+  "approval.decided",
 ] as const;
 export type ActivityKind = (typeof ACTIVITY_KINDS)[number];
 
@@ -1015,6 +1031,549 @@ export const workroomActivity = pgTable(
     check(
       "workroom_activity_subject_length_check",
       sql.raw("subject IS NULL OR char_length(subject) <= 160"),
+    ),
+  ],
+);
+
+/* ==========================================================================
+   BUILD 005 — DELIVERY
+
+   Files, Presentations, Reviews and Approvals, all inside one Workroom.
+
+   Two things here are unlike anything in Builds 001–004 and are the reason
+   docs/delivery.md was written before this file:
+
+     Composite tenancy keys. Every table carries `workroom_id` and references
+     its parent by (workroom_id, parent_id) against a UNIQUE (workroom_id, id)
+     on that parent. PostgreSQL then refuses a row reaching into another
+     Workroom — not "should not", cannot. The redundant column does not repeat
+     the `client_id` mistake that was kept off `workrooms`, because the foreign
+     key makes it impossible to drift.
+
+     Immutable tables. Revisions, their items and decided approvals refuse
+     UPDATE and DELETE by trigger, as `audit_events` has since Build 003.
+     Storage offers no immutability of its own — the bucket has no versioning
+     and no object locks — so this is the whole of it.
+
+   Stage A exposes only Files. The rest is created here because the model is
+   locked and a half-built schema is harder to reason about than a finished
+   one that is not yet used.
+   ========================================================================== */
+
+/** A file exists in the database before its bytes exist in the bucket. */
+export const FILE_STATUSES = ["pending", "ready"] as const;
+export type FileStatus = (typeof FILE_STATUSES)[number];
+
+/** Something the studio is holding, or something the client has been given. */
+export const FILE_VISIBILITIES = ["internal", "shared"] as const;
+export type FileVisibility = (typeof FILE_VISIBILITIES)[number];
+
+/** 2 GB. Verified against the bucket at finalization, never from the browser. */
+export const MAX_FILE_BYTES = 2 * 1024 * 1024 * 1024;
+
+export const workroomFiles = pgTable(
+  "workroom_files",
+  {
+    id: uuid("id").primaryKey(),
+
+    /** What a URL carries. Never the UUIDv7, whose first bits are a clock. */
+    publicId: text("public_id").notNull(),
+
+    workroomId: uuid("workroom_id")
+      .notNull()
+      .references(() => workrooms.id, { onDelete: "restrict" }),
+
+    /** Client-facing, editable, chosen by somebody. */
+    displayName: text("display_name").notNull(),
+
+    /**
+     * Recorded and never shown to a client — this is where
+     * `final_v7_CLIENTNAME_dontsend.pdf` lives. It never reaches a projection
+     * and never becomes part of a storage key.
+     */
+    originalFilename: text("original_filename").notNull(),
+
+    /** Metadata. Never trusted to decide how anything is rendered. */
+    contentType: text("content_type").notNull(),
+
+    /** Verified by our own authenticated HEAD, not declared by the browser. */
+    byteSize: bigint("byte_size", { mode: "number" }),
+
+    /**
+     * Where the bytes are. `pending/{id}` until finalization, then the
+     * permanent `w/{workroom}/f/{file}` — which is never the target of any
+     * presigned upload and is never written twice.
+     */
+    storageKey: text("storage_key").notNull(),
+
+    /** The bucket's own integrity value. Opaque: compared, never parsed. */
+    storageEtag: text("storage_etag"),
+
+    /** An optional browser-made preview. Images only. Never the artefact. */
+    previewKey: text("preview_key"),
+
+    status: text("status").notNull().default("pending").$type<FileStatus>(),
+    visibility: text("visibility").notNull().default("internal").$type<FileVisibility>(),
+    sharedAt: timestamp("shared_at", { withTimezone: true }),
+
+    /** Replacement is a new row. A ready file is never rewritten in place. */
+    supersedesFileId: uuid("supersedes_file_id"),
+
+    /** Optimistic concurrency; see the note on `clients.version`. */
+    version: integer("version").notNull().default(1),
+
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+
+    createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
+    updatedBy: text("updated_by").references(() => user.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("workroom_files_public_id_idx").on(table.publicId),
+    uniqueIndex("workroom_files_storage_key_idx").on(table.storageKey),
+    // The composite tenancy key every child references.
+    unique("workroom_files_workroom_id_id_key").on(table.workroomId, table.id),
+    index("workroom_files_workroom_idx").on(table.workroomId, table.createdAt.desc()),
+    index("workroom_files_status_idx").on(table.status),
+    index("workroom_files_visibility_idx").on(table.visibility),
+    index("workroom_files_archived_at_idx").on(table.archivedAt),
+
+    foreignKey({
+      columns: [table.supersedesFileId],
+      foreignColumns: [table.id],
+      name: "workroom_files_supersedes_fk",
+    }).onDelete("set null"),
+
+    check("workroom_files_status_check", sql.raw(`status IN (${quoted(FILE_STATUSES)})`)),
+    check(
+      "workroom_files_visibility_check",
+      sql.raw(`visibility IN (${quoted(FILE_VISIBILITIES)})`),
+    ),
+    check("workroom_files_public_id_length_check", sql.raw("char_length(public_id) = 26")),
+    check(
+      "workroom_files_display_name_length_check",
+      sql.raw("char_length(display_name) BETWEEN 1 AND 200"),
+    ),
+    check(
+      "workroom_files_original_filename_length_check",
+      sql.raw("char_length(original_filename) BETWEEN 1 AND 400"),
+    ),
+    check(
+      "workroom_files_content_type_length_check",
+      sql.raw("char_length(content_type) BETWEEN 1 AND 200"),
+    ),
+    // A ready file has bytes behind it and knows how many. A pending one does
+    // not yet, and saying so in the schema is what stops half a file looking
+    // like a whole one.
+    check(
+      "workroom_files_ready_shape_check",
+      sql.raw(
+        "(status = 'pending' AND byte_size IS NULL AND storage_etag IS NULL)" +
+          " OR (status = 'ready' AND byte_size IS NOT NULL AND storage_etag IS NOT NULL)",
+      ),
+    ),
+    check(
+      "workroom_files_byte_size_check",
+      sql.raw(`byte_size IS NULL OR (byte_size > 0 AND byte_size <= ${MAX_FILE_BYTES})`),
+    ),
+    // Shared is a state with a moment attached, and only a ready file can be
+    // in it — sharing something whose bytes never arrived is not a thing.
+    check(
+      "workroom_files_shared_shape_check",
+      sql.raw(
+        "(visibility = 'internal' AND shared_at IS NULL)" +
+          " OR (visibility = 'shared' AND shared_at IS NOT NULL AND status = 'ready')",
+      ),
+    ),
+    // The key says which half of its life a row is in, so a pending row can
+    // never name a permanent object and the sweep can never reach one.
+    check(
+      "workroom_files_key_shape_check",
+      sql.raw(
+        "(status = 'pending' AND storage_key LIKE 'pending/%')" +
+          " OR (status = 'ready' AND storage_key LIKE 'w/%')",
+      ),
+    ),
+  ],
+);
+
+/* ---------------------------------------------------------- presentations */
+
+export const PRESENTATION_STATUSES = ["draft", "published", "unpublished"] as const;
+export type PresentationStatus = (typeof PRESENTATION_STATUSES)[number];
+
+/**
+ * A deliberate delivery moment. Mutable while it is being built; publishing
+ * freezes its contents into a Revision.
+ *
+ * Created in Stage A and used from Stage B. The model is locked, and half a
+ * schema is harder to reason about than a finished one that is not yet read.
+ */
+export const presentations = pgTable(
+  "presentations",
+  {
+    id: uuid("id").primaryKey(),
+    publicId: text("public_id").notNull(),
+
+    workroomId: uuid("workroom_id")
+      .notNull()
+      .references(() => workrooms.id, { onDelete: "restrict" }),
+
+    title: text("title").notNull(),
+    /** Client-safe, and the role `workrooms.summary` plays. */
+    intro: text("intro").notNull().default(""),
+
+    status: text("status").notNull().default("draft").$type<PresentationStatus>(),
+    publishedAt: timestamp("published_at", { withTimezone: true }),
+    /** The Revision a client sees now. Null until first publication. */
+    currentRevisionId: uuid("current_revision_id"),
+
+    version: integer("version").notNull().default(1),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+
+    createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
+    updatedBy: text("updated_by").references(() => user.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("presentations_public_id_idx").on(table.publicId),
+    unique("presentations_workroom_id_id_key").on(table.workroomId, table.id),
+    index("presentations_workroom_idx").on(table.workroomId, table.createdAt.desc()),
+    index("presentations_status_idx").on(table.status),
+    index("presentations_archived_at_idx").on(table.archivedAt),
+
+    check("presentations_status_check", sql.raw(`status IN (${quoted(PRESENTATION_STATUSES)})`)),
+    check("presentations_public_id_length_check", sql.raw("char_length(public_id) = 26")),
+    check("presentations_title_length_check", sql.raw("char_length(title) BETWEEN 1 AND 200")),
+    check("presentations_intro_length_check", sql.raw("char_length(intro) <= 4000")),
+  ],
+);
+
+/** A file reference, or words between files. Two kinds, not ten. */
+export const PRESENTATION_ITEM_KINDS = ["file", "note"] as const;
+export type PresentationItemKind = (typeof PRESENTATION_ITEM_KINDS)[number];
+
+/** The mutable draft contents. Invisible to clients, replaced freely. */
+export const presentationItems = pgTable(
+  "presentation_items",
+  {
+    id: uuid("id").primaryKey(),
+
+    /** Carried for the composite tenancy keys below, not as a convenience. */
+    workroomId: uuid("workroom_id")
+      .notNull()
+      .references(() => workrooms.id, { onDelete: "restrict" }),
+
+    presentationId: uuid("presentation_id").notNull(),
+    fileId: uuid("file_id"),
+
+    kind: text("kind").notNull().$type<PresentationItemKind>(),
+    caption: text("caption"),
+    body: text("body"),
+    position: integer("position").notNull(),
+
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    // A draft item has no life without its presentation.
+    foreignKey({
+      columns: [table.workroomId, table.presentationId],
+      foreignColumns: [presentations.workroomId, presentations.id],
+      name: "presentation_items_presentation_fk",
+    }).onDelete("cascade"),
+    // And it can only ever reference a file from its own Workroom.
+    foreignKey({
+      columns: [table.workroomId, table.fileId],
+      foreignColumns: [workroomFiles.workroomId, workroomFiles.id],
+      name: "presentation_items_file_fk",
+    }).onDelete("restrict"),
+
+    index("presentation_items_presentation_idx").on(table.presentationId, table.position),
+    index("presentation_items_file_idx").on(table.fileId),
+
+    check("presentation_items_kind_check", sql.raw(`kind IN (${quoted(PRESENTATION_ITEM_KINDS)})`)),
+    check(
+      "presentation_items_shape_check",
+      sql.raw(
+        "(kind = 'file' AND file_id IS NOT NULL AND body IS NULL)" +
+          " OR (kind = 'note' AND file_id IS NULL AND body IS NOT NULL)",
+      ),
+    ),
+    check("presentation_items_position_check", sql.raw("position >= 0")),
+    check(
+      "presentation_items_caption_length_check",
+      sql.raw("caption IS NULL OR char_length(caption) <= 500"),
+    ),
+    check("presentation_items_body_length_check", sql.raw("body IS NULL OR char_length(body) <= 4000")),
+  ],
+);
+
+/**
+ * What one person saw at one moment. **Immutable**: the migration adds a
+ * trigger refusing UPDATE and DELETE, because an approval names one of these
+ * and a rewritable revision would make "approved" mean whatever it says today.
+ */
+export const presentationRevisions = pgTable(
+  "presentation_revisions",
+  {
+    id: uuid("id").primaryKey(),
+
+    workroomId: uuid("workroom_id")
+      .notNull()
+      .references(() => workrooms.id, { onDelete: "restrict" }),
+    presentationId: uuid("presentation_id").notNull(),
+
+    revisionNumber: integer("revision_number").notNull(),
+
+    /**
+     * The frozen client-safe projection, written only by serialising
+     * `toClientPresentationView`. Never assembled by hand, never from a row.
+     */
+    snapshot: jsonb("snapshot").notNull(),
+    /** sha256 over the canonical snapshot. Compared, never interpreted. */
+    contentHash: text("content_hash").notNull(),
+
+    publishedAt: timestamp("published_at", { withTimezone: true }).notNull().defaultNow(),
+    publishedBy: text("published_by").references(() => user.id, { onDelete: "set null" }),
+    /** Snapshot, so history still reads after somebody leaves the studio. */
+    publishedByName: text("published_by_name"),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.workroomId, table.presentationId],
+      foreignColumns: [presentations.workroomId, presentations.id],
+      name: "presentation_revisions_presentation_fk",
+    }).onDelete("restrict"),
+
+    unique("presentation_revisions_workroom_id_id_key").on(table.workroomId, table.id),
+    // Two publishes produce two numbers or one refusal, never a duplicate.
+    uniqueIndex("presentation_revisions_number_idx").on(table.presentationId, table.revisionNumber),
+    index("presentation_revisions_latest_idx").on(
+      table.presentationId,
+      table.revisionNumber.desc(),
+    ),
+
+    check("presentation_revisions_number_check", sql.raw("revision_number >= 1")),
+    check("presentation_revisions_hash_length_check", sql.raw("char_length(content_hash) = 64")),
+  ],
+);
+
+/**
+ * The exact ordered contents of a Revision, relationally. **Immutable.**
+ *
+ * A JSON snapshot alone cannot carry a foreign key, support an archive guard,
+ * give a review a target, or prove which physical file belonged to a decision.
+ * These rows do all four; the snapshot stays as the frozen rendering.
+ */
+export const presentationRevisionItems = pgTable(
+  "presentation_revision_items",
+  {
+    id: uuid("id").primaryKey(),
+
+    workroomId: uuid("workroom_id")
+      .notNull()
+      .references(() => workrooms.id, { onDelete: "restrict" }),
+    presentationRevisionId: uuid("presentation_revision_id").notNull(),
+
+    position: integer("position").notNull(),
+    kind: text("kind").notNull().$type<PresentationItemKind>(),
+    fileId: uuid("file_id"),
+
+    /** What the client was shown. A later rename does not rewrite history. */
+    displayNameSnapshot: text("display_name_snapshot"),
+    caption: text("caption"),
+    body: text("body"),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.workroomId, table.presentationRevisionId],
+      foreignColumns: [presentationRevisions.workroomId, presentationRevisions.id],
+      name: "presentation_revision_items_revision_fk",
+    }).onDelete("restrict"),
+    // `restrict` is the archive guard's other half: a file inside a revision
+    // cannot be removed by anything, including the pending sweep.
+    foreignKey({
+      columns: [table.workroomId, table.fileId],
+      foreignColumns: [workroomFiles.workroomId, workroomFiles.id],
+      name: "presentation_revision_items_file_fk",
+    }).onDelete("restrict"),
+
+    unique("presentation_revision_items_workroom_id_id_key").on(table.workroomId, table.id),
+    uniqueIndex("presentation_revision_items_position_idx").on(
+      table.presentationRevisionId,
+      table.position,
+    ),
+    index("presentation_revision_items_file_idx").on(table.fileId),
+
+    check(
+      "presentation_revision_items_kind_check",
+      sql.raw(`kind IN (${quoted(PRESENTATION_ITEM_KINDS)})`),
+    ),
+    check(
+      "presentation_revision_items_shape_check",
+      sql.raw(
+        "(kind = 'file' AND file_id IS NOT NULL AND body IS NULL)" +
+          " OR (kind = 'note' AND file_id IS NULL AND body IS NOT NULL)",
+      ),
+    ),
+    check("presentation_revision_items_position_check", sql.raw("position >= 0")),
+  ],
+);
+
+/* ------------------------------------------------ reviews and approvals */
+
+export const REVIEW_STATUSES = ["requested", "responded", "resolved", "withdrawn"] as const;
+export type ReviewStatus = (typeof REVIEW_STATUSES)[number];
+
+/**
+ * Feedback on a Revision, or on one item inside it. Request, response,
+ * resolution — deliberately not a thread. The tradeoff is argued in
+ * docs/delivery.md.
+ */
+export const presentationReviews = pgTable(
+  "presentation_reviews",
+  {
+    id: uuid("id").primaryKey(),
+
+    workroomId: uuid("workroom_id")
+      .notNull()
+      .references(() => workrooms.id, { onDelete: "restrict" }),
+    presentationRevisionId: uuid("presentation_revision_id").notNull(),
+    /** Null means the whole Revision. See the two partial indexes below. */
+    revisionItemId: uuid("revision_item_id"),
+
+    status: text("status").notNull().default("requested").$type<ReviewStatus>(),
+
+    requestedAt: timestamp("requested_at", { withTimezone: true }).notNull().defaultNow(),
+    requestedBy: text("requested_by").references(() => user.id, { onDelete: "set null" }),
+
+    /** The client's words. Their voice, and only theirs. */
+    responseBody: text("response_body"),
+    respondedAt: timestamp("responded_at", { withTimezone: true }),
+    respondedByIdentityId: text("responded_by_identity_id").references(() => clientIdentity.id, {
+      onDelete: "set null",
+    }),
+    respondedByName: text("responded_by_name"),
+
+    /** What the studio did about it. The studio's voice, and only theirs. */
+    resolutionNote: text("resolution_note"),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    resolvedBy: text("resolved_by").references(() => user.id, { onDelete: "set null" }),
+
+    version: integer("version").notNull().default(1),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.workroomId, table.presentationRevisionId],
+      foreignColumns: [presentationRevisions.workroomId, presentationRevisions.id],
+      name: "presentation_reviews_revision_fk",
+    }).onDelete("restrict"),
+    foreignKey({
+      columns: [table.workroomId, table.revisionItemId],
+      foreignColumns: [presentationRevisionItems.workroomId, presentationRevisionItems.id],
+      name: "presentation_reviews_item_fk",
+    }).onDelete("restrict"),
+
+    index("presentation_reviews_workroom_idx").on(table.workroomId, table.status),
+    index("presentation_reviews_revision_idx").on(table.presentationRevisionId),
+
+    check("presentation_reviews_status_check", sql.raw(`status IN (${quoted(REVIEW_STATUSES)})`)),
+    check(
+      "presentation_reviews_response_shape_check",
+      sql.raw(
+        "(response_body IS NULL AND responded_at IS NULL)" +
+          " OR (response_body IS NOT NULL AND responded_at IS NOT NULL)",
+      ),
+    ),
+    check(
+      "presentation_reviews_response_length_check",
+      sql.raw("response_body IS NULL OR char_length(response_body) <= 8000"),
+    ),
+    check(
+      "presentation_reviews_resolution_length_check",
+      sql.raw("resolution_note IS NULL OR char_length(resolution_note) <= 8000"),
+    ),
+  ],
+);
+
+export const APPROVAL_STATUSES = ["requested", "granted", "declined", "withdrawn"] as const;
+export type ApprovalStatus = (typeof APPROVAL_STATUSES)[number];
+
+/**
+ * A business decision, recorded once and never edited.
+ *
+ * No `version` and no `updated_at`: nothing about a decided approval is
+ * editable. The migration adds triggers that refuse UPDATE on a terminal row,
+ * refuse any transition but `requested` → one terminal state, refuse DELETE
+ * outright and refuse TRUNCATE — the same three-way protection `audit_events`
+ * carries, because business history that can be truncated is not history.
+ *
+ * Declining requires a reason. A decline with no reason is a dead end for both
+ * sides, and the reason is the most useful sentence in the record.
+ */
+export const presentationApprovals = pgTable(
+  "presentation_approvals",
+  {
+    id: uuid("id").primaryKey(),
+
+    workroomId: uuid("workroom_id")
+      .notNull()
+      .references(() => workrooms.id, { onDelete: "restrict" }),
+    presentationRevisionId: uuid("presentation_revision_id").notNull(),
+
+    status: text("status").notNull().default("requested").$type<ApprovalStatus>(),
+
+    requestedAt: timestamp("requested_at", { withTimezone: true }),
+    requestedBy: text("requested_by").references(() => user.id, { onDelete: "set null" }),
+
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    decidedByIdentityId: text("decided_by_identity_id").references(() => clientIdentity.id, {
+      onDelete: "set null",
+    }),
+    /** Snapshot. The record still reads after an identity is disabled. */
+    decidedByName: text("decided_by_name"),
+    declineReason: text("decline_reason"),
+
+    /**
+     * The revision's hash as it was at the moment of the decision. A tripwire:
+     * if this ever disagrees with the revision's own hash, something mutated a
+     * supposedly immutable row and the system should say so loudly.
+     */
+    contentHashAtDecision: text("content_hash_at_decision"),
+
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.workroomId, table.presentationRevisionId],
+      foreignColumns: [presentationRevisions.workroomId, presentationRevisions.id],
+      name: "presentation_approvals_revision_fk",
+    }).onDelete("restrict"),
+
+    index("presentation_approvals_workroom_idx").on(table.workroomId, table.status),
+    index("presentation_approvals_revision_idx").on(table.presentationRevisionId),
+
+    check("presentation_approvals_status_check", sql.raw(`status IN (${quoted(APPROVAL_STATUSES)})`)),
+    check(
+      "presentation_approvals_decided_shape_check",
+      sql.raw(
+        "(status IN ('requested', 'withdrawn') AND decided_at IS NULL)" +
+          " OR (status IN ('granted', 'declined') AND decided_at IS NOT NULL)",
+      ),
+    ),
+    // A decline says why. Nothing else may carry a reason.
+    check(
+      "presentation_approvals_decline_reason_check",
+      sql.raw(
+        "(status = 'declined' AND decline_reason IS NOT NULL" +
+          " AND char_length(decline_reason) BETWEEN 3 AND 2000)" +
+          " OR (status <> 'declined' AND decline_reason IS NULL)",
+      ),
     ),
   ],
 );

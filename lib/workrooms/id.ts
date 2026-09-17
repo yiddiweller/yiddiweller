@@ -46,6 +46,16 @@ export function workroomPublicId(): string {
   return out;
 }
 
+/**
+ * The same generator, for anything else that needs a client-facing address.
+ *
+ * Build 005's Files and Presentations are reached by one of these too, and for
+ * the same reasons: a UUIDv7 would announce when the row was created, and a
+ * name would announce whose it is. Aliased rather than copied so there is one
+ * alphabet and one length in the codebase.
+ */
+export const opaquePublicId = workroomPublicId;
+
 /** Rejects a malformed id before it reaches a query, so a bad one is a 404. */
 export function isPublicId(value: unknown): value is string {
   return (

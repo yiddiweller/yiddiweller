@@ -325,3 +325,39 @@
   .button,
   .quiet { transition: none; }
 }
+
+/* Files. A list of things somebody was given, not a file manager: the name is
+   the link, the type and size are plain text, and every action is always
+   visible because a phone has no hover. */
+.files { list-style: none; display: flex; flex-direction: column; }
+
+.file {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--w-1) var(--w-3);
+  padding: var(--w-3) 0;
+  border-bottom: 1px solid var(--w-edge-faint);
+}
+
+.file:first-child { border-top: 1px solid var(--w-edge-faint); }
+
+.fileLink {
+  font-size: var(--w-fs-body);
+  color: var(--w-fg);
+  text-decoration: none;
+  border-bottom: 1px solid var(--w-edge);
+  padding-bottom: 1px;
+  overflow-wrap: anywhere;
+  min-height: 24px;
+}
+
+.fileLink:hover { opacity: 0.72; }
+
+.fileMeta {
+  font-size: var(--w-fs-ui);
+  color: var(--w-fg-3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}

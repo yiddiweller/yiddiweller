@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import Moment from "@/components/studio/Moment";
 import { requireViewer } from "@/lib/client-auth/guard";
 import { listActivity } from "@/lib/db/activity";
+import { filesForViewer } from "@/lib/db/files";
 import { workroomForViewer, workroomPeople, workroomsForViewer } from "@/lib/db/workrooms";
 import { projectDatesFor } from "@/lib/db/projects";
 import { toClientActivity, toClientPeople, toClientWorkroomView } from "@/lib/workrooms/view";
@@ -29,11 +30,12 @@ export default async function Workroom({ params }: { params: Promise<{ id: strin
   const room = await workroomForViewer(viewer.contactId, id);
   if (!room) notFound();
 
-  const [people, activity, dates, others] = await Promise.all([
+  const [people, activity, dates, others, files] = await Promise.all([
     workroomPeople(room.id),
     listActivity(room.id),
     projectDatesFor(room.projectId),
     workroomsForViewer(viewer.contactId),
+    filesForViewer(viewer.contactId, id),
   ]);
 
   const view = toClientWorkroomView(room, dates);
@@ -70,6 +72,17 @@ export default async function Workroom({ params }: { params: Promise<{ id: strin
             </div>
           </div>
         </section>
+
+        {files.length > 0 ? (
+          <section className={styles.section}>
+            <h2 className={styles.sectionTitle}>Files</h2>
+            <p className={styles.lede}>
+              <Link className={styles.quiet} href={`/workrooms/${id}/files`}>
+                {files.length === 1 ? "1 file" : `${files.length} files`} →
+              </Link>
+            </p>
+          </section>
+        ) : null}
 
         <section className={styles.section}>
           <h2 className={styles.sectionTitle}>Who is here</h2>

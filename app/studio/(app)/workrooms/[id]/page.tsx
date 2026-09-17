@@ -10,12 +10,14 @@ import { requireStaff } from "@/lib/auth/guard";
 import { isId, label } from "@/lib/business";
 import { listActivity } from "@/lib/db/activity";
 import { listEntityAudit } from "@/lib/db/audit";
+import { listFiles, workroomBytes } from "@/lib/db/files";
 import {
   findWorkroom,
   invitableContacts,
   listOpenInvitations,
   listWorkroomMembers,
 } from "@/lib/db/workrooms";
+import { formatBytes } from "@/lib/storage/policy";
 import { toClientActivity } from "@/lib/workrooms/view";
 import styles from "@/app/studio/studio.module.css";
 
@@ -58,12 +60,14 @@ export default async function StudioWorkroom({ params }: { params: Promise<{ id:
   if (!room) notFound();
 
   const isOwner = viewer.role === "owner";
-  const [members, invitations, invitable, activity, history] = await Promise.all([
+  const [members, invitations, invitable, activity, history, files, stored] = await Promise.all([
     listWorkroomMembers(id),
     listOpenInvitations(id),
     invitableContacts(id),
     listActivity(id, 20),
     isOwner ? listEntityAudit("workroom", id) : Promise.resolve([]),
+    listFiles(id),
+    workroomBytes(id),
   ]);
 
   const timeline = toClientActivity(activity);
@@ -320,6 +324,35 @@ export default async function StudioWorkroom({ params }: { params: Promise<{ id:
                       busyLabel="Revoking"
                       confirm={`Revoke the invitation to ${invite.email}? Their link stops working straight away.`}
                     />
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        {/* A count and the three most recent, then a link. Files are managed on
+            their own page; this is enough to know whether there are any. */}
+        <section className={styles.section}>
+          <div className={styles.sectionHead}>
+            <h2 className={styles.sectionTitle}>Files</h2>
+            <Link className={styles.sectionNote} href={`/studio/workrooms/${room.id}/files`}>
+              {files.length === 0
+                ? "Add one →"
+                : `${files.length} · ${formatBytes(stored)} →`}
+            </Link>
+          </div>
+          {files.length === 0 ? (
+            <p className={styles.empty}>
+              Nothing yet. Files added here stay internal until they are shared.
+            </p>
+          ) : (
+            <ul className={`${styles.list} ${styles.listPair}`}>
+              {files.slice(0, 3).map((file) => (
+                <li key={file.id} className={styles.row}>
+                  <span className={styles.rowSecondary}>{file.displayName}</span>
+                  <span className={styles.rowMeta}>
+                    {file.visibility === "shared" ? "Shared" : "Internal"}
                   </span>
                 </li>
               ))}

@@ -22,6 +22,27 @@ const REQUIRED = [
   "CLIENT_AUTH_SECRET",
 ];
 
+/**
+ * Delivery storage, from Build 005. Reported as its own group rather than
+ * folded into REQUIRED, because "absent" means two different things here:
+ *
+ *   an environment that serves Files without these is broken
+ *   an environment that does not serve Files yet is simply not there yet
+ *
+ * Production is the second case until Build 005 is promoted. Collapsing both
+ * into one exit code would either cry wolf on production or stay quiet on a
+ * beta that cannot store a byte. Missing them breaks the Files routes and
+ * nothing else: the public site, Contact, Studio sign-in, the business core
+ * and the Workroom overview never read them.
+ */
+const STORAGE = [
+  "BUCKET_ENDPOINT",
+  "BUCKET_NAME",
+  "BUCKET_REGION",
+  "BUCKET_ACCESS_KEY_ID",
+  "BUCKET_SECRET_ACCESS_KEY",
+];
+
 // Not required. Studio lives at /studio until its subdomain is connected, and
 // the bootstrap variables are read once, by hand, and then removed.
 const OPTIONAL = ["SITE_ENV", "STUDIO_HOST"];
@@ -32,8 +53,28 @@ for (const key of REQUIRED) {
   console.log(`${missing.includes(key) ? "MISSING " : "present "} ${key}`);
 }
 
+const storageMissing = STORAGE.filter((key) => !process.env[key]?.trim());
+
+for (const key of STORAGE) {
+  console.log(`${storageMissing.includes(key) ? "MISSING " : "present "} ${key} (delivery storage)`);
+}
+
 for (const key of OPTIONAL) {
   console.log(`${process.env[key]?.trim() ? "present " : "unset   "} ${key} (optional)`);
+}
+
+if (storageMissing.length > 0 && storageMissing.length < STORAGE.length) {
+  // Partial configuration is always a mistake. Four of five is not "nearly
+  // there", it is a bucket that cannot be reached with a clear reason.
+  console.error(
+    `\nDelivery storage is partly configured: ${storageMissing.join(", ")} absent. ` +
+      "All five or none.",
+  );
+  process.exit(1);
+}
+
+if (storageMissing.length === STORAGE.length) {
+  console.log("\nDelivery storage is not configured. Files routes will not work here.");
 }
 
 if (missing.length > 0) {

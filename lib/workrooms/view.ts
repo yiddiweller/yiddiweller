@@ -87,5 +87,25 @@ function sentence(row: ActivityRow): string {
       return `${row.subject ?? "Someone"}'s access ended`;
     case "project.status_changed":
       return `Status changed to ${row.subject ?? "something else"}`;
+
+    /* Build 005. The vocabulary is locked in docs/delivery.md and written out
+       here in full, because this switch is exhaustive and adding a kind to the
+       schema without a sentence for it is a compile error rather than a line
+       that silently renders nothing. Stage A writes only `file.shared`; the
+       rest are unreachable until their stage builds them. */
+    case "file.shared":
+      return `${row.subject ?? "A file"} was shared`;
+    case "presentation.published":
+      return `${row.subject ?? "A presentation"} is ready`;
+    case "presentation.revised":
+      return `${row.subject ?? "A presentation"} was updated`;
+    case "review.requested":
+      return `Your thoughts were requested on ${row.subject ?? "a presentation"}`;
+    case "review.received":
+      return `${row.actorLabel ?? "Someone"} sent feedback`;
+    case "approval.requested":
+      return `Approval was requested for ${row.subject ?? "a presentation"}`;
+    case "approval.decided":
+      return `${row.actorLabel ?? "Someone"} decided on ${row.subject ?? "a presentation"}`;
   }
 }

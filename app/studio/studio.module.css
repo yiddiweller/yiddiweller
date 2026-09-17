@@ -902,3 +902,37 @@
 
   .skeleton { animation: none; }
 }
+
+/* Upload. A real file input with a label above it, in the same field rhythm as
+   every other control, plus a status line that announces itself rather than
+   only changing colour. */
+.upload { display: flex; flex-direction: column; gap: var(--s-2); }
+
+.fileInput {
+  width: 100%;
+  min-height: var(--s-control-h);
+  padding: var(--s-2) 0;
+  font-size: var(--s-fs-ui);
+  color: var(--s-fg-2);
+}
+
+.fileInput::file-selector-button {
+  min-height: 32px;
+  margin-right: var(--s-3);
+  padding: 0 var(--s-3);
+  font: inherit;
+  color: var(--s-fg);
+  background: none;
+  border: 1px solid var(--s-edge);
+  border-radius: 0;
+  cursor: pointer;
+}
+
+.fileInput::file-selector-button:hover { border-color: var(--s-fg-3); }
+.fileInput:disabled { opacity: 0.5; }
+
+.uploadStatus {
+  font-size: var(--s-fs-ui);
+  color: var(--s-fg-2);
+  font-variant-numeric: tabular-nums;
+}

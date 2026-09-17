@@ -120,6 +120,55 @@ export function workroomUrl(path = ""): string {
  * Unset while the subdomain is disconnected, which is the current state: Studio
  * is then reachable only at the `/studio` path on non-public hosts.
  */
+/**
+ * Where file bytes live.
+ *
+ * Five values, read together because four of them are useless alone. They are
+ * Railway Variable References to a private Storage Bucket's credentials, but
+ * nothing here says so: the adapter takes an endpoint and a credential, which
+ * is what keeps `lib/storage` portable to any S3-compatible provider.
+ *
+ * All five are runtime-only. None may become a Docker build argument —
+ * `SITE_ENV` remains the single permitted one — and none may be logged,
+ * returned in a response, or reach client JavaScript.
+ *
+ * A missing value throws here, at the point of use, so an unconfigured
+ * environment breaks the Files routes and nothing else. The public site,
+ * Contact, Studio sign-in, the business core and the Workroom overview do not
+ * read this and must keep working without it.
+ */
+export type BucketConfig = {
+  endpoint: string;
+  bucket: string;
+  region: string;
+  accessKeyId: string;
+  secretAccessKey: string;
+};
+
+export const BUCKET_KEYS = [
+  "BUCKET_ENDPOINT",
+  "BUCKET_NAME",
+  "BUCKET_REGION",
+  "BUCKET_ACCESS_KEY_ID",
+  "BUCKET_SECRET_ACCESS_KEY",
+] as const;
+
+export function bucketConfig(): BucketConfig {
+  const found = requireAll([...BUCKET_KEYS]);
+  return {
+    endpoint: found.BUCKET_ENDPOINT!.replace(/\/+$/, ""),
+    bucket: found.BUCKET_NAME!,
+    region: found.BUCKET_REGION!,
+    accessKeyId: found.BUCKET_ACCESS_KEY_ID!,
+    secretAccessKey: found.BUCKET_SECRET_ACCESS_KEY!,
+  };
+}
+
+/** Whether storage is configured at all, without throwing to find out. */
+export function bucketConfigured(): boolean {
+  return BUCKET_KEYS.every((key) => Boolean(read(key)));
+}
+
 export function studioHost(): string | undefined {
   return read("STUDIO_HOST")?.toLowerCase();
 }

@@ -34,8 +34,10 @@ that has not been on `beta` first, and never leave `beta` behind `main`.
 **Phases 1, 2, 3 and 4 are complete and verified in production**, released as
 **Build 001**, **Build 002**, **Build 003** and **Build 004**. **Build 005's
 architecture is locked in `docs/delivery.md`, and Stage A — storage and Files —
-is verified on beta against the real Railway bucket. Stage B has not begun, and
-production has no bucket and has not been touched by Build 005.**
+is verified on beta against the real Railway bucket. Stage B's architecture is
+locked too, re-benchmarked against professional creative-delivery products; no
+Stage B code exists. Production has no bucket and has not been touched by
+Build 005.**
 These are facts about the running system, not proposals. Changing any of them is
 a deliberate decision, not a cleanup.
 
@@ -110,6 +112,24 @@ a deliberate decision, not a cleanup.
 - **An approval names a Presentation Revision, never a Presentation.** Revisions
   and their items are immutable; a terminal approval refuses UPDATE, DELETE and
   TRUNCATE. A new decision about changed work requires a new Revision.
+- **A client only ever sees a `ready`, `shared`, unarchived File — inside a
+  Presentation exactly as in the Files list, and inside a Revision published
+  years ago exactly as today.** There is one predicate, `clientVisible()`, and
+  Stage B does not widen it, union it, or add a route that reaches a file
+  another way. **Publishing a Revision shares the Files it references**, in the
+  same transaction, which is what keeps that sentence true. **A File in a
+  Revision of a `published` Presentation cannot be unshared**, and a File in any
+  Revision cannot be archived. Retracting what a client was shown is
+  `unpublish`, never `unshare`.
+- **A Presentation Revision row exists if and only if it was published.** So
+  "may the client open Revision 2?" is answered by the row existing, never by a
+  flag. Clients may revisit every published Revision; the latest is primary and
+  the rest stay behind one quiet control.
+- **Staff Preview renders the *draft* through the same component and projection
+  as the client page, and says so.** For a published Presentation it is
+  deliberately not what the client currently sees — that is the current
+  Revision. One component, never a second copy of the markup: the Stage A
+  Preview drift was a real defect, not a near miss.
 - **Beta has the five `BUCKET_*` variables through Railway Variable References
   and its bucket is verified private; production has none of it.** Missing them breaks the Files routes and nothing else —
   the public site, Contact, Studio sign-in, the business core and the Workroom

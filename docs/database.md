@@ -304,10 +304,12 @@ own deprecation notice says is where that package moved.
 
 ## What Build 005 adds
 
-Six tables, planned in [`delivery.md`](./delivery.md) and **not created until
-Build 005 is built**: `workroom_files`, `presentations`, `presentation_items`,
-`presentation_revisions`, `presentation_revision_items`,
-`presentation_reviews`, `presentation_approvals`.
+Seven tables, planned in [`delivery.md`](./delivery.md) and **created by
+migration `0004_delivery.sql`, which is applied on beta**: `workroom_files`,
+`presentations`, `presentation_items`, `presentation_revisions`,
+`presentation_revision_items`, `presentation_reviews`,
+`presentation_approvals`. Stage A reads and writes `workroom_files`; the other
+six exist and are read by nothing until Stage B.
 
 Three conventions they introduce, recorded here because they are new to this
 schema and the next table that needs one should copy rather than reinvent:
@@ -330,6 +332,15 @@ schema and the next table that needs one should copy rather than reinvent:
   Build 005 uses one partial index `WHERE item_id IS NULL` and another
   `WHERE item_id IS NOT NULL`. PostgreSQL 16's `NULLS NOT DISTINCT` would also
   work; two partial indexes say what they mean at the point of definition.
+
+**One thing `0004` did not constrain, and `0005` will.**
+`presentations.current_revision_id` carries no foreign key — it is a bare
+`uuid` that could name a Revision of another Presentation or of another
+Workroom. It is unreachable today because nothing reads these tables, and it is
+fixed before Stage B writes the first row, by a composite key binding the column
+to *its own* Presentation rather than merely to the table. Two smaller CHECK
+gaps travel with it. The statements and the reasoning are in
+[`delivery.md`](./delivery.md).
 
 **Bytes are not stored here.** File contents live in a private, S3-compatible
 Railway Storage Bucket; PostgreSQL holds metadata, relationships, authorization,

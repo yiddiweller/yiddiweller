@@ -69,6 +69,7 @@ namespace**:
 /workrooms/{opaque id}/files                 its files
 /workrooms/{opaque id}/files/{id}/download   one file
 /workrooms/{opaque id}/presentations/{id}    a presentation, review, approval
+/workrooms/{opaque id}/presentations/{id}/revisions/{n}   what was published then
 ```
 
 **Revised 2026-09-16, and this replaces an earlier locked design.** This

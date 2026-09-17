@@ -331,7 +331,9 @@ migrates into a foldered one cleanly; the reverse does not.
 | `supersedes_file_id` | The File this one replaces |
 
 Visibility is two values, not three and not a matrix. A file is either something
-the studio is holding or something the client has been given.
+the studio is holding or something the client has been given. **A Presentation cannot
+show a file the client has not been given**: publishing shares what it
+references, which is why two values stay sufficient once Presentations exist.
 
 ### `original_filename` stays internal
 
@@ -698,13 +700,78 @@ Workrooms do not need: **publishing writes a Revision.**
 reference and a **note** (a caption or short section heading). A presentation of
 design work is files with words between them.
 
+**Two kinds is confirmed sufficient, re-checked against the benchmark.** A file
+item carries an optional `caption`; a note carries a required `body` and an
+optional `caption` that reads as its heading. That composes every structure the
+research showed mattering — an opening paragraph, a section break, a caption
+under a visual — without becoming a page builder. The one shape it cannot
+express is a heading with nothing beneath it, and a section break with no words
+under it is decoration rather than a requirement. A third kind is refused until
+something real needs one.
+
 **Publishing is deliberate**, exactly as it is for a Workroom. Creating one
 exposes nothing.
 
 **Staff preview** renders through the *same* `toClientPresentationView`
-projection the client page uses, so the preview cannot drift from the thing it
-previews. It issues no client session — staff authority is staff authority, and
-there is no "sign in as this client" anywhere in this product.
+projection **and the same `PresentationView` component** the client page uses,
+so the preview cannot drift from the thing it previews. It issues no client
+session — staff authority is staff authority, and there is no "sign in as this
+client" anywhere in this product.
+
+**Preview and the client's current view are two different things, and the
+interface says which is which.** `/presentations/{id}/preview` renders *the
+draft, as it would publish* — labelled as a draft, and for a published
+Presentation it is deliberately **not** what the client currently sees. What the
+client sees is the current Revision, and staff read that in revision history.
+Both render through the one component. Conflating them is how a studio publishes
+something it never looked at.
+
+### Publishing shares — the rule that keeps history honest
+
+**Publishing a Revision sets `visibility = 'shared'` on every File it
+references**, in the same transaction, before any revision row is written.
+Staff are shown exactly which files that is before confirming, and each one
+writes its ordinary `file.shared` activity row.
+
+This is not a convenience. It is what makes **one sentence true everywhere,
+including inside a Revision published two years ago**: *a client may only ever
+see a `ready`, `shared`, unarchived File.* Stage A's `clientVisible()` predicate
+is the only authorization a file byte ever passes through, and Stage B does not
+widen it, does not add a union, and does not add a second route that reaches a
+file some other way.
+
+The alternative was to make a published Revision its own grant — letting a
+client reach an `internal` file *through* a Presentation. It was rejected: it
+would make `internal` stop meaning "the client cannot see this", split file
+authorization across two predicates that must agree for ever, and put the
+proof that they agree in a test rather than in the database.
+
+**And the reverse is refused.** A File referenced by a Revision of a
+Presentation that is currently `published` and unarchived **cannot be
+unshared** — refused, naming the Presentation, the same shape as the Build 003
+refusal that blocks archiving a Project whose Workroom is open. Without it,
+"stop sharing" silently breaks every historical Revision that shows the file,
+which is precisely the contradiction between historical integrity and current
+authorization that must not be allowed to arise.
+
+Two guards, two different jobs, and they are deliberately not the same
+condition:
+
+| Act | Guard | Because |
+| --- | --- | --- |
+| Unshare a file | Refused **while** a `published`, unarchived Presentation has a Revision naming it | Sharing is a live authorization state. Unpublish the Presentation and it is released |
+| Archive a file | Refused **while any** Revision names it, unconditionally | History must not lose its subject, whatever the Presentation's status is today |
+
+**Retracting what a client was shown is `unpublish`, never `unshare`.** One is
+the deliberate act with its own refusal when a decided Revision exists; the
+other is library housekeeping. A studio that retracts by unsharing has changed
+history by tidying up.
+
+**Only a `ready` File may be added to a draft item or a Revision.** A `pending`
+row is a reservation whose bytes may never arrive, and `presentation_items`
+references files `ON DELETE restrict` — so a pending file inside a draft would
+make Stage A's cleanup sweep fail on that row rather than skip it. Enforced in
+the domain, because a CHECK cannot read another table.
 
 ---
 
@@ -759,6 +826,45 @@ glossed:
 That is one level weaker than a structural guarantee and it should be read as
 such.
 
+### Previous versions — the client may revisit, and only what was published
+
+**A Revision row exists if and only if it was published.** There is no draft
+Revision, no scheduled Revision and no Revision written by anything but the
+publish transaction — so "may the client open Revision 2?" reduces to "does
+Revision 2 exist, in a Presentation they may open?" No flag is consulted and
+none can be got wrong.
+
+```
+/workrooms/{room}/presentations/{presentation}              the current Revision
+/workrooms/{room}/presentations/{presentation}/revisions    what was published, and when
+/workrooms/{room}/presentations/{presentation}/revisions/{n}  Revision n, exactly as shown
+```
+
+Under `/workrooms/:path*`, so `middleware.ts`'s private cache headers and the
+one `robots.txt` line already cover them. No new namespace, no second door.
+
+**The latest is primary and the rest are quiet.** The Presentation opens on its
+current Revision with no version chrome at all until a second Revision exists;
+then one restrained `Previous versions` control appears. A client who has been
+sent one thing is not shown a changelog.
+
+**What a historical Revision renders is the Revision, never today's draft.**
+Order, captions, body text and the name under each file come from
+`presentation_revision_items` — snapshotted at publication, immutable by
+trigger. Files are immutable once `ready`, so the bytes, type and size a
+historical Revision names are the bytes, type and size the client saw; a
+replacement is a different File and leaves the old Revision untouched.
+
+**Every historical read passes the same gate as every other client read** —
+active membership, Workroom `published` and unarchived, Presentation `published`
+and unarchived, and `clientVisible()` on each file. A ten-year-old Revision is
+not a route around anything; it is the ordinary route, reading older rows.
+
+**Unpublishing takes the whole Presentation back, history included.** That is
+the correct granularity: the studio retracts a delivery, not one paragraph of
+one version of it. And it is refused outright once a Revision carries a terminal
+approval.
+
 ---
 
 ## Reviews
@@ -793,8 +899,29 @@ genuine discussion happens on a call — where it already happens — with the
 Adding `review_notes` later is additive. Starting with threads and removing them
 is not.
 
+**This decision is deliberately not permanent, and the Stage B benchmark is why.**
+Frame.io, Filestage, Ziflow and ReviewStudio all ship comments bound to an
+asset and a version, with annotations, replies and a resolve action — not as a
+fringe feature but as the centre of how review works in them. The argument above
+was made before that evidence was gathered, and one paragraph of reasoning does
+not outrank four products converging.
+
+So: **the review interaction model is re-benchmarked before the Reviews stage is
+implemented, and the no-threads decision is re-argued against the evidence
+rather than inherited.** This authorises nothing now — the schema is unchanged
+and Stage B builds no Reviews. It records that "already decided" is not a reason
+to skip the question when the stage arrives.
+
 **Reviews block nothing.** A Revision can be approved with an open review, or
 reviewed and never approved. Two different acts, two independent records.
+
+**Version comparison is a Review-stage question, not a delivery one.** Ziflow
+and its peers offer side-by-side revisions, overlays, synchronised navigation
+and version-aware comments. None of it is a prerequisite for delivering a
+Presentation, and all of it is machinery in service of a *critique*, which is
+the Reviews stage's subject. Recorded here as a candidate to evaluate then, and
+explicitly not built in Stage B. Reliable immutable revision history is what
+makes evaluating it possible later; that is what Stage B owes it.
 
 ---
 
@@ -944,7 +1071,8 @@ filters.** No ORM row is ever spread into a client component.
 
 ```
 ClientFile          { id, name, kind, size, previewPath?, downloadPath }
-ClientPresentation  { id, title, intro, publishedAt, revision, items[] }
+ClientPresentation  { id, title, intro, publishedAt, revision, items[], revisions[] }
+ClientRevisionRef   { number, publishedAt, current }
 ClientRevisionItem  { id, kind, caption, body?, file? }
 ClientReview        { id, status, requestedAt, response?, resolution?, resolvedAt? }
 ClientApproval      { id, status, requestedAt, decidedAt?, decidedBy?, declineReason? }
@@ -956,6 +1084,12 @@ ClientApproval      { id, status, requestedAt, decidedAt?, decidedBy?, declineRe
 (formatted server-side), `uploaded_by`, every internal id, every `internal` file,
 every draft Presentation, every draft item, every `notes` field anywhere, every
 `audit_events` row, and every other Workroom's anything.
+
+`revisions[]` is the `Previous versions` control's whole data source, and it is
+deliberately two facts and a flag: **a number and a date say which version and
+when, and nothing about what changed.** No diff summary, no "3 items added", no
+publisher's name — a client reading a changelog of the studio's second thoughts
+is not the product.
 
 Adding a field to a client surface means adding it here first, deliberately, in
 review.
@@ -1054,6 +1188,7 @@ data nonsensical — the business-core rule, unchanged.
 | File, `pending` | n/a | **Yes.** It never became part of the Workroom |
 | File, `ready`, unreferenced | Owner | No |
 | File, `ready`, in any Revision | **Refused**, naming the Revision | No |
+| *Unshare* a file in a Revision of a `published` Presentation | **Refused**, naming the Presentation. Not archive, but the same reason | n/a |
 | Draft Presentation | Owner | No |
 | Presentation with any Revision | Owner | No |
 | Presentation with a decided Revision | **Refused**, naming the decision | No |
@@ -1241,6 +1376,55 @@ and Build 005 must prove the same way.
 realistic volumes, apply `0004`, assert row-for-row data identity, diff
 `pg_dump --schema-only` against a from-scratch build to zero, then run the
 **full suite against the migrated database**.
+
+### What Stage B still has to migrate — three gaps found by this review
+
+`0004` created the Presentation tables in Stage A so the model could be reasoned
+about whole. Reading them again against the benchmark found three places where
+the schema trusts the application where it could have made PostgreSQL refuse.
+**Stage B carries one small additive migration, `0005`, and does so before any
+Presentation code is written** — retrofitting an integrity constraint after rows
+exist is how a constraint gets weakened to fit the data.
+
+**1. `presentations.current_revision_id` has no foreign key at all.** Not to
+`presentation_revisions`, not to anything. Today it is an unconstrained `uuid`
+that could name another Presentation's Revision, another Workroom's Revision, or
+a row that does not exist — in an architecture whose whole thesis is that the
+database refuses rather than the code remembering. The fix binds it to the
+Presentation it belongs to, not merely to the table:
+
+```sql
+ALTER TABLE presentation_revisions
+  ADD CONSTRAINT presentation_revisions_presentation_id_id_key
+  UNIQUE (presentation_id, id);
+
+ALTER TABLE presentations
+  ADD CONSTRAINT presentations_current_revision_fk
+  FOREIGN KEY (id, current_revision_id)
+  REFERENCES presentation_revisions (presentation_id, id);
+```
+
+The circularity is only apparent: the column is nullable, so a Presentation is
+created with it `NULL`, its first Revision is inserted, and the `UPDATE` closes
+the loop. No deferral needed.
+
+**2. Nothing ties `status = 'published'` to actually having something to show.**
+A row may claim `published` with `current_revision_id` and `published_at` both
+`NULL`, which renders an empty page to a client. A CHECK says it properly:
+
+```sql
+ALTER TABLE presentations ADD CONSTRAINT presentations_published_shape_check
+  CHECK ((status = 'published' AND current_revision_id IS NOT NULL AND published_at IS NOT NULL)
+      OR (status <> 'published'));
+```
+
+**3. `presentation_revision_items.display_name_snapshot` is unconstrained.** A
+`note` may carry one and a `file` may omit one, so the column that exists to
+prove what name the client read can be absent on exactly the rows that need it.
+It belongs in the shape check beside `file_id` and `body`.
+
+None of the three is reachable by the code that exists, because no code reads or
+writes these tables yet. That is the whole reason to fix them now.
 
 ### Review uniqueness and NULL semantics
 

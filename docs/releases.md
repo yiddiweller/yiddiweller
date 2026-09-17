@@ -137,7 +137,10 @@ component keeping the Preview and the real client overview aligned.
   automated suite, the responsive sweep and the quality gate locally; the
   by-hand beta acceptance recorded above predates it.
 - **Stage B has not begun.** Presentations, Reviews and Approvals exist as
-  schema and are read by nothing.
+  schema and are read by nothing. Its **architecture is locked**, re-benchmarked
+  against Frame.io, Filestage, Ziflow and ReviewStudio, and that review found
+  three integrity gaps in `0004` that a small additive `0005` closes before any
+  Stage B code is written — see [`delivery.md`](./delivery.md).
 
 ---
 

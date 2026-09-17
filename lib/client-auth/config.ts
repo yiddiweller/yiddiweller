@@ -101,7 +101,25 @@ function createClientAuth() {
       customRules: {
         "/sign-in/magic-link": { window: 300, max: 5 },
         "/magic-link/verify": { window: 300, max: 10 },
-        "/workroom-invitation/accept": { window: 300, max: 10 },
+        /**
+         * A **broad flooding backstop**, not the gate an ordinary person meets.
+         *
+         * This limiter keys on address, and an address is the wrong thing to
+         * charge an invitation to: a client on a phone shares a carrier NAT
+         * with thousands of strangers, so a tight number here locks out people
+         * who have never tapped anything. Beta proved it — the ordinary budget
+         * now belongs to the invitation, in `invite-attempts.ts`.
+         *
+         * What is left for this to do is stop somebody flooding the endpoint.
+         * It is explicitly **not** a guessing defence: the token is 32 random
+         * bytes, so no achievable rate makes guessing meaningfully harder, and
+         * pretending otherwise is how the number gets set too low.
+         *
+         * Sixty a minute is roughly thirty simultaneous clients accepting
+         * behind one carrier address — far beyond anything real — while still
+         * capping a flood to one request a second.
+         */
+        "/workroom-invitation/accept": { window: 60, max: 60 },
       },
     },
 

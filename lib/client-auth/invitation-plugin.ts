@@ -1,9 +1,11 @@
-import { APIError, createAuthEndpoint } from "better-auth/api";
+import { APIError, createAuthEndpoint, getSessionFromCtx } from "better-auth/api";
 import { setSessionCookie } from "better-auth/cookies";
 import * as z from "zod";
 
-import { acceptWorkroomInvitation } from "../db/workrooms.ts";
+import { acceptWorkroomInvitation, workroomForSpentInvitation } from "../db/workrooms.ts";
 import { log } from "../log.ts";
+
+import { checkAttempts, clearAttempts, recordRefusal } from "./invite-attempts.ts";
 
 /**
  * Accepting a Workroom invitation, as an endpoint on the client auth instance.
@@ -58,12 +60,72 @@ export function workroomInvitation() {
            */
           log.info("workroom.invite_accept_attempted", {});
 
+          const token = ctx.body.token;
+
+          /**
+           * The budget that governs an ordinary person is the **invitation's**,
+           * not their address's. See `invite-attempts.ts` for why, and for what
+           * beta cost before it was.
+           *
+           * A token nobody has failed against has no counter, so a freshly
+           * resent invitation is usable on its first tap however badly the
+           * previous one went.
+           */
+          const budget = await checkAttempts(token);
+          if (!budget.ok) {
+            log.info("workroom.invite_accept_throttled", {
+              retry_after: budget.retryAfterSeconds,
+            });
+            throw new APIError(
+              "TOO_MANY_REQUESTS",
+              {
+                message: "That link has been tried too many times.",
+                code: "TOO_MANY_ATTEMPTS",
+                retryAfter: budget.retryAfterSeconds,
+              },
+              { "Retry-After": String(budget.retryAfterSeconds) },
+            );
+          }
+
           const outcome = await acceptWorkroomInvitation({
-            token: ctx.body.token,
+            token,
             name: ctx.body.name ?? "",
           });
 
           if (!outcome.ok) {
+            /**
+             * A browser that sent one press twice.
+             *
+             * The first consumed the invitation and signed them in; the second
+             * arrives to find it used. Answering that with "this cannot be
+             * used" is false at the exact moment it worked — so if the caller
+             * already holds a session for the Contact this invitation was
+             * issued to, they are simply told where to go.
+             *
+             * Nothing is mutated, nothing is consumed and no session is issued.
+             * Single use is untouched: the acceptance above already refused.
+             */
+            if (outcome.reason === "already_used") {
+              const session = await getSessionFromCtx(ctx).catch(() => null);
+              const contactId = (session?.user as { contactId?: unknown } | undefined)?.contactId;
+
+              if (typeof contactId === "string") {
+                const publicId = await workroomForSpentInvitation(token, contactId);
+                if (publicId) {
+                  log.info("workroom.invite_accept_repeated", {});
+                  return ctx.json({ workroom: publicId });
+                }
+              }
+            }
+
+            /**
+             * `invalid` means the token matches no invitation at all, so there
+             * is no invitation to charge — and every random token fingerprints
+             * differently, which is exactly why spraying is the address-level
+             * backstop's problem rather than this budget's.
+             */
+            if (outcome.reason !== "invalid") await recordRefusal(token);
+
             log.info("workroom.invite_accept_rejected", { reason: outcome.reason });
             // One status and one shape for every refusal. **Which** refusal it
             // was travels in `code`, because the page the person is standing on
@@ -86,6 +148,10 @@ export function workroomInvitation() {
            * is real and a sign-in link will work. Being told "that invitation
            * cannot be used" here would be false.
            */
+          // Spent, so its counter protects nothing. Cleared before the session
+          // is issued, so a failure there cannot leave a budget behind either.
+          await clearAttempts(token);
+
           try {
             const identity = await ctx.context.internalAdapter.findUserById(outcome.identityId);
             if (!identity) throw new Error("identity missing immediately after acceptance");

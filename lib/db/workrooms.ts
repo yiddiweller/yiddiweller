@@ -921,6 +921,53 @@ export async function inspectWorkroomInvitation(
   };
 }
 
+/**
+ * Where a **spent** invitation leads, for somebody who already holds its
+ * session.
+ *
+ * A double tap is one press the browser sent twice. The first consumes the
+ * invitation and signs them in; the second finds it used and, before this,
+ * told them their invitation was dead — at the exact moment it had worked.
+ *
+ * So the second press is answered idempotently, and the bar for that is
+ * deliberately high: the caller must present **the token** and **a live client
+ * session for the very Contact the invitation was issued to**, and that Contact
+ * must still be an active member of an open Workroom. It mutates nothing, it
+ * consumes nothing, and it issues no session — single use is untouched, and
+ * somebody holding only the token learns nothing.
+ */
+export async function workroomForSpentInvitation(
+  token: string,
+  contactId: string,
+): Promise<string | null> {
+  if (!token) return null;
+
+  const [row] = await db()
+    .select({ publicId: workrooms.publicId })
+    .from(workroomInvitations)
+    .innerJoin(workrooms, eq(workrooms.id, workroomInvitations.workroomId))
+    .innerJoin(
+      workroomMembers,
+      and(
+        eq(workroomMembers.workroomId, workrooms.id),
+        eq(workroomMembers.contactId, workroomInvitations.contactId),
+      ),
+    )
+    .where(
+      and(
+        eq(workroomInvitations.tokenHash, hashToken(token)),
+        eq(workroomInvitations.contactId, contactId),
+        isNotNull(workroomInvitations.acceptedAt),
+        eq(workroomMembers.status, "active"),
+        eq(workrooms.status, "published"),
+        isNull(workrooms.archivedAt),
+      ),
+    )
+    .limit(1);
+
+  return row?.publicId ?? null;
+}
+
 export type Accepted = { identityId: string; publicId: string };
 
 /**

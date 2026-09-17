@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { after, test } from "node:test";
 
-import { inArray } from "drizzle-orm";
+import { createHash, randomBytes } from "node:crypto";
+
+import { inArray, like } from "drizzle-orm";
 
 import { type AuditActor } from "../lib/db/audit.ts";
 import { createClient } from "../lib/db/clients.ts";
@@ -18,6 +20,7 @@ import {
   listWorkroomMembers,
   publishWorkroom,
   resendWorkroomInvitation,
+  revokeWorkroomInvitation,
 } from "../lib/db/workrooms.ts";
 import {
   clientIdentity,
@@ -30,6 +33,7 @@ import {
   workroomMembers,
   workrooms,
 } from "../lib/db/schema.ts";
+import { ATTEMPT_LIMITS } from "../lib/client-auth/invite-attempts.ts";
 
 /**
  * The acceptance **endpoint**, over HTTP.
@@ -215,6 +219,7 @@ async function tap(token: string, name = "Person") {
   return {
     status: response.status,
     code,
+    retryAfter: response.headers.get("retry-after") ?? "",
     cookie: response.headers.get("set-cookie") ?? "",
     body: text,
     workroom: (() => {
@@ -305,40 +310,224 @@ test("the whole tap, on the state beta failed in", { skip }, async () => {
 
 /* ------------------------------------------- the three layers, told apart */
 
-test("too many taps answers 429 and consumes nothing", { skip }, async () => {
-  await clearLimiter();
-  const t = await tenant("limit");
-  const target = await room(t.clientId, "limit");
-  const invite = await issue(target.id, t.contactId);
+/* ------------------------------------------- the two-layer rate limiter */
 
-  // A person whose first tap failed taps again, and again. Every attempt costs
-  // one — including the failures — so this is exactly what a confused person
-  // does to themselves, and it is why the limiter must not be reported as a
-  // dead invitation.
+/**
+ * The budget an ordinary person meets belongs to the **invitation**.
+ *
+ * Beta charged it to the address instead, which meant a client who tapped,
+ * failed and tapped again — the obvious thing to do — locked themselves out of
+ * every invitation for five minutes, including ones not yet sent, and shared
+ * that lockout with every stranger on the same carrier NAT.
+ */
+
+test("exhausting one invitation leaves every other one untouched", { skip }, async () => {
+  await clearLimiter();
+  const t = await tenant("budget");
+  const roomA = await room(t.clientId, "budget-a");
+  const roomB = await room(t.clientId, "budget-b");
+
+  const a = await issue(roomA.id, t.contactId);
+  const b = await issue(roomB.id, t.contactId);
+
+  // Spend A's budget. Revoking it first makes every tap a real refusal, which
+  // is what a person retrying a dead link actually produces.
+  unwrap(await revokeWorkroomInvitation(await owner(), a.id), "revoke");
+
+  let throttled = 0;
+  for (let i = 0; i < ATTEMPT_LIMITS.maxRefusals + 3; i++) {
+    const result = await tap(a.token);
+    if (result.status === 429) throttled++;
+  }
+  assert.ok(throttled > 0, "an invitation's own budget never fired");
+
+  const spent = await tap(a.token);
+  assert.equal(spent.status, 429);
+  assert.equal(spent.code, "TOO_MANY_ATTEMPTS");
+  assert.ok(Number(spent.retryAfter) > 0, "no Retry-After was sent");
+
+  // **From the same address, in the same breath**, B opens on its first tap.
+  const other = await tap(b.token, "Person budget");
+  assert.equal(other.status, 200, `a second invitation inherited the first's lockout: ${other.body}`);
+  assert.equal(other.workroom, roomB.publicId);
+});
+
+test("a resent invitation is usable immediately, however badly the old one went", { skip }, async () => {
+  await clearLimiter();
+  const t = await tenant("resend");
+  const target = await room(t.clientId, "resend");
+
+  // The beta case exactly: several failed taps, then a resend, same address,
+  // same browser. The newest link must simply work.
+  const first = await issue(target.id, t.contactId);
+  unwrap(await revokeWorkroomInvitation(await owner(), first.id), "revoke");
+  for (let i = 0; i < ATTEMPT_LIMITS.maxRefusals + 2; i++) await tap(first.token);
+  assert.equal((await tap(first.token)).status, 429, "the old link was not exhausted");
+
+  const second = await issue(target.id, t.contactId);
+  const opened = await tap(second.token, "Person resend");
+  assert.equal(opened.status, 200, `a fresh token inherited the old one's failures: ${opened.body}`);
+  assert.equal(opened.workroom, target.publicId);
+});
+
+test("two clients behind one address each get in", { skip }, async () => {
+  await clearLimiter();
+  const a = await tenant("nat-a");
+  const b = await tenant("nat-b");
+  const roomA = await room(a.clientId, "nat-a");
+  const roomB = await room(b.clientId, "nat-b");
+
+  // One of them has a miserable time first — every tap from the same address.
+  const dead = await issue(roomA.id, a.contactId);
+  unwrap(await revokeWorkroomInvitation(await owner(), dead.id), "revoke");
+  for (let i = 0; i < ATTEMPT_LIMITS.maxRefusals + 2; i++) await tap(dead.token);
+
+  // The other has never tapped anything, and must not pay for it.
+  const theirs = await issue(roomB.id, b.contactId);
+  const opened = await tap(theirs.token, "Person nat-b");
+  assert.equal(opened.status, 200, `a stranger on the same address was locked out: ${opened.body}`);
+
+  // And the first one still gets in on a fresh link.
+  const fresh = await issue(roomA.id, a.contactId);
+  const recovered = await tap(fresh.token, "Person nat-a");
+  assert.equal(recovered.status, 200, recovered.body);
+});
+
+test("a random-token spray meets the broad backstop, not an invitation's budget", { skip }, async () => {
+  await clearLimiter();
+
+  // Every random token fingerprints differently, so no per-invitation budget
+  // could ever see them as related. This is the address-level limiter's one
+  // remaining job — and it is flooding it stops, not guessing: no achievable
+  // rate makes a 32-byte token meaningfully easier to find.
+  let refused = 0;
   let limited = 0;
-  let allowed = 0;
-  for (let i = 0; i < 14; i++) {
-    const result = await tap(`0`.repeat(64));
+  for (let i = 0; i < 70; i++) {
+    const result = await tap(randomBytes(32).toString("hex"));
     if (result.status === 429) limited++;
-    else allowed++;
+    else if (result.code === "INVALID") refused++;
   }
 
-  assert.ok(limited > 0, "the limiter never fired");
-  assert.ok(allowed > 0, "the limiter fired immediately");
+  assert.ok(refused > 0, "the spray was never answered");
+  assert.ok(limited > 0, "the broad backstop never fired");
 
-  // The invitation somebody actually holds is untouched by all of it.
-  const look = await inspectWorkroomInvitation(invite.token);
-  assert.equal(look.ok, true, "a rate-limited tap consumed an unrelated invitation");
+  // None of it created a per-invitation counter: the namespace stays empty.
+  const rows = await db()
+    .select({ key: clientRateLimit.key })
+    .from(clientRateLimit)
+    .where(like(clientRateLimit.key, "inv:%"));
+  assert.equal(rows.length, 0, "random tokens created per-invitation counters");
+});
 
-  // And a 429 is not a 400: the two must not be told to a person as one thing.
-  const refused = await tap(`0`.repeat(64));
-  assert.equal(refused.status, 429);
-  assert.equal(refused.code, "", "a limiter response carried a business refusal code");
-
-  // Once the window is cleared, the held invitation still opens.
+test("nothing that could identify a link is written anywhere", { skip }, async () => {
   await clearLimiter();
-  const accepted = await tap(invite.token, "Person limit");
-  assert.equal(accepted.status, 200, `after the window: ${accepted.body}`);
+  const t = await tenant("secrets");
+  const target = await room(t.clientId, "secrets");
+  const invite = await issue(target.id, t.contactId);
+
+  unwrap(await revokeWorkroomInvitation(await owner(), invite.id), "revoke");
+  const refused = await tap(invite.token);
+  assert.equal(refused.status, 400);
+
+  const rows = await db()
+    .select({ key: clientRateLimit.key })
+    .from(clientRateLimit)
+    .where(like(clientRateLimit.key, "inv:%"));
+  assert.equal(rows.length, 1, "the refusal was not counted against the invitation");
+
+  const key = rows[0]!.key;
+  assert.ok(!key.includes(invite.token), "the raw token is in the rate-limit key");
+  assert.match(key, /^inv:[0-9a-f]{32}$/);
+
+  // And it is not the digest the invitations table stores, so the two cannot
+  // be joined: a rate-limit row says somebody tapped something, and no more.
+  const stored = createHash("sha256").update(invite.token).digest("hex");
+  assert.ok(!key.includes(stored.slice(0, 32)), "the key is the stored token digest");
+
+  // Nor does the token reach the page a person lands on.
+  const page = await fetch(`${base}/workrooms/invite/${invite.token}`, { redirect: "manual" });
+  const html = await page.text();
+  assert.ok(!html.includes(key), "the fingerprint reached the page");
+});
+
+test("a double tap makes one of everything, and tells the second one where to go", { skip }, async () => {
+  await clearLimiter();
+  const t = await tenant("double");
+  const target = await room(t.clientId, "double");
+  const invite = await issue(target.id, t.contactId);
+
+  // Two presses the browser sent at once. Exactly one may win.
+  const [one, two] = await Promise.all([
+    tap(invite.token, "Person double"),
+    tap(invite.token, "Person double"),
+  ]);
+
+  const won = [one, two].filter((r) => r.status === 200 && r.cookie.includes("yw_client"));
+  assert.equal(won.length, 1, `${won.length} presses issued a session`);
+  assert.equal(won[0]!.workroom, target.publicId);
+
+  // One of everything, whatever the race did.
+  assert.equal(
+    (await db().select({ id: clientIdentity.id }).from(clientIdentity).where(inArray(clientIdentity.contactId, [t.contactId]))).length,
+    1,
+    "the race made two identities",
+  );
+  assert.deepEqual((await listWorkroomMembers(target.id)).map((m) => m.status), ["active"]);
+  assert.equal((await inspectWorkroomInvitation(invite.token)).ok, false, "the invitation survived");
+
+  // And the browser that already holds the session, pressing again, is sent
+  // into the Workroom rather than told its invitation is dead.
+  const session = /(?:^|[; ])((?:__Secure-)?yw_client\.session_token=[^;]+)/.exec(won[0]!.cookie)?.[1];
+  assert.ok(session);
+  // `origin` because a browser sends one, and Better Auth checks it on any
+  // request that carries a session cookie — an anonymous first tap is not
+  // checked, a cookie-bearing second tap is. Worth knowing: the check is
+  // conditional, not absent.
+  const repeat = await fetch(`${base}/api/client-auth/workroom-invitation/accept`, {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie: session, origin: base! },
+    body: JSON.stringify({ token: invite.token, name: "Person double" }),
+    redirect: "manual",
+  });
+  assert.equal(repeat.status, 200, "a repeat press with the session was refused");
+  assert.equal(((await repeat.json()) as { workroom?: string }).workroom, target.publicId);
+  assert.ok(!repeat.headers.get("set-cookie"), "a repeat press issued a second session");
+
+  // Still one membership, and still spent.
+  assert.deepEqual((await listWorkroomMembers(target.id)).map((m) => m.status), ["active"]);
+
+  // Somebody holding only the token, with no session, learns nothing.
+  const stranger = await tap(invite.token, "Person double");
+  assert.equal(stranger.status, 400);
+  assert.equal(stranger.code, "ALREADY_USED");
+});
+
+test("no method that is not the deliberate press consumes anything", { skip }, async () => {
+  await clearLimiter();
+  const t = await tenant("safe");
+  const target = await room(t.clientId, "safe");
+  const invite = await issue(target.id, t.contactId);
+
+  // A mail scanner, a link previewer and a browser prefetch, in that order.
+  for (const method of ["GET", "HEAD", "GET"]) {
+    await fetch(`${base}/workrooms/invite/${invite.token}`, { method, redirect: "manual" });
+  }
+  for (const method of ["GET", "HEAD"]) {
+    await fetch(`${base}/api/client-auth/workroom-invitation/accept?token=${invite.token}`, {
+      method,
+      redirect: "manual",
+    });
+  }
+
+  assert.equal(
+    (await inspectWorkroomInvitation(invite.token)).ok,
+    true,
+    "something other than the press consumed the invitation",
+  );
+
+  // And the deliberate press still works.
+  const accepted = await tap(invite.token, "Person safe");
+  assert.equal(accepted.status, 200, accepted.body);
 });
 
 test("every business refusal arrives with its own reason", { skip }, async () => {

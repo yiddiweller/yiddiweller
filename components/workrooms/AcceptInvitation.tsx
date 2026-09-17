@@ -41,12 +41,22 @@ const REASONS: InvitationFailure[] = [
  * here, which is the opposite of what a refusal needs.
  */
 async function explain(response: Response): Promise<string> {
-  if (response.status === 429) {
-    return "Too many attempts in a short time. Wait a few minutes and open the most recent email again — there is nothing wrong with your invitation.";
-  }
-
-  const body = (await response.json().catch(() => null)) as { code?: unknown } | null;
+  const body = (await response.json().catch(() => null)) as
+    | { code?: unknown; retryAfter?: unknown }
+    | null;
   const code = typeof body?.code === "string" ? body.code.toLowerCase() : "";
+
+  if (response.status === 429) {
+    const seconds = typeof body?.retryAfter === "number" ? body.retryAfter : 0;
+    const wait =
+      seconds > 90 ? `about ${Math.round(seconds / 60)} minutes` : seconds > 0 ? "a minute or two" : "a few minutes";
+
+    // `too_many_attempts` is this link's own budget; anything else here is the
+    // broad flooding backstop, which an ordinary person should never meet.
+    return code === "too_many_attempts"
+      ? `This link has been tried too many times. Wait ${wait} and try once more, or reply to the email and we will send a fresh one — a new link works straight away.`
+      : "Too many requests from your connection just now. Wait a few minutes and try again — there is nothing wrong with your invitation.";
+  }
 
   if (code === "session_failed") {
     return "Your access is ready, but signing you in did not finish. Ask for a sign-in link and it will let you straight in.";

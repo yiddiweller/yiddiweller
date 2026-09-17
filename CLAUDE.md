@@ -99,6 +99,14 @@ a deliberate decision, not a cleanup.
   after a session failure their access is real and a sign-in link works.
   `workroom.invite_accept_attempted` is logged before anything is decided, and
   its presence or absence is the diagnosis.
+- **An invitation's acceptance budget belongs to the invitation, not the
+  address.** Ten refusals per five minutes per token fingerprint, cleared by a
+  success; Better Auth's address limiter is widened to 60 a minute and left as
+  a flooding backstop only. Keying it on the address meant a client behind a
+  carrier NAT locked themselves — and strangers — out by retrying, and a
+  resent invitation inherited the old one's failures. The key is `inv:` plus a
+  fingerprint derived differently from `token_hash`, and the raw token is never
+  written anywhere. See `docs/client-auth.md`.
 - **A client authentication flow may only land under `/workrooms`.** Better
   Auth refuses another origin; it cannot know `/studio` is a second product on
   this one. Every `callbackURL` is sanitised on both halves of the flow, in

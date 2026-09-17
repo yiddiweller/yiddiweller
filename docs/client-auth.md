@@ -316,3 +316,50 @@ re-enabled; Workroom published, unpublished, archived, restored.
   without `accepted` means the session write failed. It carries no token, no
   address and no id. Two rounds of beta investigation went into a failure that
   looked identical from outside whichever layer produced it.
+- **An invitation's acceptance budget belongs to the invitation, not to the
+  address it was tapped from.** Two layers:
+
+  | | Key | Allowance | Job |
+  | --- | --- | --- | --- |
+  | Invitation | a fingerprint of the submitted token | 10 refusals / 5 minutes | the courtesy limit an ordinary person could meet |
+  | Address | address and path, Better Auth's own | 60 / minute | flooding, and nothing else |
+
+  Keying the ordinary budget on the address was wrong and beta proved it. A
+  client on a phone shares a carrier NAT with thousands of strangers; a resent
+  invitation carries a new token and deserves a clean slate; and the person
+  tapping already holds a 32-byte random credential, which is the thing worth
+  counting against. At ten per address per five minutes, somebody who tapped,
+  failed and tapped again — the obvious thing to do — locked themselves out of
+  every invitation for five minutes, including ones not yet sent.
+
+  **The address limit is explicitly not a guessing defence.** No achievable
+  rate makes a 256-bit token meaningfully easier to find, and pretending
+  otherwise is how the number gets set too low. It is there so nobody can flood
+  the endpoint. Sixty a minute is roughly thirty simultaneous clients accepting
+  behind one carrier address.
+
+  **What is counted.** A refusal against a real invitation. Not a token that
+  matches nothing — every random token fingerprints differently, so a
+  per-invitation budget can never see a spray as related, which is precisely
+  what the address backstop is for. Not a repeat press from a browser that
+  already holds the session. Not a session write that failed after the
+  acceptance committed. A success clears the counter outright and sweeps any
+  that have gone cold, so the table needs no scheduled job.
+
+  **The key is `inv:` plus a fingerprint**, deliberately derived differently
+  from `workroom_invitations.token_hash` so the two cannot be joined: a
+  rate-limit row is operational data and should say only that somebody tapped
+  something. The raw token is never written to a key, a log, a metric or a
+  message.
+- **A second press of the same invitation is answered, not refused.** If the
+  caller presents the token **and** a live client session for the very Contact
+  the invitation was issued to, and that Contact is still an active member of
+  an open Workroom, they are told where to go. Nothing is mutated, nothing is
+  consumed and no session is issued — the acceptance already refused, so single
+  use is untouched, and somebody holding only the token learns nothing.
+- **Better Auth checks the request Origin only when a session cookie is
+  present.** An anonymous first tap is not checked; a cookie-bearing one is. So
+  a `CLIENT_AUTH_URL` that does not exactly match the browser's origin breaks
+  the second half of the flow while the first half looks fine — measured while
+  building the endpoint tests, when a test server on another port did exactly
+  that.

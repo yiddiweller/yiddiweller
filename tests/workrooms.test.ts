@@ -16,6 +16,8 @@ import {
   canSignIn,
   createWorkroom,
   findWorkroom,
+  activeAccessFor,
+  findActiveIdentity,
   inspectWorkroomInvitation,
   invitableContacts,
   inviteToWorkroom,
@@ -672,24 +674,219 @@ test("two Contacts sharing one address cannot both hold access to it", async () 
     })).ok,
   );
 
+  // **Refused here, at the studio's press.** It used to be sent happily and
+  // refused on the client's phone, after a landing page had shown them their
+  // own name above a button that could never work — the defect manual beta
+  // acceptance found. The message names the Contact holding the address,
+  // because that is the only thing anybody can act on.
   const issued = await inviteToWorkroom(actor, {
     workroomId: t.workroomId,
     contactId: twin.value,
   });
-  assert.ok(issued.ok, "the studio may still send it; the collision is not visible here");
+  assert.equal(issued.ok, false, "a dead invitation was sent");
+  assert.match(issued.ok === false ? issued.message : "", /Ana Alder/);
+  assert.match(issued.ok === false ? issued.message : "", /one person's access/);
 
-  const accepted = await acceptWorkroomInvitation({ token: issued.value.token, name: "" });
-  assert.equal(accepted.ok, false);
-  assert.equal(accepted.ok === false && accepted.reason, "unavailable");
-
-  // And the refusal rolled everything back: one identity, one membership, and
-  // the second invitation still unaccepted rather than spent.
+  // Nothing was created by the attempt: one identity, one membership, and one
+  // invitation — the twin never got one.
   const counts = await sideEffects();
   assert.equal(counts.identities, 1);
   assert.equal(counts.members, 1);
   assert.equal(counts.accepted, 1);
-  assert.equal(counts.invitations, 2);
+  assert.equal(counts.invitations, 1);
   assert.equal(counts.auditIdentityCreated, 1);
+});
+
+/* ------------------------------------- the manual beta acceptance defect */
+
+/**
+ * A fresh, valid invitation whose landing page worked and whose button did not.
+ *
+ * Reported from the real beta deployment: the page showed the right name and
+ * address above "Open my workroom", and the tap answered *that invitation
+ * cannot be used*. Two conditions could do it, both about the client identity,
+ * and **neither was checked by anything except the acceptance itself** — so the
+ * studio could create a dead invitation and the client found out by pressing a
+ * button.
+ */
+
+test("an invitation whose address belongs to somebody else is refused before it is sent", async () => {
+  // The production-like shape: the same human held twice in `contacts`,
+  // because a Build 004 test record already exists for them.
+  const historical = await published("A", "Alder & Co", "Yehuda Weller (test)", "yehuda@alder.test");
+  await joined(historical);
+
+  const current = await tenant("B", "Alder & Co Ltd", "Yehuda Weller", "yehuda@alder.test");
+  const room = await findWorkroom(current.workroomId);
+  assert.ok((await publishWorkroom(actor, current.workroomId, room!.version)).ok);
+
+  const issued = await inviteToWorkroom(actor, {
+    workroomId: current.workroomId,
+    contactId: current.contactId,
+  });
+
+  assert.equal(issued.ok, false, "the studio was allowed to create an invitation that cannot work");
+  assert.match(issued.ok === false ? issued.message : "", /yehuda@alder\.test/);
+  assert.match(issued.ok === false ? issued.message : "", /Yehuda Weller \(test\)/);
+
+  // And nothing was written by the refusal.
+  const counts = await sideEffects();
+  assert.equal(counts.invitations, 1, "a dead invitation was recorded");
+  assert.equal(counts.identities, 1);
+});
+
+test("an invitation already in flight stops promising what it cannot do", async () => {
+  // The other half: the invitation was legitimate when it was made, and the
+  // person's sign-in was switched off before they tapped. The landing page used
+  // to show them their name and the button anyway.
+  const t = await published("A", "Alder & Co", "Ana Alder", "ana@alder.test");
+  const identityId = await joined(t);
+
+  const second = await tenant("A2", "Alder & Co", "Ana Alder", "ana2@alder.test");
+  // Same person, second workroom — invited, then switched off.
+  const issued = await inviteToWorkroom(actor, {
+    workroomId: second.workroomId,
+    contactId: t.contactId,
+  });
+  assert.equal(issued.ok, false, "inviting into an unpublished workroom should be refused");
+
+  const room = await findWorkroom(second.workroomId);
+  assert.ok((await publishWorkroom(actor, second.workroomId, room!.version)).ok);
+
+  const live = await inviteToWorkroom(actor, {
+    workroomId: second.workroomId,
+    contactId: t.contactId,
+  });
+  assert.ok(live.ok, live.ok ? "" : live.message);
+
+  assert.ok((await setIdentityStatus(actor, identityId, "inactive")).ok);
+
+  // The landing page refuses, with the reason, rather than promising entry.
+  const look = await inspectWorkroomInvitation(live.value.token);
+  assert.equal(look.ok, false);
+  assert.equal(look.ok === false && look.reason, "access_off");
+
+  // And so does the acceptance, with the same reason rather than a word it
+  // shares with "this workroom is not published".
+  const tap = await acceptWorkroomInvitation({ token: live.value.token, name: "" });
+  assert.equal(tap.ok, false);
+  assert.equal(tap.ok === false && tap.reason, "access_off");
+
+  // Resending it does not make it work, and says so.
+  const again = await resendWorkroomInvitation(actor, live.value.id);
+  assert.equal(again.ok, false);
+  assert.match(again.ok === false ? again.message : "", /switched off/);
+
+  // Switched back on, the very same link works.
+  assert.ok((await setIdentityStatus(actor, identityId, "active")).ok);
+  assert.equal((await inspectWorkroomInvitation(live.value.token)).ok, true);
+
+  const joinedNow = await acceptWorkroomInvitation({ token: live.value.token, name: "Ana Alder" });
+  assert.ok(joinedNow.ok, joinedNow.ok ? "" : joinedNow.reason);
+  assert.equal(joinedNow.identityId, identityId, "a second identity was created");
+});
+
+test("the whole journey, on the state the defect was found in", async () => {
+  // Historical identity for one Contact, a different Contact for the same
+  // human — with their own address, which is the shape that works — a fresh
+  // Workroom, a fresh token, the landing read, the acceptance, and the token
+  // spent exactly once.
+  const historical = await published("A", "Alder & Co", "Yehuda Weller (test)", "old@alder.test");
+  const oldIdentity = await joined(historical);
+
+  const current = await tenant("B", "Alder & Co Ltd", "Yehuda Weller", "yehuda@alder.test");
+  const room = await findWorkroom(current.workroomId);
+  assert.ok((await publishWorkroom(actor, current.workroomId, room!.version)).ok);
+
+  const issued = await inviteToWorkroom(actor, {
+    workroomId: current.workroomId,
+    contactId: current.contactId,
+  });
+  assert.ok(issued.ok, issued.ok ? "" : issued.message);
+
+  // The landing read, twice — it is a GET and a scanner may have been first.
+  for (const attempt of [1, 2]) {
+    const look = await inspectWorkroomInvitation(issued.value.token);
+    assert.ok(look.ok, `read ${attempt} refused`);
+    assert.equal(look.preview.contactName, "Yehuda Weller");
+    assert.equal(look.preview.email, "yehuda@alder.test");
+  }
+  assert.equal((await sideEffects()).accepted, 1, "reading consumed the invitation");
+
+  // The tap.
+  const accepted = await acceptWorkroomInvitation({ token: issued.value.token, name: "Yehuda Weller" });
+  assert.ok(accepted.ok, accepted.ok ? "" : accepted.reason);
+  assert.notEqual(accepted.identityId, oldIdentity, "the historical identity was reused");
+  assert.equal(accepted.publicId, room!.publicId);
+
+  // Membership, and a signed-in identity to carry it.
+  const members = await listWorkroomMembers(current.workroomId);
+  assert.deepEqual(
+    members.map((m) => [m.contactName, m.status]),
+    [["Yehuda Weller", "active"]],
+  );
+  assert.ok(await findActiveIdentity(accepted.identityId));
+  // Titles, which is what this reader is for — the id is asserted above.
+  assert.deepEqual(await activeAccessFor(current.contactId), ["Alder & Co Ltd rebrand"]);
+
+  // And the token is spent, once and for ever.
+  const twice = await acceptWorkroomInvitation({ token: issued.value.token, name: "" });
+  assert.equal(twice.ok, false);
+  assert.equal(twice.ok === false && twice.reason, "already_used");
+  assert.equal((await sideEffects()).members, 2, "a second membership appeared");
+});
+
+test("a resend kills only its own link, and only the newest one opens", async () => {
+  const t = await published("A", "Alder & Co", "Ana Alder", "ana@alder.test");
+  const other = await published("B", "Birch Group", "Ben Birch", "ben@birch.test");
+
+  const first = await inviteToWorkroom(actor, { workroomId: t.workroomId, contactId: t.contactId });
+  assert.ok(first.ok);
+  const theirs = await inviteToWorkroom(actor, {
+    workroomId: other.workroomId,
+    contactId: other.contactId,
+  });
+  assert.ok(theirs.ok);
+
+  const second = await resendWorkroomInvitation(actor, first.value.id);
+  assert.ok(second.ok);
+
+  // The one it replaced is dead, named as such rather than as invalid.
+  const stale = await inspectWorkroomInvitation(first.value.token);
+  assert.equal(stale.ok === false && stale.reason, "revoked");
+  assert.equal(
+    (await acceptWorkroomInvitation({ token: first.value.token, name: "" })).ok,
+    false,
+  );
+
+  // The other tenant's, issued in between, is untouched.
+  assert.equal((await inspectWorkroomInvitation(theirs.value.token)).ok, true);
+
+  // And the newest one opens.
+  assert.ok((await acceptWorkroomInvitation({ token: second.value.token, name: "Ana" })).ok);
+});
+
+test("a token is no use anywhere but where it was sent", async () => {
+  const a = await published("A", "Alder & Co", "Ana Alder", "ana@alder.test");
+  const b = await published("B", "Birch Group", "Ben Birch", "ben@birch.test");
+
+  const forAna = await inviteToWorkroom(actor, { workroomId: a.workroomId, contactId: a.contactId });
+  assert.ok(forAna.ok);
+
+  // Nothing about the token carries who it is for, so the only misuse
+  // available is using somebody else's — which grants what it was issued for
+  // and never what the holder might have wanted.
+  const accepted = await acceptWorkroomInvitation({ token: forAna.value.token, name: "Ben" });
+  assert.ok(accepted.ok);
+  assert.deepEqual(await activeAccessFor(b.contactId), [], "it granted the wrong workroom");
+  assert.equal((await listWorkroomMembers(b.workroomId)).length, 0);
+
+  // A token that was never real, one from another shape, and an empty one.
+  for (const bogus of ["", "x", "0".repeat(64), forAna.value.token.slice(0, -1)]) {
+    const look = await inspectWorkroomInvitation(bogus);
+    assert.equal(look.ok, false, JSON.stringify(bogus));
+    assert.equal(look.ok === false && look.reason, "invalid");
+  }
 });
 
 test("an edit to a contact's email never moves their access", async () => {

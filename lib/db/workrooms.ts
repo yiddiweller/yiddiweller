@@ -608,6 +608,32 @@ export async function inviteToWorkroom(
     return refuse("blocked", `${person.name}'s access has been switched off. Re-enable it first.`);
   }
 
+  /**
+   * The address may already be somebody else's credential.
+   *
+   * `client_identities.email` is unique and `contacts.email` deliberately is
+   * not, so the same human held twice in `contacts` can only hold access once.
+   * Acceptance has always refused this — correctly, because moving somebody's
+   * access is not something a click should do — but it refused on the client's
+   * phone, after a landing page had shown them their own name above a button
+   * that could never work. It is refused here now instead, to the person who
+   * can actually fix it, naming the Contact that holds the address.
+   */
+  const standing = await identityStanding(input.contactId, email);
+  if (standing?.reason === "email_taken") {
+    const [holder] = await db()
+      .select({ name: contacts.name })
+      .from(contacts)
+      .where(eq(contacts.id, standing.otherContactId!))
+      .limit(1);
+
+    return refuse(
+      "blocked",
+      `${email} is already ${holder?.name ?? "another contact"}'s sign-in address, and an address can only belong to one person's access. ` +
+        `If that is the same human, invite ${holder?.name ?? "that contact"} instead. If it is not, give ${person.name} their own address first.`,
+    );
+  }
+
   const already = await db()
     .select({ id: workroomMembers.id })
     .from(workroomMembers)
@@ -689,6 +715,20 @@ export async function resendWorkroomInvitation(
   if (invite.acceptedAt) return refuse("already_done", "That invitation has already been accepted.");
   if (invite.revokedAt) return refuse("blocked", "That invitation was revoked.");
 
+  // Re-checked rather than assumed: the invitation was valid when it was made,
+  // and sending the same dead link again is not a fix.
+  const standing = await identityStanding(invite.contactId, invite.email);
+  if (standing?.reason === "access_off") {
+    return refuse("blocked", `${invite.contactName}'s access has been switched off. Re-enable it first.`);
+  }
+  if (standing?.reason === "email_taken") {
+    return refuse(
+      "blocked",
+      `${invite.email} is already another contact's sign-in address, so this invitation cannot be accepted. ` +
+        "Sending it again will not change that.",
+    );
+  }
+
   const token = randomBytes(32).toString("hex");
   const id = uuidv7(now.getTime());
   const expiresAt = new Date(now.getTime() + INVITE_TTL_MS);
@@ -762,7 +802,24 @@ export async function revokeWorkroomInvitation(
 
 /* ----------------------------------------------------------- acceptance */
 
-export type InvitationFailure = "invalid" | "expired" | "revoked" | "already_used" | "unavailable";
+export type InvitationFailure =
+  | "invalid"
+  | "expired"
+  | "revoked"
+  | "already_used"
+  /** The Workroom is unpublished or archived: the door exists, the room does not. */
+  | "unavailable"
+  /** This person's sign-in was switched off after the invitation was sent. */
+  | "access_off"
+  /**
+   * The address already belongs to another Contact's client identity.
+   *
+   * `client_identities.email` is unique because it is a credential, while
+   * `contacts.email` deliberately is not — so the same human held twice in
+   * `contacts` can only ever hold access once. Acceptance cannot move somebody
+   * else's access, and must not create a second identity for the address.
+   */
+  | "email_taken";
 
 export type InvitationPreview = {
   workroomTitle: string;
@@ -770,6 +827,41 @@ export type InvitationPreview = {
   contactName: string;
   email: string;
 };
+
+/**
+ * Whether this person's client identity stands in the way of an acceptance.
+ *
+ * Read by **three** callers on purpose: the studio before it sends an
+ * invitation, the landing page before it promises entry, and the acceptance
+ * itself. Before Build 005 only the third knew, which meant a studio could
+ * create an invitation that was already dead, the landing page would show the
+ * client their own name above a button that could not work, and the refusal
+ * arrived at the worst possible moment — on the client's phone, as advice to
+ * "ask for a sign-in link" that would also have failed.
+ *
+ * It predicts exactly what the acceptance insert would hit: an exact email
+ * match, because `client_identities_email_idx` is an exact unique index. The
+ * insert's own conflict handling stays as the last line — a race can still
+ * create the row between this read and that write.
+ */
+async function identityStanding(
+  contactId: string,
+  email: string,
+): Promise<{ reason: "access_off" | "email_taken"; otherContactId?: string } | null> {
+  const rows = await db()
+    .select({
+      contactId: clientIdentity.contactId,
+      status: clientIdentity.status,
+    })
+    .from(clientIdentity)
+    .where(or(eq(clientIdentity.contactId, contactId), eq(clientIdentity.email, email)));
+
+  const mine = rows.find((row) => row.contactId === contactId);
+  if (mine) return mine.status === "inactive" ? { reason: "access_off" } : null;
+
+  const theirs = rows.find((row) => row.contactId !== contactId);
+  return theirs ? { reason: "email_taken", otherContactId: theirs.contactId } : null;
+}
 
 /**
  * What the confirmation page shows, and nothing more.
@@ -786,6 +878,7 @@ export async function inspectWorkroomInvitation(
 
   const [invite] = await db()
     .select({
+      contactId: workroomInvitations.contactId,
       email: workroomInvitations.email,
       expiresAt: workroomInvitations.expiresAt,
       acceptedAt: workroomInvitations.acceptedAt,
@@ -811,6 +904,11 @@ export async function inspectWorkroomInvitation(
   if (invite.workroomArchivedAt || invite.workroomStatus !== "published") {
     return { ok: false, reason: "unavailable" };
   }
+
+  // The two conditions acceptance used to discover on its own. A page that
+  // promises what the next tap refuses is worse than a page that refuses.
+  const standing = await identityStanding(invite.contactId, invite.email);
+  if (standing) return { ok: false, reason: standing.reason };
 
   return {
     ok: true,
@@ -891,7 +989,7 @@ export async function acceptWorkroomInvitation(
         .where(eq(clientIdentity.contactId, invite.contactId))
         .limit(1);
 
-      if (existing?.status === "inactive") throw new NotAccepted("unavailable");
+      if (existing?.status === "inactive") throw new NotAccepted("access_off");
 
       /**
        * Creating the identity has to survive two collisions, because the read
@@ -945,9 +1043,9 @@ export async function acceptWorkroomInvitation(
             contact_id: invite.contactId,
             email: redactEmail(invite.email),
           });
-          throw new NotAccepted("unavailable");
+          throw new NotAccepted("email_taken");
         }
-        if (raced.status === "inactive") throw new NotAccepted("unavailable");
+        if (raced.status === "inactive") throw new NotAccepted("access_off");
         identityId = raced.id;
       }
 

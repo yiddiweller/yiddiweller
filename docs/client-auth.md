@@ -269,8 +269,32 @@ re-enabled; Workroom published, unpublished, archived, restored.
   Workroom that exists and one that never did.
 - **Two Contacts cannot share one access email.** `contacts` does not make
   email unique — a shared inbox is a real thing, and so are duplicate rows —
-  but `client_identities.email` is a credential and does. The studio can still
-  send the second invitation; accepting it is refused as "not open yet" and
-  logged with the address redacted, because the alternative is one mailbox
-  holding two people's access. If that is ever wanted, it needs a decision
-  about what an identity means, not a relaxed index.
+  but `client_identities.email` is a credential and does, because the
+  alternative is one mailbox holding two people's access. If that is ever
+  wanted, it needs a decision about what an identity means, not a relaxed
+  index.
+- **A refusal about the client identity is made where somebody can act on it.**
+  Two conditions stop an acceptance for reasons that have nothing to do with
+  the invitation: the address already belongs to another Contact's identity,
+  and this person's sign-in was switched off after the link was sent. Both are
+  now checked in three places — by `inviteToWorkroom` before a link is created,
+  by `inspectWorkroomInvitation` before the landing page promises entry, and by
+  the acceptance itself, whose insert-conflict handling remains the last line
+  against a race.
+
+  **This is a correction, and the reason is worth keeping.** Manual beta
+  acceptance found a fresh, in-date invitation whose landing page showed the
+  right name and address above *Open my work room*, and whose button answered
+  *that invitation cannot be used*. A Build 004 test Contact held the same
+  human's address, so the acceptance was predetermined to fail — and only the
+  acceptance knew. The studio had been allowed to create a dead link, the page
+  had been allowed to promise it, and the client was told to *ask for a sign-in
+  link*, which would have failed for the same reason.
+
+  So the two causes also stopped sharing a word. `unavailable` now means only
+  what it says — the Workroom is unpublished or archived — and `access_off` and
+  `email_taken` are their own reasons, with their own copy. The client-facing
+  wording for `email_taken` deliberately names no other record: it is ours to
+  untangle, and whoever holds a dead link may not be the person it was sent to.
+  The staff-facing refusal does name the Contact holding the address, because
+  that is the only actionable fact in it.

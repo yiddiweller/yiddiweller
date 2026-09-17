@@ -79,8 +79,17 @@ a deliberate decision, not a cleanup.
   Editing `contacts.email` never moves somebody's access. Changing an access
   email means revoke and re-invite, deliberately.
   It is also unique, while `contacts.email` deliberately is not, so two Contacts
-  sharing one address can never both hold access — the second acceptance is
-  refused rather than crashed.
+  sharing one address can never both hold access.
+- **A refusal about the client identity is made where somebody can act on it.**
+  Two things stop an acceptance for reasons unrelated to the invitation — the
+  address already belongs to another Contact's identity, and the person's
+  sign-in was switched off after the link was sent. Both are checked by
+  `inviteToWorkroom` before a link exists, by `inspectWorkroomInvitation`
+  before the landing page promises entry, and by the acceptance, whose
+  insert-conflict handling stays the last line against a race. A landing page
+  must never promise what the next tap refuses: beta found exactly that, and
+  `docs/client-auth.md` records it. `unavailable` means only "the Workroom is
+  not published"; `access_off` and `email_taken` are their own reasons.
 - **A client authentication flow may only land under `/workrooms`.** Better
   Auth refuses another origin; it cannot know `/studio` is a second product on
   this one. Every `callbackURL` is sanitised on both halves of the flow, in

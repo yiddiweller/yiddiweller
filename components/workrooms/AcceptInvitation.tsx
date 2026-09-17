@@ -3,7 +3,43 @@
 import { useRouter } from "next/navigation";
 import { useActionState, useId } from "react";
 
+import { INVITATION_FAILURE } from "@/components/workrooms/invitationCopy";
+import { type InvitationFailure } from "@/lib/db/workrooms";
 import styles from "@/app/workrooms/workroom.module.css";
+
+/** The reasons the endpoint reports, as it reports them: the reason, upper-cased. */
+const REASONS: InvitationFailure[] = [
+  "invalid",
+  "expired",
+  "revoked",
+  "already_used",
+  "unavailable",
+  "access_off",
+  "email_taken",
+];
+
+/**
+ * What a refused acceptance says.
+ *
+ * It used to say one thing for all of them — *ask for a sign-in link, or reply
+ * to the email* — which is sound advice for an expired link and actively wrong
+ * for the two that are about the client identity: a sign-in link would fail for
+ * the same reason the acceptance did. So the endpoint's own reason is read and
+ * the same copy the landing page would have shown is used, with the old
+ * sentence kept for anything unrecognised.
+ */
+async function explain(response: Response): Promise<string> {
+  const body = (await response.json().catch(() => null)) as { code?: unknown } | null;
+  const code = typeof body?.code === "string" ? body.code.toLowerCase() : "";
+  const reason = REASONS.find((candidate) => candidate === code);
+
+  if (!reason) {
+    return "That invitation cannot be used. Ask for a sign-in link, or reply to the email it came from.";
+  }
+
+  const { title, note } = INVITATION_FAILURE[reason];
+  return `${title} ${note}`;
+}
 
 /**
  * Accepting. A POST, and the only thing that consumes an invitation.
@@ -24,9 +60,7 @@ export default function AcceptInvitation({ token, name }: { token: string; name:
         body: JSON.stringify({ token, name: String(form.get("name") ?? "") }),
       });
 
-      if (!response.ok) {
-        return "That invitation cannot be used. Ask for a sign-in link, or reply to the email it came from.";
-      }
+      if (!response.ok) return explain(response);
 
       const result = (await response.json()) as { workroom?: string };
       router.replace(result.workroom ? `/workrooms/${result.workroom}` : "/workrooms");

@@ -127,7 +127,11 @@ export default async function StudioClient({ params }: { params: Promise<{ id: s
                 fields={{ id: client.id, version: client.version }}
                 label="Archive"
                 busyLabel="Archiving"
-                confirm={`Archive ${client.name}? They leave the default lists and nothing is deleted.`}
+                confirm={{
+                  title: `Archive ${client.name}?`,
+                  message: "They leave the default lists. Nothing is deleted.",
+                  action: "Archive",
+                }}
               />
             )
           ) : null}
@@ -232,7 +236,12 @@ export default async function StudioClient({ params }: { params: Promise<{ id: s
                       fields={{ id: row.id }}
                       label="Remove"
                       busyLabel="Removing"
-                      confirm={`Remove ${row.contactName} from ${client.name}? They stay a contact.`}
+                      confirm={{
+                        title: `Remove ${row.contactName} from ${client.name}?`,
+                        message: "They stay a contact and keep every other relationship.",
+                        action: "Remove",
+                        destructive: true,
+                      }}
                     />
                   </span>
                 </li>

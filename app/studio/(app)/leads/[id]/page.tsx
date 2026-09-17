@@ -249,7 +249,11 @@ export default async function StudioLead({ params }: { params: Promise<{ id: str
                 fields={{ id: lead.id, version: lead.version }}
                 label="Archive"
                 busyLabel="Archiving"
-                confirm={`Archive ${lead.title}? It leaves the pipeline and nothing is deleted.`}
+                confirm={{
+                  title: `Archive ${lead.title}?`,
+                  message: "It leaves the pipeline. Nothing is deleted.",
+                  action: "Archive",
+                }}
               />
             )
           ) : null}

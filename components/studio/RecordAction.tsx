@@ -1,7 +1,8 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 
+import ConfirmDialog, { type Confirm } from "@/components/studio/ConfirmDialog";
 import { type ActionResult } from "@/lib/studio-result";
 import styles from "@/app/studio/studio.module.css";
 
@@ -17,6 +18,12 @@ import styles from "@/app/studio/studio.module.css";
  * Deliberately dumb: the authorization that matters happens inside the action,
  * on the server. A server action is a public endpoint, and a button that is
  * only rendered for an Owner protects nothing on its own.
+ *
+ * **`confirm` opens a real dialog inside this form**, and the dialog's action
+ * button is the form's submit button. So the confirmation is not a gate in
+ * front of a submission that then happens by other means — it *is* the
+ * submission, carrying the same hidden fields, through the same server action.
+ * There is no path where the dialog is dismissed and the mutation runs anyway.
  */
 export default function RecordAction({
   action,
@@ -30,28 +37,50 @@ export default function RecordAction({
   fields: Record<string, string | number>;
   label: string;
   busyLabel: string;
-  confirm?: string;
+  confirm?: Confirm;
   variant?: "primary" | "secondary" | "quiet";
 }) {
-  const [result, submit, pending] = useActionState<ActionResult | null, FormData>(action, null);
+  const [asking, setAsking] = useState(false);
+  const [result, submit, pending] = useActionState<ActionResult | null, FormData>(
+    // Closed by the submission that finished, rather than by the click that
+    // started it: while the action is in flight the dialog stays up saying so,
+    // with both of its buttons locked, so there is no window in which a second
+    // press can land. The same shape `FormDialog` uses.
+    async (previous, form) => {
+      const outcome = await action(previous, form);
+      setAsking(false);
+      return outcome;
+    },
+    null,
+  );
 
   const className =
     variant === "primary" ? styles.button : variant === "secondary" ? styles.buttonSecondary : styles.buttonQuiet;
 
   return (
-    <form
-      action={submit}
-      onSubmit={(event) => {
-        if (confirm && !window.confirm(confirm)) event.preventDefault();
-      }}
-    >
+    <form action={submit}>
       {Object.entries(fields).map(([name, value]) => (
         <input key={name} type="hidden" name={name} value={value} />
       ))}
 
-      <button type="submit" className={className} disabled={pending}>
+      <button
+        type={confirm ? "button" : "submit"}
+        className={className}
+        disabled={pending}
+        onClick={confirm ? () => setAsking(true) : undefined}
+      >
         {pending ? busyLabel : label}
       </button>
+
+      {confirm ? (
+        <ConfirmDialog
+          confirm={confirm}
+          open={asking}
+          pending={pending}
+          onCancel={() => setAsking(false)}
+          submit
+        />
+      ) : null}
 
       {result && !result.ok ? (
         <span className={`${styles.status} ${styles.statusError}`} role="status">

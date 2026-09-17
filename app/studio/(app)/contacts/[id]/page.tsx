@@ -109,7 +109,11 @@ export default async function StudioContact({ params }: { params: Promise<{ id: 
                 fields={{ id: contact.id, version: contact.version }}
                 label="Archive"
                 busyLabel="Archiving"
-                confirm={`Archive ${contact.name}? Nothing is deleted, and their history stays.`}
+                confirm={{
+                  title: `Archive ${contact.name}?`,
+                  message: "They leave the default lists. Nothing is deleted and their history stays.",
+                  action: "Archive",
+                }}
               />
             )
           ) : null}
@@ -204,7 +208,12 @@ export default async function StudioContact({ params }: { params: Promise<{ id: 
                       fields={{ id: row.id }}
                       label="Remove"
                       busyLabel="Removing"
-                      confirm={`Remove ${contact.name} from ${row.clientName}?`}
+                      confirm={{
+                        title: `Remove ${contact.name} from ${row.clientName}?`,
+                        message: "They stay a contact and keep every other relationship.",
+                        action: "Remove",
+                        destructive: true,
+                      }}
                     />
                   </span>
                 </li>

@@ -219,6 +219,7 @@ should mean composing these, not writing new CSS.
 | Notice | One line, `role="status"`, with the failure written in words. |
 | Form dialog | A form only occasionally wanted, behind the button that wants it. Native `<dialog>` with `showModal()`, closing as part of the submission that succeeded. |
 | Record action | One button that changes one record, carrying the `version` the page was rendered with and showing a refusal where the button is. |
+| Confirmation | `ConfirmDialog`. A title naming the action, one sentence on the consequence, Cancel and a button repeating the verb. Never the browser's own. |
 | Skeleton | The shape of the content that is loading, at low contrast. See the rule below before adding one. |
 | Filter bar | A plain `GET` form above a list: search, one or two selects, a submit. A filtered list is a URL. |
 | Chip | A filter or a view, as a link. Active is full contrast with a full-contrast border. |
@@ -228,6 +229,45 @@ should mean composing these, not writing new CSS.
 | Prose | Free text somebody wrote, shown as they wrote it. `white-space: pre-wrap`, capped at 68ch. |
 | Checkbox | The one control that keeps the browser's own drawing, because nothing we would replace it with says "checkbox" better. It gets a real target and a label beside it. |
 | Back link | Uppercase, stepped down, above the page header. A record is reached from a list, and the list is where the rest of the answer is. |
+
+### Confirmations are ours
+
+**Studio never uses `window.confirm`, `alert` or `prompt`.** A browser's own
+dialog can offer one line and two anonymous buttons, in the operating system's
+typeface, above whatever chrome the browser feels like. It says nothing about
+what is about to happen and it looks like a different product.
+
+One component, `ConfirmDialog`, on the same native `<dialog>` and `showModal()`
+as every other dialog here — so the focus trap, Escape, the inert background and
+returning focus to the trigger are the platform's rather than a reimplementation
+that quietly stops working.
+
+Three parts, and none of them generic:
+
+```
+Publish presentation?
+Three files will also be shared with the client.
+                                    [Cancel]  [Publish]
+```
+
+**A title naming the action, one sentence on the consequence, and a button that
+repeats the verb.** Never *Are you sure?*, never *OK*. The last thing somebody
+reads before committing is the thing they are about to do.
+
+**Destructive is emphasis, not colour.** The palette is black and white, so a
+destructive confirmation gets the outlined button where a constructive one gets
+the solid one — less inviting, and legible to somebody who could not have seen
+red as red anyway.
+
+**Cancel holds the focus**, so the keyboard's first Enter is the safe one. The
+dialog stays open while the action runs, with both buttons locked, and closes
+when it returns — so there is no window in which a second press can land.
+
+**Confirmation is for consequence, not for every edit.** Destructive, hard to
+undo, access-changing, visibility-changing, publishing or sharing. Sharing a
+file asks nothing: it is the everyday action its page exists for, its result is
+visible in the row, and *un*-sharing is the direction that now needs a
+conversation.
 
 **Adding a screen means composing these.** Build 003 added seven pages and
 needed nine new classes, all of them here — no page-local CSS, no inline style,

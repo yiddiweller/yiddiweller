@@ -81,7 +81,13 @@ export default async function StudioTeam() {
                         confirm={
                           inactive
                             ? undefined
-                            : `Remove ${person.name}'s access? They are signed out immediately and cannot sign back in.`
+                            : {
+                                title: `Remove ${person.name}'s access?`,
+                                message:
+                                  "They are signed out immediately and cannot sign back in.",
+                                action: "Remove access",
+                                destructive: true,
+                              }
                         }
                       />
                     ) : (
@@ -138,7 +144,12 @@ export default async function StudioTeam() {
                         confirm={
                           invite.expired
                             ? undefined
-                            : `Revoke the invitation to ${invite.email}? Their link stops working straight away.`
+                            : {
+                                title: `Revoke the invitation to ${invite.email}?`,
+                                message: "Their link stops working straight away.",
+                                action: "Revoke invitation",
+                                destructive: true,
+                              }
                         }
                       />
                     </span>

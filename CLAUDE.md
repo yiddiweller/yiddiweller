@@ -249,6 +249,13 @@ broken by accident:
   decoration unless asked. The voice stays clean, classy and understated.
 - **Motion** is opacity and a small rise, nothing else, and is disabled entirely
   under `prefers-reduced-motion`.
+- **Confirmations are ours, never the browser's.** No `window.confirm`, `alert`
+  or `prompt` anywhere a person can reach. One `ConfirmDialog` on native
+  `<dialog>`: a title naming the action, one sentence on the consequence, and a
+  button repeating the verb — never "Are you sure?" and never "OK". Destructive
+  is the outlined button rather than a colour, Cancel holds the focus, and a
+  test scans the source so a native one cannot come back. Confirm consequence,
+  not every edit: `docs/studio-design.md`.
 - **Spacing** comes from `--page-x` and `--page-y`, so the gutter matches on
   every page.
 

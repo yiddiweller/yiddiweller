@@ -109,7 +109,13 @@ export default async function StudioWorkroom({ params }: { params: Promise<{ id:
                 fields={{ id: room.id, version: room.version }}
                 label="Unpublish"
                 busyLabel="Unpublishing"
-                confirm={`Unpublish ${room.title}? Its members lose access until it is published again. Nothing is deleted.`}
+                confirm={{
+                  title: `Unpublish ${room.title}?`,
+                  message:
+                    "Its members lose access until it is published again. Nothing is deleted.",
+                  action: "Unpublish",
+                  destructive: true,
+                }}
               />
             ) : (
               <RecordAction
@@ -118,7 +124,11 @@ export default async function StudioWorkroom({ params }: { params: Promise<{ id:
                 label="Publish"
                 busyLabel="Publishing"
                 variant="primary"
-                confirm={`Publish ${room.title}? Everybody invited to it can open it from that moment.`}
+                confirm={{
+                  title: `Publish ${room.title}?`,
+                  message: "Everybody invited to it can open it from that moment.",
+                  action: "Publish",
+                }}
               />
             )
           ) : null}
@@ -151,7 +161,11 @@ export default async function StudioWorkroom({ params }: { params: Promise<{ id:
                 fields={{ id: room.id, version: room.version }}
                 label="Archive"
                 busyLabel="Archiving"
-                confirm={`Archive ${room.title}? Nothing is deleted.`}
+                confirm={{
+                  title: `Archive ${room.title}?`,
+                  message: "It leaves the active lists. Nothing is deleted.",
+                  action: "Archive",
+                }}
               />
             )
           ) : null}
@@ -269,7 +283,13 @@ export default async function StudioWorkroom({ params }: { params: Promise<{ id:
                         fields={{ id: member.id, version: member.version, workroomId: room.id }}
                         label="Take away access"
                         busyLabel="Working"
-                        confirm={`Take away ${member.contactName}'s access to ${room.title}? It stops on their next click. Their other workrooms are untouched.`}
+                        confirm={{
+                          title: `Take away ${member.contactName}'s access to ${room.title}?`,
+                          message:
+                            "It stops on their next click. Their other workrooms are untouched.",
+                          action: "Revoke access",
+                          destructive: true,
+                        }}
                       />
                     ) : (
                       <RecordAction
@@ -292,7 +312,13 @@ export default async function StudioWorkroom({ params }: { params: Promise<{ id:
                         confirm={
                           member.identityStatus === "inactive"
                             ? undefined
-                            : `Switch off ${member.contactName}'s sign-in? This ends every session they have, in every workroom.`
+                            : {
+                                title: `Switch off ${member.contactName}'s sign-in?`,
+                                message:
+                                  "This ends every session they have, in every workroom.",
+                                action: "Switch off sign-in",
+                                destructive: true,
+                              }
                         }
                       />
                     ) : null}
@@ -325,7 +351,12 @@ export default async function StudioWorkroom({ params }: { params: Promise<{ id:
                       fields={{ id: invite.id, workroomId: room.id }}
                       label="Revoke"
                       busyLabel="Revoking"
-                      confirm={`Revoke the invitation to ${invite.email}? Their link stops working straight away.`}
+                      confirm={{
+                        title: `Revoke the invitation to ${invite.email}?`,
+                        message: "Their link stops working straight away.",
+                        action: "Revoke invitation",
+                        destructive: true,
+                      }}
                     />
                   </span>
                 </li>

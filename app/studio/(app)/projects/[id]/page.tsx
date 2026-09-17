@@ -122,7 +122,11 @@ export default async function StudioProject({ params }: { params: Promise<{ id: 
                 fields={{ id: project.id, version: project.version }}
                 label="Archive"
                 busyLabel="Archiving"
-                confirm={`Archive ${project.name}? Nothing is deleted.`}
+                confirm={{
+                  title: `Archive ${project.name}?`,
+                  message: "It leaves the active lists. Nothing is deleted and its history stays.",
+                  action: "Archive",
+                }}
               />
             )
           ) : null}
@@ -280,7 +284,12 @@ export default async function StudioProject({ params }: { params: Promise<{ id: 
                       fields={{ id: row.id }}
                       label="Remove"
                       busyLabel="Removing"
-                      confirm={`Remove ${row.contactName} from ${project.name}?`}
+                      confirm={{
+                        title: `Remove ${row.contactName} from ${project.name}?`,
+                        message: "They stay a contact and keep every other relationship.",
+                        action: "Remove",
+                        destructive: true,
+                      }}
                     />
                   </span>
                 </li>

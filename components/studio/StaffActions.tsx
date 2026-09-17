@@ -1,7 +1,8 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 
+import ConfirmDialog, { type Confirm } from "@/components/studio/ConfirmDialog";
 import styles from "@/app/studio/studio.module.css";
 
 /**
@@ -23,21 +24,39 @@ export default function StaffAction({
   id: string;
   label: string;
   busyLabel: string;
-  confirm?: string;
+  confirm?: Confirm;
 }) {
   const [pending, start] = useTransition();
+  const [asking, setAsking] = useState(false);
+
+  // The dialog stays up, saying so, until the action returns — so a second
+  // press has nowhere to land and nobody is left wondering whether it worked.
+  const run = () =>
+    start(async () => {
+      await action(id);
+      setAsking(false);
+    });
 
   return (
-    <button
-      type="button"
-      className={styles.buttonQuiet}
-      disabled={pending}
-      onClick={() => {
-        if (confirm && !window.confirm(confirm)) return;
-        start(() => void action(id));
-      }}
-    >
-      {pending ? busyLabel : label}
-    </button>
+    <>
+      <button
+        type="button"
+        className={styles.buttonQuiet}
+        disabled={pending}
+        onClick={confirm ? () => setAsking(true) : run}
+      >
+        {pending ? busyLabel : label}
+      </button>
+
+      {confirm ? (
+        <ConfirmDialog
+          confirm={confirm}
+          open={asking}
+          pending={pending}
+          onCancel={() => setAsking(false)}
+          onConfirm={run}
+        />
+      ) : null}
+    </>
   );
 }

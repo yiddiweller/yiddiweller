@@ -179,7 +179,7 @@ export default async function StudioPresentation({
           </p>
         ) : (
           <div className={styles.list}>
-            {items.map((item, index) => {
+            {items.map((item) => {
               const file = available.find((candidate) => candidate.id === item.fileId);
 
               return (
@@ -277,11 +277,13 @@ export default async function StudioPresentation({
                       }}
                       label="Remove"
                       busyLabel="Removing…"
-                      confirm={
-                        index >= 0
-                          ? "Remove this block from the draft? Published versions keep it."
-                          : undefined
-                      }
+                      confirm={{
+                        title: "Remove this block?",
+                        message:
+                          "The draft loses it, along with anything written on it. Published versions keep it.",
+                        action: "Remove",
+                        destructive: true,
+                      }}
                     />
                   </span>
                 </div>
@@ -400,13 +402,19 @@ export default async function StudioPresentation({
             label={revisions.length === 0 ? "Publish" : "Publish a new version"}
             busyLabel="Publishing…"
             variant="primary"
-            confirm={
-              willShare.length > 0
-                ? `Publish this? ${willShare.length === 1 ? "One file" : `${willShare.length} files`} will also be shared with the client.`
-                : revisions.length === 0
-                  ? undefined
-                  : "Publish a new version? The client will see this instead of the current one."
-            }
+            /* The consequence is the message, and the count is the whole of
+               it: publishing shares what it references, and somebody about to
+               hand three files to a client should read the number three. */
+            confirm={{
+              title: revisions.length === 0 ? "Publish presentation?" : "Publish a new version?",
+              message:
+                willShare.length > 0
+                  ? `${willShare.length === 1 ? "One file" : `${willShare.length} files`} will also be shared with the client.`
+                  : revisions.length === 0
+                    ? "The client can open it from that moment."
+                    : "The client will see this instead of the current version.",
+              action: "Publish",
+            }}
           />
 
           {published ? (
@@ -416,7 +424,13 @@ export default async function StudioPresentation({
               label="Withdraw"
               busyLabel="Withdrawing…"
               variant="secondary"
-              confirm="Withdraw this presentation? The client loses access to it and to every earlier version. Nothing is deleted, and files stay shared."
+              confirm={{
+                title: "Withdraw this presentation?",
+                message:
+                  "The client loses it and every earlier version. Nothing is deleted, and its files stay shared.",
+                action: "Withdraw",
+                destructive: true,
+              }}
             />
           ) : null}
 
@@ -426,7 +440,11 @@ export default async function StudioPresentation({
               fields={{ id: presentation.id, workroomId: room.id, version }}
               label="Archive"
               busyLabel="Archiving…"
-              confirm="Archive this presentation? It stays in the record and leaves the workroom."
+              confirm={{
+                title: "Archive this presentation?",
+                message: "It leaves the workroom and stays in the record.",
+                action: "Archive",
+              }}
             />
           ) : null}
         </div>

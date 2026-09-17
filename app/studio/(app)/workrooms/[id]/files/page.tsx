@@ -188,7 +188,12 @@ export default async function StudioWorkroomFiles({
                     busyLabel="Saving…"
                     confirm={
                       file.visibility === "shared"
-                        ? "Stop sharing this file? The client will no longer see it."
+                        ? {
+                            title: "Stop sharing this file?",
+                            message: "The client will no longer see it in Files.",
+                            action: "Stop sharing",
+                            destructive: true,
+                          }
                         : undefined
                     }
                   />
@@ -199,7 +204,11 @@ export default async function StudioWorkroomFiles({
                       fields={{ id: file.id, workroomId: room.id, version: file.version }}
                       label="Archive"
                       busyLabel="Archiving…"
-                      confirm="Archive this file? It stays in the record and leaves the workroom."
+                      confirm={{
+                        title: "Archive this file?",
+                        message: "It leaves the workroom and stays in the record.",
+                        action: "Archive",
+                      }}
                     />
                   ) : null}
                 </span>

@@ -33,7 +33,8 @@ that has not been on `beta` first, and never leave `beta` behind `main`.
 
 **Phases 1, 2, 3 and 4 are complete and verified in production**, released as
 **Build 001**, **Build 002**, **Build 003** and **Build 004**. **Build 005's
-architecture is locked in `docs/delivery.md` and no Build 005 code exists.**
+architecture is locked in `docs/delivery.md`, and Stage A — storage and Files —
+is on beta, unverified against the real bucket.**
 These are facts about the running system, not proposals. Changing any of them is
 a deliberate decision, not a cleanup.
 
@@ -108,6 +109,11 @@ a deliberate decision, not a cleanup.
 - **An approval names a Presentation Revision, never a Presentation.** Revisions
   and their items are immutable; a terminal approval refuses UPDATE, DELETE and
   TRUNCATE. A new decision about changed work requires a new Revision.
+- **Beta has the five `BUCKET_*` variables through Railway Variable References;
+  production has none.** Missing them breaks the Files routes and nothing else —
+  the public site, Contact, Studio sign-in, the business core and the Workroom
+  overview never read them. `scripts/check-env.mjs` reports them as their own
+  group, because absent means "not there yet" in production and "broken" on beta.
 - **File bytes live in a private Railway Storage Bucket, never in PostgreSQL,
   never on a Railway volume and never in the container filesystem.** The storage
   layer is written against S3, not against the vendor — `lib/storage/*`, an

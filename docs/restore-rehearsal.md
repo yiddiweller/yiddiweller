@@ -353,6 +353,24 @@ before Stage A begins:
 These are written down so the question is found during planning rather than
 during an incident.
 
+### A rehearsal database cannot be handed straight to the test suite
+
+Found while rehearsing Build 005's migration, and worth writing down because it
+will happen again at Build 006.
+
+A rehearsal seeds realistic rows, then the suite runs against the upgraded
+database to prove it still works. But the older suites own their own fixtures
+and wipe them between tests — and `business-core.test.ts` predates Build 004, so
+its wipe does not know about `workrooms`, whose `project_id` is
+`ON DELETE restrict`. Handed a database with rehearsal Workrooms in it, its
+`DELETE FROM projects` is refused and thirty-five tests fail for a reason that
+has nothing to do with the migration.
+
+**That is the rehearsal's method, not a defect in either build.** Clear the
+rehearsal's own seed in dependency order first, then run the suite: the claim
+being tested is that the suite passes against a schema produced by the *upgrade
+path*, and the data is incidental to it.
+
 ```
 Date                 2026-09-15
 Performed by         Yiddi Weller

@@ -76,6 +76,41 @@ trustworthy.
 
 ## Build log
 
+### Build 005 — Delivery
+
+**Stage A is on beta and unverified.** Not released, not numbered into
+production, and Build 005 does not claim a production state.
+
+The architecture is locked in [`delivery.md`](./delivery.md). Stage A builds the
+storage adapter and Files; Presentations, Reviews and Approvals exist as schema
+and nothing else.
+
+- **File bytes live in a private Railway Storage Bucket**, reached through an
+  S3 adapter named after nothing. Beta has its five bucket variables through
+  Railway Variable References; **production has none and gets none until
+  Build 005 is promoted.**
+- **A row exists before its bytes.** An upload reserves a `pending` row, the
+  browser sends bytes straight to storage, and an authenticated `HEAD` decides
+  whether anything becomes `ready` — because a presigned PUT cannot enforce a
+  size. Then a server-side copy to a permanent key the browser has no URL for,
+  and only then the row.
+- **Downloads are a 302 to a sixty-second signed URL**, authorized by one query
+  that carries membership, published state, ownership, readiness, visibility and
+  archive state together.
+- **The bucket expires nothing**, so `npm run storage:sweep` does — bounded,
+  idempotent, object before row, and refusing any key that is not `pending/`.
+  **Not yet scheduled.**
+- Seven tables, additive migration `0004_delivery.sql`, rehearsed against a
+  realistic Build 004 database: every row preserved, upgraded schema identical
+  to one built from scratch, Build 004 code still writes cleanly to it.
+
+**What Stage A has not done:** run against the real beta bucket. Every storage
+test used an in-process S3-compatible server that accepts any signature, so the
+flow is proven and the provider is not. Stage A is not finished until beta
+answers.
+
+---
+
 ### Build 004 — Client workrooms
 
 Commits `53d07fd` … `6b4ca20`. **In production, verified.** Promoted

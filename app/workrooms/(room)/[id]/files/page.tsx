@@ -12,11 +12,18 @@ import styles from "@/app/workrooms/workroom.module.css";
  *
  * `requireViewer` runs here, before the first read, and the read itself carries
  * the membership — so a request from somebody who is not a member never fetches
- * a row. The title is static for the same reason every Workroom title is: a
- * refused request still produces one, and a title that names the work tells a
- * stranger the work exists.
+ * a row.
+ *
+ * **This page deliberately sets no title.** Every page under `/workrooms`
+ * inherits the layout's generic "Workroom", so the title says nothing about
+ * the work and nothing about which page you are on — and a refused request,
+ * which still produces a title, carries the same one as everybody else's.
+ *
+ * Adding `export const metadata = { title: "Files" }` here would also render as
+ * a bare "Files" rather than "Files — Yiddi Weller": the layout above sets a
+ * plain string title, which stops the root template propagating any further
+ * down. Measured, not assumed.
  */
-export const metadata = { title: "Files" };
 
 export default async function ClientFiles({ params }: { params: Promise<{ id: string }> }) {
   const viewer = await requireViewer();

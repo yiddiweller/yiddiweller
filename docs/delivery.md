@@ -426,6 +426,35 @@ is what keeps it correct across providers.
 Multipart upload is **verified as supported**, so the >100 MB path is settled
 rather than provisional.
 
+### What Stage A proved, and what it did not
+
+Built on beta-shaped infrastructure and exercised end to end against an
+in-process S3-compatible server: reserve, presigned PUT, authenticated HEAD,
+server-side copy, delete pending, mark ready — then a 302 to a signed GET that
+returns the right bytes. Twenty-two domain tests and eight whole-response tests.
+
+**What that does not prove.** The stub accepts any signature. It shows the SDK
+builds the request, the verbs arrive and the flow holds; it says nothing about
+whether a signed URL satisfies a real provider, whether Railway's multipart
+implementation behaves as S3 does, or whether the beta credentials work. **Only
+the beta bucket answers those**, and Stage A is not finished until it has.
+
+Two things implementation changed, recorded here because the document said
+otherwise:
+
+- **`display_name` defaults to the uploaded filename.** There is no better
+  starting point and inventing one would be worse — but it means a file shared
+  without being renamed shows the client whatever it was called on somebody's
+  desktop. The promise this document makes is narrower than it first reads: the
+  *recorded* `original_filename` never travels and never follows a rename. The
+  name the client sees is the studio's to choose, at share time.
+- **A page under `/workrooms` must not set its own title.** The layout sets a
+  plain string, which stops the root template propagating, so a page-level
+  title renders bare — "Files" rather than "Files — Yiddi Weller". Every client
+  page therefore inherits the same generic "Workroom", which is better than the
+  alternative anyway: the title now says nothing about the work *and* nothing
+  about which page you are on.
+
 ### Sweeping abandoned uploads — ours, not the bucket's
 
 **Railway Buckets do not support lifecycle configuration.** An earlier draft of
@@ -466,13 +495,18 @@ Five properties, each load-bearing:
   line of defence: a file that any revision references cannot be deleted by
   anything, including this.
 
-**Scheduling is a Stage A infrastructure decision, deliberately not made here.**
-The sweep is written as a script that can be run by hand — the shape
-`scripts/*.mjs` already uses — and how it comes to be run regularly (a Railway
-cron service, an invocation beside the migration, something else) is decided
-when the bucket exists. **Until it is scheduled, abandoned uploads accumulate**,
-which is a cost measured in pennies and a fact that should be stated rather than
-assumed away.
+**Built as `npm run storage:sweep` (`scripts/sweep-pending.mjs`), and not
+scheduled.** It refuses to run without storage configured, rather than deleting
+rows whose objects would then be unreachable, and logs counts only — no key, no
+filename, no workroom.
+
+The recommended scheduling mechanism is **a separate Railway cron service in the
+same environment**, sharing the variable references, running
+`npm run storage:sweep` daily. Not an invocation beside the migration: that
+couples cleanup to deploy frequency, so a quiet fortnight means no sweep at all,
+and a deploy is the worst moment to start deleting things. **Until it is
+scheduled, abandoned uploads accumulate** — a cost measured in pennies, and a
+fact stated rather than assumed away.
 
 Object tagging is available and is not used. The `pending/` prefix plus the
 database row already answer every question the sweep asks, and a tag would be a

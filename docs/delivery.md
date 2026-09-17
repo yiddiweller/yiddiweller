@@ -76,7 +76,10 @@ serving nobody. Revisit when a client asks, not before.
 ```
 /workrooms/{roomPublicId}                                 overview
 /workrooms/{roomPublicId}/files                           shared files
-/workrooms/{roomPublicId}/files/{filePublicId}/download   302 → presigned GET
+/workrooms/{roomPublicId}/files/{filePublicId}            the viewer
+/workrooms/{roomPublicId}/files/{filePublicId}/view       302 → presigned inline GET
+/workrooms/{roomPublicId}/files/{filePublicId}/download   302 → presigned attachment GET
+/workrooms/{roomPublicId}/files/{filePublicId}/preview    302 → presigned thumbnail GET
 /workrooms/{roomPublicId}/presentations                   list
 /workrooms/{roomPublicId}/presentations/{pubId}           one, latest revision
 ```
@@ -609,6 +612,72 @@ internal image at a glance is most of why a thumbnail earns its place in Studio.
 
 ---
 
+### The viewer — one component, one decision, five outcomes
+
+**Locked:** the pattern is the one every review platform converged on, for the
+same reason they converged on it. **Store almost anything. Preview what the
+browser can safely render. Always keep a separate download of the original.**
+A file the browser cannot render is not a failure to apologise for — it is a
+polished card and a download, which is what a PSD honestly looks like.
+
+**One decision, in one place.** `viewerKind()` in `lib/storage/policy.ts` maps a
+content type to exactly one of five outcomes. Nothing else in the codebase
+decides how a file is rendered, and nothing accepts a hint from the request:
+
+| Outcome | Content types | How it renders | Original |
+| --- | --- | --- | --- |
+| `image` | `image/jpeg`, `png`, `webp`, `gif`, `avif` | `<img>`, `object-fit: contain` | Download |
+| `pdf` | `application/pdf` | `<iframe>`, the browser's own viewer | Download |
+| `video` | `video/mp4`, `webm`, `ogg` | `<video controls preload="metadata">` | Download |
+| `audio` | `audio/mpeg`, `mp4`, `aac`, `wav`, `ogg`, `webm`, `flac` | `<audio controls preload="metadata">` | Download |
+| `download` | **everything else**, SVG included | A typed, sized card | Download |
+
+**The list is exact matches, never prefixes, and that is the whole security
+argument.** `fileKind()` — the human label — does use prefixes, and still calls
+an SVG an image, because that is what it is. `viewerKind()` does not, because a
+prefix rule on `image/` would admit `image/svg+xml`, and an SVG served from our
+own origin is stored XSS: script, `<foreignObject>`, a fetch carrying the
+client's session cookie. **Raw SVG is never put in an `<iframe>`, an `<img>`, an
+`<object>` or an `<embed>`, and is never decoded for a preview.** It is a
+download card, deliberately, and a test asserts that every route refuses to
+serve it inline rather than trusting the UI not to ask.
+
+**Nothing the uploader controls can choose inline rendering.** The stored
+content type is the only input, the map is closed, and the view route refuses
+anything `viewable()` rejects before it signs a URL — so an unlisted type has no
+inline address at all, not merely no button pointing at one.
+
+**One component renders all five.** `components/workrooms/FileViewer.tsx`
+switches on the kind and is used by both the client's viewer page and the
+staff's, so the two cannot drift — the same structural fix the Workroom overview
+needed when the staff Preview silently fell a feature behind. There is no
+per-type page and no per-type layout.
+
+**Two routes per file, and they are different promises.**
+
+| Route | Disposition | TTL | Refuses |
+| --- | --- | --- | --- |
+| `…/files/{id}/view` | `inline` + the stored content type | 15 minutes | anything not `viewable()` |
+| `…/files/{id}/download` | `attachment` + a sanitised filename | 60 seconds | nothing — every file downloads |
+
+**The fifteen minutes is the finding, not an oversight.** Viewing media is a
+session, not a fetch: seeking in a video issues a fresh ranged request against
+the same signed URL minutes after the page loaded, and a sixty-second URL makes
+the scrubber stop working partway through. The exposure is bounded the same way
+the download is — a URL for one object, expiring, never permanent, never a
+bucket credential — and the bytes are served by the bucket, so a large original
+never crosses this server. That constraint is what sets the number: the
+alternative to a longer TTL is proxying media through Next, which this
+architecture forbids outright.
+
+**Full view never crops.** `object-fit: contain` on a bounded frame, because a
+client checking a logo's margins needs the whole artwork, not a pleasing square.
+The 16:10 `cover` frame stays on the *list*, where a consistent rhythm matters
+more than completeness. Nothing autoplays, `preload="metadata"` everywhere, and
+no surprise audio.
+
+---
+
 ## Presentations
 
 A Presentation is **a deliberate delivery moment** — the studio saying *here is
@@ -1097,7 +1166,7 @@ boundary above a guarded page turns a refusal into a 200. Measured; see
 | Archived content | `archived_at IS NULL` in every client query |
 | Metadata / RSC leak | Static titles on every new route — `"Presentation"`, never the title. Whole-response leak tests |
 | Filename injection | Disposition forced at presign time: sanitised ASCII name plus RFC 5987 `filename*` |
-| Malicious MIME | `content_type` recorded, **never trusted for rendering**. Everything downloads as an attachment |
+| Malicious MIME | The stored `content_type` is matched **exactly** against a closed five-outcome map, never by prefix and never from the request. An unlisted type has no inline address at all: the view route refuses before it signs. Everything, without exception, also downloads as an attachment |
 | Uploaded SVG / HTML | Never rendered inline, never previewed. An SVG from our origin is stored XSS |
 | Oversize upload | Verified by authenticated HEAD at finalize, not by a presign condition |
 | Path traversal | Structurally impossible — no caller string reaches a key |
@@ -1125,7 +1194,9 @@ files are unpredictable — `.sketch`, `.fig`, `.ai`, `.indd`, `.psd`, `.zip`,
 useless on a Tuesday.
 
 - **Accept almost anything.** Recorded, downloadable.
-- **Render inline only** `image/jpeg|png|webp|gif|avif` and `video/mp4|webm`.
+- **Render inline only** the five outcomes of `viewerKind()` — raster images,
+  PDF, `video/mp4|webm|ogg`, and the browser-native audio types. The exact
+  list, and why it is exact matches rather than prefixes, is in *The viewer*.
 - **Refuse outright** only the genuinely hostile: `.exe`, `.dll`, `.bat`,
   `.cmd`, `.sh`, `.msi`, `.app`, `.scr`, and anything declaring `text/html`.
 - **`image/svg+xml` is accepted, never rendered inline, never previewed.**

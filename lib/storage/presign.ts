@@ -26,6 +26,20 @@ import { storage } from "./client.ts";
 
 /** Long enough to follow a redirect, short enough to be worthless if copied. */
 const DOWNLOAD_TTL_SECONDS = 60;
+
+/**
+ * Viewing is a session, not a fetch.
+ *
+ * A download is one redirect followed once, so sixty seconds is generous. A
+ * video, an audio track and a PDF are not: the browser opens them with range
+ * requests, seeks, and comes back for more bytes minutes later. A sixty-second
+ * URL makes a five-minute video unseekable after the first minute, which reads
+ * as a broken player rather than as a security setting.
+ *
+ * Fifteen minutes is still short-lived and still worthless once it lapses. It
+ * is not a permanent URL and must never become one.
+ */
+const VIEW_TTL_SECONDS = 15 * 60;
 /** Long enough to upload a 16 MiB part on a poor connection. */
 const UPLOAD_TTL_SECONDS = 15 * 60;
 
@@ -123,6 +137,33 @@ export async function presignPreview(key: string): Promise<string> {
   return getSignedUrl(client, new GetObjectCommand({ Bucket: bucket, Key: key }), {
     expiresIn: DOWNLOAD_TTL_SECONDS,
   });
+}
+
+/**
+ * A presigned GET that a browser may render **in place**.
+ *
+ * The one call in the codebase that produces an inline disposition, and the
+ * only caller is the view route — which refuses anything whose stored content
+ * type does not answer to `viewerKind`. So the decision about what may render
+ * inline is made once, from what is actually stored, and a request cannot
+ * argue with it.
+ *
+ * `contentType` is echoed back deliberately: a browser asked to display
+ * `application/octet-stream` downloads it instead, which would make every
+ * viewer look broken. It is only ever a value this build has already approved.
+ */
+export async function presignInline(key: string, contentType: string): Promise<string> {
+  const { client, bucket } = storage();
+  return getSignedUrl(
+    client,
+    new GetObjectCommand({
+      Bucket: bucket,
+      Key: key,
+      ResponseContentDisposition: "inline",
+      ResponseContentType: contentType,
+    }),
+    { expiresIn: VIEW_TTL_SECONDS },
+  );
 }
 
 /* ------------------------------------------------------------- multipart */

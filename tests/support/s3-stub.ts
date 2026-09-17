@@ -146,6 +146,38 @@ export class S3Stub {
     if (method === "GET") {
       const object = this.objects.get(key);
       if (!object) return void response.writeHead(404).end();
+
+      // Range requests, because a video player and a PDF viewer open a file by
+      // asking for pieces of it. Without this the stub would answer 200 to
+      // every seek and the tests would say playback works when the real
+      // provider's behaviour had never been exercised at all.
+      const range = headers["range"];
+      if (typeof range === "string") {
+        const match = /^bytes=(\d*)-(\d*)$/.exec(range.trim());
+        if (match) {
+          const size = object.body.length;
+          const start = match[1] ? Number(match[1]) : Math.max(0, size - Number(match[2] || 0));
+          const end = match[1] ? (match[2] ? Math.min(Number(match[2]), size - 1) : size - 1) : size - 1;
+          if (start > end || start >= size) {
+            return void response
+              .writeHead(416, { "content-range": `bytes */${size}` })
+              .end();
+          }
+          const slice = object.body.subarray(start, end + 1);
+          const disposition = url.searchParams.get("response-content-disposition");
+          const type = url.searchParams.get("response-content-type");
+          return void response
+            .writeHead(206, {
+              "content-length": String(slice.length),
+              "content-range": `bytes ${start}-${end}/${size}`,
+              "accept-ranges": "bytes",
+              etag: `"${object.etag}"`,
+              ...(disposition ? { "content-disposition": disposition } : {}),
+              ...(type ? { "content-type": type } : {}),
+            })
+            .end(slice);
+        }
+      }
       // Response header overrides, which is how the download route forces an
       // attachment. Honoured here so the tests exercise the same mechanism a
       // real provider applies rather than assuming it works.
@@ -154,6 +186,7 @@ export class S3Stub {
       response
         .writeHead(200, {
           "content-length": String(object.body.length),
+          "accept-ranges": "bytes",
           etag: `"${object.etag}"`,
           ...(disposition ? { "content-disposition": disposition } : {}),
           ...(type ? { "content-type": type } : {}),

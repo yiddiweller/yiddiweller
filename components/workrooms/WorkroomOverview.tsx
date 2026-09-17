@@ -92,7 +92,13 @@ export default function WorkroomOverview({
                   ) : null}
 
                   <div className={styles.fileRow}>
-                    <a className={styles.fileLink} href={file.downloadPath}>
+                    {/* The name opens the file where there is something to
+                        open, and downloads it where there is not — one link
+                        either way, because two on a summary row is clutter. */}
+                    <a
+                      className={styles.fileLink}
+                      href={file.viewPath ?? file.downloadPath}
+                    >
                       {file.name}
                     </a>
                     <span className={styles.fileMeta}>

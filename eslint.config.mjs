@@ -35,6 +35,7 @@ const eslintConfig = defineConfig([
     files: [
       "**/workrooms/**/files/page.tsx",
       "**/WorkroomOverview.tsx",
+      "**/FileViewer.tsx",
     ],
     rules: { "@next/next/no-img-element": "off" },
   },

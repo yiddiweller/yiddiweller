@@ -35,10 +35,17 @@ const studioRoomA = process.env.STUDIO_WORKROOM_A_ID;
 const imageA = process.env.WORKROOM_A_IMAGE;
 const svgA = process.env.WORKROOM_A_SVG;
 const internalImageA = process.env.WORKROOM_A_INTERNAL_IMAGE;
+/** A shared PDF, video, audio track and an unsupported source file. */
+const pdfA = process.env.WORKROOM_A_PDF;
+const videoA = process.env.WORKROOM_A_VIDEO;
+const audioA = process.env.WORKROOM_A_AUDIO;
+const sourceA = process.env.WORKROOM_A_SOURCE;
+const archivedA = process.env.WORKROOM_A_ARCHIVED;
 
 const configured = Boolean(
   base && clientA && clientB && roomA && roomB && fileA && fileB && internalA && staff &&
-    studioRoomA && imageA && svgA && internalImageA,
+    studioRoomA && imageA && svgA && internalImageA && pdfA && videoA && audioA && sourceA &&
+    archivedA,
 );
 const skip = configured
   ? false
@@ -246,7 +253,11 @@ test("a shared image is shown, and the signed URL is not in the page", { skip },
   // Our own route, never a storage address.
   const src = `/workrooms/${roomA}/files/${imageA}/preview`;
   assert.ok(page.body.includes(`src="${src}"`), "the image is not rendered");
-  assert.match(page.body, /alt="Preview of [^"]+"/, "the preview has no meaningful alt");
+  // The thumbnail is a link to the viewer now, so its accessible name says
+  // where it goes rather than describing the picture — which is what a link's
+  // name is for. The full viewer, where the image is the content, uses the
+  // file's name as its alt instead.
+  assert.match(page.body, /alt="Open [^"]+"/, "the thumbnail link has no meaningful name");
 
   // The things a signed URL would bring with it, none of which may appear.
   assert.ok(!page.body.includes("X-Amz-Signature"), "a signed URL reached the page");
@@ -329,13 +340,191 @@ test("the overview keeps its hint restrained", { skip }, async () => {
   const overview = await get(`/workrooms/${roomA}`, clientA);
   const files = await get(`/workrooms/${roomA}/files`, clientA);
 
-  // A chip on the overview, a framed preview on the Files page. If the overview
-  // ever grows as many images as the library, this is what notices.
+  // A chip on the overview, a framed preview on the Files page.
+  //
+  // Deliberately not "at least one": the Overview summarises the three most
+  // recent files, and whether any of those happens to be an image depends on
+  // what was uploaded last. Three PDFs in a row mean no chips, and that is the
+  // Overview being a summary rather than a gallery. What must hold is the
+  // ceiling — if it ever grows as many images as the library, this notices.
   const count = (body: string) => [...body.matchAll(/\/preview"/g)].length;
-  assert.ok(count(overview.body) >= 1, "the overview lost its visual hint");
   assert.ok(
     count(overview.body) <= 3,
     "the overview is showing more than the three files it summarises",
   );
   assert.ok(count(files.body) >= count(overview.body), "the Files page shows fewer images");
+});
+
+/* ------------------------------------------------- the agency file viewer */
+
+/**
+ * The pattern these assert is the one every professional delivery tool follows:
+ * store almost anything, render what a browser can render safely, and always
+ * keep a separate download of the original. The interesting half is the second
+ * clause — what must **not** render — because that is where a viewer becomes an
+ * execution surface.
+ */
+
+test("every viewable kind opens, and nothing else does", { skip }, async () => {
+  for (const [id, element] of [
+    [imageA, /<img[^>]+class="[^"]*viewerImage/],
+    [pdfA, /<iframe[^>]+class="[^"]*viewerFrame/],
+    [videoA, /<video[^>]+controls/],
+    [audioA, /<audio[^>]+controls/],
+  ] as const) {
+    const page = await get(`/workrooms/${roomA}/files/${id}`, clientA);
+    assert.equal(page.status, 200, String(id));
+    assert.match(page.body, element, String(id));
+
+    // The source is one of our routes. A signed URL never travels in markup.
+    assert.ok(
+      page.body.includes(`/workrooms/${roomA}/files/${id}/view`),
+      `${id} did not use the authorized route`,
+    );
+    assert.ok(!page.body.includes("X-Amz-Signature"), `${id} leaked a signed URL`);
+
+    // Download original is offered on every one of them.
+    assert.ok(page.body.includes(`/files/${id}/download`), `${id} lost its download`);
+  }
+});
+
+test("an unviewable file is a polished card, not an empty viewer", { skip }, async () => {
+  for (const id of [svgA, sourceA]) {
+    const page = await get(`/workrooms/${roomA}/files/${id}`, clientA);
+    assert.equal(page.status, 200, String(id));
+
+    assert.match(page.body, /No preview for this kind of file\./, String(id));
+    assert.ok(page.body.includes(`/files/${id}/download`), `${id} lost its download`);
+
+    // Nothing that could render or execute it.
+    for (const element of ["<iframe", "<object", "<embed", "viewerImage", "<video", "<audio"]) {
+      assert.ok(!page.body.includes(element), `${id} was given ${element}`);
+    }
+  }
+});
+
+test("an SVG is never served inline, by any route", { skip }, async () => {
+  // The route refuses from the stored content type, so there is nothing a
+  // request can say to obtain an inline disposition for one.
+  const inline = await get(`/workrooms/${roomA}/files/${svgA}/view`, clientA);
+  assert.equal(inline.status, 404, "an SVG was served inline");
+  assert.equal(inline.location, "");
+
+  // It is still perfectly downloadable, as an attachment.
+  const download = await get(`/workrooms/${roomA}/files/${svgA}/download`, clientA);
+  assert.equal(download.status, 302);
+  assert.match(
+    decodeURIComponent(download.location),
+    /response-content-disposition=attachment/,
+    "an SVG download was not forced to an attachment",
+  );
+});
+
+test("inline is only ever offered to approved kinds, and download always forces attachment", { skip }, async () => {
+  for (const id of [imageA, pdfA, videoA, audioA] as const) {
+    const view = await get(`/workrooms/${roomA}/files/${id}/view`, clientA);
+    assert.equal(view.status, 302, String(id));
+    const location = decodeURIComponent(view.location);
+    assert.match(location, /response-content-disposition=inline/, `${id} was not inline`);
+
+    const download = await get(`/workrooms/${roomA}/files/${id}/download`, clientA);
+    assert.match(
+      decodeURIComponent(download.location),
+      /response-content-disposition=attachment/,
+      `${id} download was not an attachment`,
+    );
+  }
+
+  // And the source formats cannot reach the inline path at all.
+  for (const id of [svgA, sourceA] as const) {
+    assert.equal((await get(`/workrooms/${roomA}/files/${id}/view`, clientA)).status, 404, String(id));
+  }
+});
+
+test("the viewer and its bytes obey the same rules as the download", { skip }, async () => {
+  const refusals = [
+    [`/workrooms/${roomA}/files/${internalImageA}`, clientA, "an internal file's page"],
+    [`/workrooms/${roomA}/files/${internalImageA}/view`, clientA, "an internal file's bytes"],
+    [`/workrooms/${roomA}/files/${archivedA}`, clientA, "an archived file's page"],
+    [`/workrooms/${roomA}/files/${archivedA}/view`, clientA, "an archived file's bytes"],
+    [`/workrooms/${roomB}/files/${pdfA}`, clientB, "another workroom's page"],
+    [`/workrooms/${roomB}/files/${pdfA}/view`, clientB, "another workroom's bytes"],
+    [`/workrooms/${roomA}/files/00000000000000000000000000/view`, clientA, "one that never existed"],
+  ] as const;
+
+  for (const [path, cookie, what] of refusals) {
+    const response = await get(path, cookie);
+    assert.equal(response.status, 404, what);
+    assert.equal(response.location, "", `${what} leaked a location`);
+    assert.deepEqual(leaks(response.body), [], what);
+  }
+
+  // Anonymous is sent to sign in, and handed no bytes on the way.
+  const anonymous = await get(`/workrooms/${roomA}/files/${pdfA}/view`, undefined);
+  assert.ok([302, 307].includes(anonymous.status));
+  assert.ok(!anonymous.location.includes("X-Amz-Signature"));
+
+  // A Studio session is not a client session.
+  const asStaff = await get(`/workrooms/${roomA}/files/${pdfA}/view`, staff);
+  assert.ok([302, 307].includes(asStaff.status));
+  assert.ok(!asStaff.location.includes("X-Amz-Signature"));
+});
+
+test("a viewer page carries nothing internal and no storage address", { skip }, async () => {
+  for (const id of [imageA, pdfA, videoA, audioA, svgA, sourceA] as const) {
+    const page = await get(`/workrooms/${roomA}/files/${id}`, clientA);
+
+    assert.deepEqual(leaks(page.body), [], String(id));
+    assert.ok(!/\bw\/[0-9a-f-]{36}\/f\//.test(page.body), `${id} leaked a storage key`);
+    assert.ok(!page.body.includes("X-Amz-Credential"), `${id} leaked a credential`);
+    assert.ok(!page.body.includes("pending/"), `${id} leaked a pending key`);
+    assert.ok(!page.body.includes("Birch"), `${id} leaked another tenant`);
+    // The bucket endpoint itself, which is the host of every signed URL.
+    assert.ok(!page.body.includes("127.0.0.1:"), `${id} leaked the bucket endpoint`);
+
+    assert.match(page.body, /<title>Workroom — Yiddi Weller<\/title>/, String(id));
+    assert.match(page.cacheControl, /private/, String(id));
+    assert.match(page.cacheControl, /no-store/, String(id));
+  }
+});
+
+test("media does not start on its own", { skip }, async () => {
+  for (const id of [videoA, audioA] as const) {
+    const page = await get(`/workrooms/${roomA}/files/${id}`, clientA);
+    assert.ok(!page.body.includes("autoplay"), `${id} autoplays`);
+    assert.ok(page.body.includes('preload="metadata"'), `${id} preloads more than it should`);
+    assert.ok(page.body.includes("controls"), `${id} has no controls`);
+  }
+});
+
+test("staff open the same viewer, internal files included", { skip }, async () => {
+  const page = await get(`/studio/workrooms/${studioRoomA}/files/${internalImageA}`, staff);
+  assert.equal(page.status, 200, "staff cannot open an internal file");
+  assert.match(page.body, /viewerImage/);
+  assert.ok(page.body.includes(`/studio/workrooms/${studioRoomA}/files/${internalImageA}/view`));
+  assert.ok(!page.body.includes("X-Amz-Signature"), "the staff viewer leaked a signed URL");
+
+  // The staff route is not a way in for a client session, and vice versa.
+  const asClient = await get(`/studio/workrooms/${studioRoomA}/files/${internalImageA}/view`, clientA);
+  assert.ok([302, 307, 404].includes(asClient.status));
+  assert.ok(!asClient.location.includes("X-Amz-Signature"), "a client reached an internal file");
+});
+
+test("the files list offers View where there is one, and Download everywhere", { skip }, async () => {
+  const page = await get(`/workrooms/${roomA}/files`, clientA);
+  assert.equal(page.status, 200);
+
+  for (const id of [imageA, pdfA, videoA, audioA] as const) {
+    assert.ok(page.body.includes(`href="/workrooms/${roomA}/files/${id}"`), `${id} has no View`);
+  }
+  for (const id of [svgA, sourceA] as const) {
+    assert.ok(
+      !page.body.includes(`href="/workrooms/${roomA}/files/${id}"`),
+      `${id} was offered a View it cannot honour`,
+    );
+  }
+  // Download on every one of them, viewable or not.
+  for (const id of [imageA, pdfA, videoA, audioA, svgA, sourceA] as const) {
+    assert.ok(page.body.includes(`/files/${id}/download`), `${id} lost its download`);
+  }
 });

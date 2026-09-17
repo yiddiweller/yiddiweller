@@ -55,8 +55,15 @@ import {
   workrooms,
 } from "../lib/db/schema.ts";
 import { resetStorage } from "../lib/storage/client.ts";
-import { contentDisposition } from "../lib/storage/presign.ts";
-import { checkUpload, fileKind, formatBytes, previewable } from "../lib/storage/policy.ts";
+import { contentDisposition, presignGet, presignInline } from "../lib/storage/presign.ts";
+import {
+  checkUpload,
+  fileKind,
+  formatBytes,
+  previewable,
+  viewable,
+  viewerKind,
+} from "../lib/storage/policy.ts";
 import { isPendingKey, isPermanentKey, pendingKey, permanentKey } from "../lib/storage/keys.ts";
 import { toClientFile } from "../lib/workrooms/delivery-view.ts";
 import { S3Stub, useStub } from "./support/s3-stub.ts";
@@ -636,7 +643,20 @@ test("the client projection carries nothing internal", async () => {
   assert.ok(!serialised.includes(row.id), "an internal id reached the client");
   assert.ok(!serialised.includes("application/pdf"), "a raw content type reached the client");
 
-  assert.deepEqual(Object.keys(view).sort(), ["downloadPath", "id", "kind", "name", "previewPath", "size"]);
+  // The whitelist, pinned. Adding a field to what a client receives has to be
+  // a deliberate edit here, in review, rather than something that arrives by
+  // accident — which is exactly what happened when the viewer added three.
+  assert.deepEqual(Object.keys(view).sort(), [
+    "downloadPath",
+    "id",
+    "kind",
+    "name",
+    "previewPath",
+    "size",
+    "sourcePath",
+    "viewPath",
+    "viewer",
+  ]);
   assert.equal(view.id, row.publicId);
   assert.equal(view.kind, "pdf");
   assert.match(view.size, /\d/);
@@ -935,4 +955,159 @@ test("a revoked member loses the preview with everything else", async () => {
     null,
     "a revoked member could still reach a preview",
   );
+});
+
+/* ---------------------------------------------------------------- viewers */
+
+test("what may render inline is an exact list, never a prefix", () => {
+  // The whole point of `viewerKind` living beside `fileKind`: one says what a
+  // file is, the other says what we are willing to do with it. A prefix test
+  // here would admit SVG, and an SVG a browser decodes runs its contents.
+  for (const [type, expected] of [
+    ["image/jpeg", "image"],
+    ["image/png", "image"],
+    ["image/webp", "image"],
+    ["image/avif", "image"],
+    ["image/gif", "image"],
+    ["application/pdf", "pdf"],
+    ["video/mp4", "video"],
+    ["video/webm", "video"],
+    ["audio/mpeg", "audio"],
+    ["audio/wav", "audio"],
+    ["audio/ogg", "audio"],
+  ] as const) {
+    assert.equal(viewerKind(type), expected, type);
+    assert.equal(viewable(type), true, type);
+  }
+
+  // Everything a studio actually sends that a browser cannot safely render.
+  for (const type of [
+    "image/svg+xml",
+    "image/vnd.adobe.photoshop",
+    "application/postscript",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "application/msword",
+    "application/zip",
+    "application/x-indesign",
+    "application/octet-stream",
+    "text/html",
+    "text/plain",
+    "video/quicktime",
+    "",
+  ]) {
+    assert.equal(viewerKind(type), "download", type || "(empty)");
+    assert.equal(viewable(type), false, type || "(empty)");
+  }
+
+  // Case and stray whitespace do not open a door.
+  assert.equal(viewerKind("  IMAGE/SVG+XML  "), "download");
+  assert.equal(viewerKind("  Application/PDF "), "pdf");
+});
+
+test("a file's label and its viewer are two different answers", () => {
+  // An SVG reads as an image to a person and is never rendered as one.
+  assert.equal(fileKind("image/svg+xml"), "image");
+  assert.equal(viewerKind("image/svg+xml"), "download");
+
+  // A codec a browser will not play is still a video, and still a download.
+  assert.equal(fileKind("video/quicktime"), "video");
+  assert.equal(viewerKind("video/quicktime"), "download");
+
+  assert.equal(fileKind("audio/mpeg"), "audio");
+});
+
+test("the projection offers a viewer only where one exists, and download always", async () => {
+  const r = await room("A", "Alder & Co", "Ana Alder", "ana@alder.test");
+
+  const made = {
+    image: await upload(r, { contentType: "image/png", displayName: "Concept", preview: true }),
+    pdf: await upload(r, { contentType: "application/pdf", displayName: "Proposal" }),
+    video: await upload(r, { contentType: "video/mp4", displayName: "Cut" }),
+    audio: await upload(r, { contentType: "audio/mpeg", displayName: "Voiceover" }),
+    svg: await upload(r, { contentType: "image/svg+xml", displayName: "Wordmark" }),
+    archive: await upload(r, { contentType: "application/zip", displayName: "Deliverables" }),
+  };
+  for (const file of Object.values(made)) {
+    assert.ok((await setFileVisibility(actor, file.id, file.version, "shared")).ok);
+  }
+
+  const views = (await filesForViewer(r.contactId, r.publicId)).map((row) =>
+    toClientFile(row, r.publicId),
+  );
+  const by = (name: string) => views.find((view) => view.name === name)!;
+
+  for (const [name, kind] of [
+    ["Concept", "image"],
+    ["Proposal", "pdf"],
+    ["Cut", "video"],
+    ["Voiceover", "audio"],
+  ] as const) {
+    assert.equal(by(name).viewer, kind, name);
+    assert.equal(by(name).viewPath, `/workrooms/${r.publicId}/files/${by(name).id}`, name);
+    assert.equal(by(name).sourcePath, `/workrooms/${r.publicId}/files/${by(name).id}/view`, name);
+  }
+
+  // An SVG and an archive get a card and a download, and no way to render them.
+  for (const name of ["Wordmark", "Deliverables"]) {
+    assert.equal(by(name).viewer, "download", name);
+    assert.equal(by(name).viewPath, undefined, `${name} was given a viewer`);
+    assert.equal(by(name).sourcePath, undefined, `${name} was given inline bytes`);
+  }
+
+  // Download is offered for every one of them, without exception.
+  for (const view of views) {
+    assert.match(view.downloadPath, /\/download$/, view.name);
+  }
+
+  // And none of it carries anything internal.
+  const serialised = JSON.stringify(views);
+  assert.ok(!serialised.includes("MARKER-ORIGINAL-FILENAME"));
+  assert.ok(!/\bw\/[0-9a-f-]{36}\/f\//.test(serialised), "a storage key reached the client");
+  for (const type of ["image/png", "application/pdf", "video/mp4", "image/svg+xml"]) {
+    assert.ok(!serialised.includes(type), `a raw content type (${type}) reached the client`);
+  }
+});
+
+test("an inline URL is signed for a viewing session and a download for one fetch", async () => {
+  const r = await room("A", "Alder & Co", "Ana Alder", "ana@alder.test");
+  const file = await upload(r, { contentType: "video/mp4", displayName: "Cut" });
+
+  const inline = new URL(await presignInline(file.storageKey, "video/mp4"));
+  const attachment = new URL(await presignGet(file.storageKey, "Cut.mp4"));
+
+  // A seek five minutes into a video must not fail because the URL lapsed.
+  assert.equal(inline.searchParams.get("X-Amz-Expires"), String(15 * 60));
+  assert.equal(attachment.searchParams.get("X-Amz-Expires"), "60");
+
+  assert.equal(inline.searchParams.get("response-content-disposition"), "inline");
+  assert.equal(inline.searchParams.get("response-content-type"), "video/mp4");
+  assert.match(attachment.searchParams.get("response-content-disposition")!, /^attachment;/);
+
+  // Neither is permanent, and both are signed.
+  for (const url of [inline, attachment]) {
+    assert.ok(url.searchParams.get("X-Amz-Signature"));
+    assert.ok(Number(url.searchParams.get("X-Amz-Expires")) <= 15 * 60);
+  }
+});
+
+test("storage answers a range request, which is how media is played at all", async () => {
+  const r = await room("A", "Alder & Co", "Ana Alder", "ana@alder.test");
+  const bytes = Buffer.from("0123456789abcdefghijklmnopqrstuvwxyz");
+  const file = await upload(r, { contentType: "video/mp4", displayName: "Cut", bytes });
+
+  const url = await presignInline(file.storageKey, "video/mp4");
+  const partial = await fetch(url, { headers: { Range: "bytes=10-19" } });
+
+  assert.equal(partial.status, 206, "storage did not honour a range request");
+  assert.equal(partial.headers.get("content-range"), `bytes 10-19/${bytes.length}`);
+  assert.equal(partial.headers.get("accept-ranges"), "bytes");
+  assert.equal(await partial.text(), "abcdefghij");
+
+  // And a whole-file fetch still advertises that ranges are possible, which is
+  // what a player checks before it offers a scrub bar.
+  const whole = await fetch(url);
+  assert.equal(whole.headers.get("accept-ranges"), "bytes");
+  assert.equal(whole.headers.get("content-disposition"), "inline");
 });

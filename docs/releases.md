@@ -98,6 +98,14 @@ and nothing else.
 - **Downloads are a 302 to a sixty-second signed URL**, authorized by one query
   that carries membership, published state, ownership, readiness, visibility and
   archive state together.
+- **A shared file is looked at, not only fetched.** One `viewerKind()` maps a
+  stored content type to exactly one of five outcomes — image, PDF, video,
+  audio, or a download card — and one `FileViewer` component renders all five
+  for clients and staff alike. Matches are exact, never by prefix, so
+  `image/svg+xml` stays a download card: an SVG served from our own origin is
+  stored XSS. Inline URLs last fifteen minutes because seeking in a video is a
+  fresh request against the same URL; downloads still last sixty seconds. Full
+  view never crops.
 - **The bucket expires nothing**, so `npm run storage:sweep` does — bounded,
   idempotent, object before row, and refusing any key that is not `pending/`.
   **Not yet scheduled.**
@@ -125,6 +133,9 @@ component keeping the Preview and the real client overview aligned.
 - **The sweep is not scheduled.** Until it is, abandoned uploads accumulate.
 - **No per-object backup or replication strategy**, which is required before
   Build 005 reaches production — see [`restore-rehearsal.md`](./restore-rehearsal.md).
+- **The viewer has not been accepted on beta by hand.** It passes the full
+  automated suite, the responsive sweep and the quality gate locally; the
+  by-hand beta acceptance recorded above predates it.
 - **Stage B has not begun.** Presentations, Reviews and Approvals exist as
   schema and are read by nothing.
 

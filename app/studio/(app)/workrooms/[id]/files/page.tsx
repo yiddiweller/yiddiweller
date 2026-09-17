@@ -10,7 +10,7 @@ import { isId } from "@/lib/business";
 import { listFiles, workroomBytes } from "@/lib/db/files";
 import { findWorkroom } from "@/lib/db/workrooms";
 import { bucketConfigured } from "@/lib/env";
-import { fileKind, formatBytes, WORKROOM_SOFT_BYTES } from "@/lib/storage/policy";
+import { fileKind, formatBytes, viewable, WORKROOM_SOFT_BYTES } from "@/lib/storage/policy";
 import styles from "@/app/studio/studio.module.css";
 
 import {
@@ -132,6 +132,18 @@ export default async function StudioWorkroomFiles({
                 </span>
 
                 <span className={styles.rowActions}>
+                  {/* Open first where there is something to open, so staff
+                      check what a client will see without leaving Studio and
+                      without downloading it. Internal files included: that is
+                      most of the point of inspecting one. */}
+                  {viewable(file.contentType) ? (
+                    <Link
+                      className={styles.buttonQuiet}
+                      href={`/studio/workrooms/${room.id}/files/${file.publicId}`}
+                    >
+                      Open
+                    </Link>
+                  ) : null}
                   <a
                     className={styles.buttonQuiet}
                     href={`/studio/workrooms/${room.id}/files/${file.publicId}/download`}

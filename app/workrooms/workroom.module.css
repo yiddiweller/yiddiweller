@@ -358,6 +358,7 @@
    was made for them, not a file manager showing icons — and capped so the page
    stays a list rather than becoming a gallery. */
 .filePreview {
+  display: block;
   width: 100%;
   max-width: 420px;
   aspect-ratio: 16 / 10;
@@ -410,3 +411,97 @@
   border: 1px solid var(--w-edge-faint);
   background: var(--rule-faint);
 }
+
+/* ----------------------------------------------------------------- viewer */
+
+.viewerTitle {
+  margin-top: var(--w-1);
+  font-size: var(--w-fs-title);
+  font-weight: 400;
+  color: var(--w-fg);
+  overflow-wrap: anywhere;
+}
+
+.viewerMeta { margin-top: 4px; font-size: var(--w-fs-ui); color: var(--w-fg-3); }
+
+/* The surface a piece of work is shown on. A hairline and the faintest wash,
+   so the frame is present without competing with what is in it. */
+.viewerStage {
+  margin-top: var(--w-3);
+  border: 1px solid var(--w-edge-faint);
+  background: var(--rule-faint);
+}
+
+/* Bounded by the viewport rather than by a fixed height, so a tall image on a
+   phone and a wide one on a desktop are both fully visible without scrolling
+   sideways. `min()` keeps it from ever exceeding the width available. */
+.viewerStageImage { display: flex; align-items: center; justify-content: center; }
+
+.viewerImage {
+  display: block;
+  max-width: 100%;
+  max-height: min(70vh, 720px);
+  /* Never `cover`. A thumbnail may crop to stay recognisable in a list; this
+     is the artwork, and cropping somebody's work to fit a box is the one thing
+     a viewer must not do. */
+  object-fit: contain;
+}
+
+/* A document needs height to be usable; a phone has little of it, so this
+   leans taller there rather than showing three lines of a page. */
+.viewerStageDocument { height: min(78vh, 900px); }
+
+.viewerFrame { display: block; width: 100%; height: 100%; border: 0; }
+
+.viewerVideo {
+  display: block;
+  width: 100%;
+  max-height: min(70vh, 720px);
+  background: var(--black);
+}
+
+.viewerAudio { margin-top: var(--w-3); }
+.viewerAudioPlayer { display: block; width: 100%; }
+
+/* What an unviewable file says. Quiet, and never an apology: the file is
+   there, it is theirs, and the application it belongs in is elsewhere. */
+.viewerEmpty {
+  margin-top: var(--w-3);
+  padding: var(--w-4) var(--w-3);
+  border: 1px solid var(--w-edge-faint);
+  font-size: var(--w-fs-ui);
+  color: var(--w-fg-3);
+}
+
+.viewerEmptyTitle { color: var(--w-fg-2); margin-bottom: var(--w-1); }
+
+.viewerActions { margin-top: var(--w-3); }
+
+.viewerDownload {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--w-hit);
+  padding: 0 var(--w-3);
+  font-size: var(--w-fs-ui);
+  color: var(--w-fg);
+  text-decoration: none;
+  border: 1px solid var(--w-edge);
+}
+
+.viewerDownload:hover { border-color: var(--w-fg-3); }
+
+/* A file row's two actions. View first where there is one, Download always —
+   both always visible, because a phone has no hover. */
+.fileActions { display: flex; flex-wrap: wrap; gap: var(--w-1) var(--w-3); }
+
+.fileAction {
+  font-size: var(--w-fs-ui);
+  color: var(--w-fg-2);
+  text-decoration: none;
+  border-bottom: 1px solid var(--w-edge);
+  padding-bottom: 1px;
+  min-height: 24px;
+}
+
+.fileAction:hover { color: var(--w-fg); }
+.fileActionPrimary { color: var(--w-fg); }

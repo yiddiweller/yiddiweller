@@ -31,26 +31,50 @@ const REFUSED_EXTENSIONS = [
  */
 const REFUSED_TYPES = ["text/html", "application/x-msdownload", "application/x-msdos-program"];
 
-/** The only types anything ever renders. Everything else is a download row. */
+/**
+ * The only types anything ever renders, and the only ones that may ever be
+ * served with an inline disposition.
+ *
+ * **Exact matches, never prefixes.** `image/*` would admit SVG, which executes
+ * when a browser decodes it; `application/*` would admit anything at all. A
+ * prefix test here is the difference between a viewer and an XSS surface, and
+ * it is the reason `viewerKind()` exists beside `fileKind()`: one says what a
+ * file *is*, the other says what we are willing to *do* with it.
+ */
 const INLINE_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif", "image/avif"];
-const INLINE_VIDEO_TYPES = ["video/mp4", "video/webm"];
+const INLINE_VIDEO_TYPES = ["video/mp4", "video/webm", "video/ogg"];
+const INLINE_AUDIO_TYPES = [
+  "audio/mpeg",
+  "audio/mp4",
+  "audio/aac",
+  "audio/wav",
+  "audio/x-wav",
+  "audio/ogg",
+  "audio/webm",
+  "audio/flac",
+];
+const INLINE_PDF_TYPE = "application/pdf";
 
 /** What the client is told a file is. A coarse word, never the raw type. */
-export type FileKind = "image" | "pdf" | "video" | "document" | "other";
+export type FileKind = "image" | "pdf" | "video" | "audio" | "document" | "other";
 
 export function fileKind(contentType: string): FileKind {
   const type = contentType.toLowerCase();
   if (INLINE_IMAGE_TYPES.includes(type)) return "image";
-  if (type === "application/pdf") return "pdf";
+  if (type === INLINE_PDF_TYPE) return "pdf";
   if (INLINE_VIDEO_TYPES.includes(type)) return "video";
+  if (INLINE_AUDIO_TYPES.includes(type)) return "audio";
+  // Prefixes are fine here and nowhere else: this only chooses a word to show
+  // somebody. An SVG reads as an image and is still never rendered as one.
   if (type.startsWith("image/")) return "image";
   if (type.startsWith("video/")) return "video";
+  if (type.startsWith("audio/")) return "audio";
   if (type.startsWith("text/") || type.startsWith("application/")) return "document";
   return "other";
 }
 
 /**
- * Whether a browser may decode this to make a preview.
+ * Whether a browser may decode this to make a thumbnail.
  *
  * **SVG is deliberately absent.** Decoding one runs its contents, and an SVG
  * served from our own origin is stored XSS. It may be stored and downloaded; it
@@ -58,6 +82,38 @@ export function fileKind(contentType: string): FileKind {
  */
 export function previewable(contentType: string): boolean {
   return INLINE_IMAGE_TYPES.includes(contentType.toLowerCase());
+}
+
+/**
+ * How a file may be looked at in the product, if at all.
+ *
+ * This is the **single decision** about inline rendering. The view route reads
+ * it from the file's stored content type and refuses anything answering
+ * `download` — so arbitrary content can never talk its way into an inline
+ * disposition, no matter what a request asks for. Nothing else in the codebase
+ * decides this, and nothing should.
+ *
+ * The line is drawn where a browser can render something safely without us
+ * converting it. Everything past that line — Office documents, Adobe sources,
+ * archives, CAD — is a download, and stays one until there is conversion
+ * infrastructure to change the answer. That is a deliberate scope boundary, not
+ * an omission: the product pattern is the same as the platforms that do run
+ * those pipelines, minus the pipelines.
+ */
+export type ViewerKind = "image" | "pdf" | "video" | "audio" | "download";
+
+export function viewerKind(contentType: string): ViewerKind {
+  const type = contentType.trim().toLowerCase();
+  if (INLINE_IMAGE_TYPES.includes(type)) return "image";
+  if (type === INLINE_PDF_TYPE) return "pdf";
+  if (INLINE_VIDEO_TYPES.includes(type)) return "video";
+  if (INLINE_AUDIO_TYPES.includes(type)) return "audio";
+  return "download";
+}
+
+/** Whether this file has a viewer at all. */
+export function viewable(contentType: string): boolean {
+  return viewerKind(contentType) !== "download";
 }
 
 export type PolicyRefusal = { ok: false; reason: string };

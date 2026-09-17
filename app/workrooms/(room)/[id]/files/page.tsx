@@ -53,33 +53,44 @@ export default async function ClientFiles({ params }: { params: Promise<{ id: st
             <ul className={styles.files}>
               {files.map((file) => (
                 <li key={file.id} className={styles.file}>
-                  {/* An image is shown, not described. Everything else stays a
-                      row: a PDF, a zip or a design source has no useful picture
-                      of itself, and inventing one would be decoration.
-
-                      `previewPath` is one of our own routes, never a signed
-                      URL. The browser follows the redirect inside the <img>, so
-                      the storage address reaches neither this markup nor the
-                      address bar. */}
-                  {file.previewPath ? (
-                    <div className={styles.filePreview}>
+                  {/* The thumbnail is the way in when there is one. A raster
+                      image gets a picture of itself; everything else gets its
+                      name and type, which is what a PDF or a zip honestly
+                      looks like. */}
+                  {file.previewPath && file.viewPath ? (
+                    <Link className={styles.filePreview} href={file.viewPath}>
                       <img
                         className={styles.filePreviewImage}
                         src={file.previewPath}
-                        alt={`Preview of ${file.name}`}
+                        alt={`Open ${file.name}`}
                         loading="lazy"
                         decoding="async"
                       />
-                    </div>
+                    </Link>
                   ) : null}
 
                   <div className={styles.fileRow}>
-                    <a className={styles.fileLink} href={file.downloadPath}>
-                      {file.name}
-                    </a>
+                    <span className={styles.fileLink}>{file.name}</span>
                     <span className={styles.fileMeta}>
                       {file.kind} · {file.size}
                     </span>
+                  </div>
+
+                  {/* Two actions at most, and the hierarchy reads without
+                      explanation: open it, or take it away. A file with no
+                      viewer simply has one. */}
+                  <div className={styles.fileActions}>
+                    {file.viewPath ? (
+                      <Link
+                        className={`${styles.fileAction} ${styles.fileActionPrimary}`}
+                        href={file.viewPath}
+                      >
+                        View
+                      </Link>
+                    ) : null}
+                    <a className={styles.fileAction} href={file.downloadPath}>
+                      Download
+                    </a>
                   </div>
                 </li>
               ))}

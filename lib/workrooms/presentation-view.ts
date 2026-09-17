@@ -1,5 +1,11 @@
 import { type WorkroomFileRow } from "../db/files.ts";
-import { toClientFile, type ClientFile } from "./delivery-view.ts";
+import {
+  toPresentedFile,
+  withPaths,
+  type ClientFile,
+  type FileBase,
+  type PresentedFile,
+} from "./delivery-view.ts";
 
 /**
  * The only shape of a Presentation that reaches a client surface.
@@ -36,7 +42,11 @@ import { toClientFile, type ClientFile } from "./delivery-view.ts";
  * the client saw?*
  */
 
-export type ClientRevisionItem =
+/**
+ * One block of a Presentation **as content** — no routes, nothing about who is
+ * looking. This is what a Revision freezes and what the hash covers.
+ */
+export type PresentedItem =
   | {
       position: number;
       kind: "note";
@@ -49,14 +59,19 @@ export type ClientRevisionItem =
       kind: "file";
       /** The line under the work. Optional; most files have one. */
       caption: string | null;
-      file: ClientFile;
+      file: PresentedFile;
     };
+
+/** The same block, rendered — the file now carrying a surface's own routes. */
+export type ClientRevisionItem =
+  | { position: number; kind: "note"; caption: string | null; body: string }
+  | { position: number; kind: "file"; caption: string | null; file: ClientFile };
 
 /** Exactly what is frozen at publication, and exactly what the hash covers. */
 export type PresentationContent = {
   title: string;
   intro: string;
-  items: ClientRevisionItem[];
+  items: PresentedItem[];
 };
 
 /** One entry in `Previous versions`: which, and when. Never what changed. */
@@ -66,9 +81,12 @@ export type ClientRevisionRef = {
   current: boolean;
 };
 
-export type ClientPresentation = PresentationContent & {
+export type ClientPresentation = {
   /** The opaque public id. The only identifier a client ever receives. */
   id: string;
+  title: string;
+  intro: string;
+  items: ClientRevisionItem[];
   /**
    * Null for a draft the studio is previewing. A client never receives one:
    * every client-facing read goes through a published Revision.
@@ -84,7 +102,7 @@ export type ClientPresentation = PresentationContent & {
   revisions: ClientRevisionRef[];
 };
 
-/** What a draft item or a frozen revision item looks like before projection. */
+/** What a draft item looks like before projection. */
 export type PresentableItem = {
   position: number;
   kind: "file" | "note";
@@ -102,10 +120,7 @@ export type PresentableItem = {
  * A `file` item whose File cannot be resolved is dropped by the caller rather
  * than rendered as a gap — see `toPresentationContent`.
  */
-function toClientItem(
-  item: PresentableItem,
-  workroomPublicId: string,
-): ClientRevisionItem | null {
+function toPresented(item: PresentableItem): PresentedItem | null {
   if (item.kind === "note") {
     if (item.body === null) return null;
     return {
@@ -118,7 +133,7 @@ function toClientItem(
 
   if (!item.file) return null;
 
-  const file = toClientFile(item.file, workroomPublicId);
+  const file = toPresentedFile(item.file);
 
   return {
     position: item.position,
@@ -141,12 +156,11 @@ function toClientItem(
 export function toPresentationContent(
   presentation: { title: string; intro: string },
   items: PresentableItem[],
-  workroomPublicId: string,
 ): PresentationContent {
-  const projected: ClientRevisionItem[] = [];
+  const projected: PresentedItem[] = [];
 
   for (const item of items) {
-    const safe = toClientItem(item, workroomPublicId);
+    const safe = toPresented(item);
     if (safe) projected.push(safe);
   }
 
@@ -172,12 +186,23 @@ export function toClientPresentationView(
     revision: number | null;
     revisions: { number: number; publishedAt: Date }[];
   },
+  /**
+   * Where **this** surface fetches file bytes from. The client's page passes
+   * client-authorized routes; Studio's preview and its view of a published
+   * version pass staff-authorized ones. The content is identical either way,
+   * which is what lets one component render all three.
+   */
+  base: FileBase,
 ): ClientPresentation {
   return {
     id: publicId,
     title: content.title,
     intro: content.intro,
-    items: content.items,
+    items: content.items.map((item) =>
+      item.kind === "note"
+        ? item
+        : { position: item.position, kind: "file", caption: item.caption, file: withPaths(item.file, base) },
+    ),
     publishedAt: facts.publishedAt?.toISOString() ?? null,
     revision: facts.revision,
     revisions: facts.revisions.map((entry) => ({

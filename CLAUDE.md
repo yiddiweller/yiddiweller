@@ -136,6 +136,16 @@ a deliberate decision, not a cleanup.
   loser, and `UNIQUE (presentation_id, revision_number)` is the last line.
 - **A Presentation draft is one document and carries one version.** Retitling,
   rewording a note and reordering all pass the Presentation's `version`.
+- **A Revision stores what was delivered; each surface supplies its own file
+  routes.** Paths are not content. The client's presentation uses
+  `/workrooms/{room}/files/...`, which requires `ready` + `shared` + unarchived +
+  membership; Studio's preview and its view of a published version use
+  `/studio/workrooms/{id}/files/...`, which requires staff and the file's own
+  Workroom and applies **no** visibility filter. Neither borrows the other's:
+  a Studio session on a `/workrooms/...` route is sent to the client sign-in
+  exactly as a stranger is. Found by manual beta acceptance — a draft's internal
+  image rendered broken in Preview — and fixed at the cause rather than by
+  sharing the file early or loosening `clientVisible()`.
 - **Staff Preview renders the *draft* through the same component and projection
   as the client page, and says so.** For a published Presentation it is
   deliberately not what the client currently sees — that is the current

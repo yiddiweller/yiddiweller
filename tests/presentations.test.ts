@@ -1,19 +1,28 @@
 import assert from "node:assert/strict";
 import { after, before, beforeEach, test } from "node:test";
 
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 import { listActivity } from "../lib/db/activity.ts";
 import { listAuditEvents, type AuditActor } from "../lib/db/audit.ts";
 import { createClient } from "../lib/db/clients.ts";
 import { attachContactToClient, createContact } from "../lib/db/contacts.ts";
-import { archiveFile, beginUpload, finalizeUpload, findFile, setFileVisibility } from "../lib/db/files.ts";
+import {
+  archiveFile,
+  beginUpload,
+  fileForViewer,
+  filesForViewer,
+  finalizeUpload,
+  findFile,
+  setFileVisibility,
+} from "../lib/db/files.ts";
 import { closeDb, db } from "../lib/db/index.ts";
 import { uuidv7 } from "../lib/db/id.ts";
 import {
   addFileItem,
   addNoteItem,
   archivePresentation,
+  draftPreview,
   contentHash,
   createPresentation,
   filesToShareOnPublish,
@@ -693,17 +702,17 @@ test("the hash answers one question: is this the same work the client saw", asyn
   const presentation = (await findPresentation(id))!;
 
   const items = await listDraftItems(id);
-  const content = toPresentationContent(presentation, items, r.publicId);
+  const content = toPresentationContent(presentation, items);
 
   // Same content, twice.
-  assert.equal(contentHash(content), contentHash(toPresentationContent(presentation, items, r.publicId)));
+  assert.equal(contentHash(content), contentHash(toPresentationContent(presentation, items)));
 
   // Order is content.
-  const reordered = toPresentationContent(presentation, [...items].reverse(), r.publicId);
+  const reordered = toPresentationContent(presentation, [...items].reverse());
   assert.notEqual(contentHash(content), contentHash(reordered));
 
   // Client-visible words are content.
-  const reworded = toPresentationContent({ ...presentation, intro: "Different." }, items, r.publicId);
+  const reworded = toPresentationContent({ ...presentation, intro: "Different." }, items);
   assert.notEqual(contentHash(content), contentHash(reworded));
 
   // An internal-only change is not. `original_filename` is the field that
@@ -711,7 +720,7 @@ test("the hash answers one question: is this the same work the client saw", asyn
   const internalOnly = items.map((item) =>
     item.file ? { ...item, file: { ...item.file, originalFilename: "renamed-internally.png" } } : item,
   );
-  assert.equal(contentHash(content), contentHash(toPresentationContent(presentation, internalOnly, r.publicId)));
+  assert.equal(contentHash(content), contentHash(toPresentationContent(presentation, internalOnly)));
 });
 
 test("a later draft edit cannot alter a published revision's hash", async () => {
@@ -1023,7 +1032,7 @@ test("audit records that a publication happened and never what it said", async (
   assert.ok(rows.some((row) => row.action === "presentation.published"));
 });
 
-test("the staff preview and the client read the same shape from the same projection", async () => {
+test("staff and client read one revision, and differ only in where the bytes come from", async () => {
   const r = await room("a", "Alder & Co", "Ana Alder", "ana@alder.test");
   const { id } = await drafted(r);
   assert.ok((await publishPresentation(actor, id, (await findPresentation(id))!.version)).ok);
@@ -1034,5 +1043,118 @@ test("the staff preview and the client read the same shape from the same project
 
   assert.ok(staff);
   assert.ok(client);
-  assert.deepEqual(staff, client, "staff and client read different things from one revision");
+
+  // Everything except the routes is one shared record of what was published.
+  const content = (view: typeof staff) => ({
+    ...view,
+    items: view!.items.map((item) =>
+      item.kind === "note" ? item : { ...item, file: { ...item.file, downloadPath: "", viewPath: "", sourcePath: "", previewPath: "" } },
+    ),
+  });
+  assert.deepEqual(content(staff), content(client), "staff and client read different things");
+
+  // And the routes differ by authority, deliberately. A Studio session on a
+  // `/workrooms/...` route is sent to the client sign-in exactly as a stranger
+  // is, so staff surfaces cannot borrow the client's routes even when every
+  // file in the Revision is shared.
+  const files = (view: typeof staff) =>
+    view!.items.flatMap((item) => (item.kind === "file" ? [item.file.downloadPath] : []));
+
+  assert.ok(files(client).every((path) => path.startsWith(`/workrooms/${r.publicId}/files/`)), "client paths");
+  assert.ok(
+    files(staff).every((path) => path.startsWith(`/studio/workrooms/${r.workroomId}/files/`)),
+    "staff paths",
+  );
+});
+
+test("the staff preview renders an internal file, and the client still cannot", async () => {
+  const r = await room("a", "Alder & Co", "Ana Alder", "ana@alder.test");
+  const made = await createPresentation(actor, r.workroomId, { title: "Direction", intro: "" });
+  assert.ok(made.ok);
+  const id = made.value;
+
+  // One of each viewer kind, all internal, none published. This is the shape
+  // manual beta acceptance broke on: the preview must show the draft as it
+  // would publish, and a draft is full of files no client may see yet.
+  const kinds: [string, string][] = [
+    ["Board.png", "image/png"],
+    ["Deck.pdf", "application/pdf"],
+    ["Cut.mp4", "video/mp4"],
+    ["Take.mp3", "audio/mpeg"],
+    ["Master.psd", "image/vnd.adobe.photoshop"],
+  ];
+
+  for (const [name, type] of kinds) {
+    const fileId = await upload(r, name, type);
+    assert.equal((await findFile(fileId))!.visibility, "internal");
+    const version = (await findPresentation(id))!.version;
+    assert.ok((await addFileItem(actor, id, version, fileId, name)).ok);
+  }
+
+  const preview = await draftPreview((await findPresentation(id))!);
+  assert.equal(preview.items.length, kinds.length);
+
+  for (const item of preview.items) {
+    assert.equal(item.kind, "file");
+    if (item.kind !== "file") continue;
+
+    // Staff routes, which apply no visibility filter — and never the client's,
+    // which correctly refuse an internal file and would render as a broken
+    // image with the file still internal.
+    assert.ok(
+      item.file.downloadPath.startsWith(`/studio/workrooms/${r.workroomId}/files/`),
+      `${item.file.name} was given a client download path`,
+    );
+    assert.ok(
+      !item.file.downloadPath.includes(`/workrooms/${r.publicId}/`),
+      `${item.file.name} was given a client path`,
+    );
+    if (item.file.viewer !== "download") {
+      assert.ok(item.file.sourcePath?.startsWith(`/studio/workrooms/${r.workroomId}/files/`));
+    }
+  }
+
+  // Every one of them stayed internal: the preview did not buy its own
+  // correctness by sharing anything.
+  const stored = await db().select().from(workroomFiles).where(eq(workroomFiles.workroomId, r.workroomId));
+  assert.ok(stored.every((file) => file.visibility === "internal"), "the preview shared a file");
+
+  // And the client is offered none of it.
+  assert.deepEqual(await presentationsForViewer(r.contactId, r.publicId), []);
+  assert.deepEqual(await filesForViewer(r.contactId, r.publicId), []);
+});
+
+test("publishing hands the same files to the client, atomically", async () => {
+  const r = await room("a", "Alder & Co", "Ana Alder", "ana@alder.test");
+  const { id, fileId } = await drafted(r);
+
+  assert.equal((await findFile(fileId))!.visibility, "internal");
+  assert.ok((await publishPresentation(actor, id, (await findPresentation(id))!.version)).ok);
+  assert.equal((await findFile(fileId))!.visibility, "shared");
+
+  const view = await presentationForViewer(r.contactId, r.publicId, (await findPresentation(id))!.publicId);
+  assert.ok(view);
+  const file = view.items.find((item) => item.kind === "file");
+  assert.ok(file && file.kind === "file");
+  assert.ok(file.file.downloadPath.startsWith(`/workrooms/${r.publicId}/files/`));
+
+  // The same file, now reachable on the client's own terms.
+  assert.ok(await fileForViewer(r.contactId, r.publicId, file.file.id));
+});
+
+test("the content hash is about the work, not about our routing", async () => {
+  const r = await room("a", "Alder & Co", "Ana Alder", "ana@alder.test");
+  const { id } = await drafted(r);
+  const presentation = (await findPresentation(id))!;
+
+  const content = toPresentationContent(presentation, await listDraftItems(id));
+  const frozen = JSON.stringify(content);
+
+  // A published Revision froze routes into its snapshot before they were
+  // separated from content, which made the hash depend on where bytes are
+  // fetched from. It no longer does, and nothing that looks like a path is stored.
+  assert.ok(!frozen.includes("/workrooms/"), "a route was frozen into the content");
+  assert.ok(!frozen.includes("/studio/"), "a route was frozen into the content");
+  assert.ok(!frozen.includes("downloadPath"), "a route was frozen into the content");
+  assert.ok(frozen.includes("hasPreview"), "whether a thumbnail exists is part of the content");
 });

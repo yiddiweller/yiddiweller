@@ -41,10 +41,18 @@ const withdrawn = process.env.PRESENTATION_A_WITHDRAWN;
 /** The other tenant's. */
 const theirs = process.env.PRESENTATION_B;
 const svgA = process.env.WORKROOM_A_SVG;
+/** Internal, unpublished, one per viewer kind — all inside the draft. */
+const internalImage = process.env.WORKROOM_A_INTERNAL_IMAGE;
+const internalPdf = process.env.WORKROOM_A_INTERNAL_PDF;
+const internalVideo = process.env.WORKROOM_A_INTERNAL_VIDEO;
+const internalAudio = process.env.WORKROOM_A_INTERNAL_AUDIO;
+const internalSource = process.env.WORKROOM_A_INTERNAL_SOURCE;
+const internalSvg = process.env.WORKROOM_A_INTERNAL_SVG;
 
 const configured = Boolean(
   base && clientA && clientB && roomA && roomB && staff && studioRoomA && shown && shownId &&
-    draft && draftId && withdrawn && theirs && svgA,
+    draft && draftId && withdrawn && theirs && svgA && internalImage && internalPdf &&
+    internalVideo && internalAudio && internalSource && internalSvg,
 );
 const skip = configured
   ? false
@@ -354,4 +362,154 @@ test("the public site is untouched by any of it", { skip }, async () => {
   const sitemap = await get("/sitemap.xml");
   assert.equal(sitemap.status, 200);
   assert.ok(!sitemap.body.includes("presentations"), "a private route reached the sitemap");
+});
+
+/* ------------------------------------------------ the preview's own routes */
+
+/**
+ * The defect manual beta acceptance found, and the wider one it was hiding.
+ *
+ * Studio Preview handed the client's file routes to a staff browser. For an
+ * internal file that is a broken image — the client route correctly refuses
+ * anything unshared. For a *published* Revision it was broken too, because a
+ * Studio session on a `/workrooms/...` route is sent to the client sign-in
+ * exactly as a stranger is. Authority decides the route; the file's visibility
+ * decides nothing about which route a surface uses.
+ */
+
+test("the staff preview renders every internal kind, through staff routes", { skip }, async () => {
+  const preview = await get(`/studio/workrooms/${studioRoomA}/presentations/${draftId}/preview`, staff);
+  assert.equal(preview.status, 200);
+
+  const studioPaths = new Set(preview.body.match(/\/studio\/workrooms\/[0-9a-f-]{36}\/files\/[a-z0-9]{26}\/[a-z]+/g) ?? []);
+  assert.ok(studioPaths.size > 0, "the preview emitted no staff file routes at all");
+
+  // Not one client route anywhere in the response, markup or flight payload.
+  assert.equal(
+    (preview.body.match(/\/workrooms\/[a-z0-9]{26}\/files\//g) ?? []).length,
+    0,
+    "the preview handed a staff browser the client's file routes",
+  );
+
+  // Every kind renders, and every one of them fetches successfully as staff.
+  assert.match(preview.body, /<img[^>]+viewerImage/, "no image viewer in the preview");
+  assert.match(preview.body, /<iframe[^>]+viewerFrame/, "no pdf viewer in the preview");
+  assert.match(preview.body, /<video/, "no video viewer in the preview");
+  assert.match(preview.body, /<audio/, "no audio viewer in the preview");
+  assert.match(preview.body, /No preview for this kind of file/, "no download card in the preview");
+
+  for (const path of studioPaths) {
+    const response = await get(path, staff);
+    assert.ok(
+      response.status === 302 || response.status === 200,
+      `${path} answered ${response.status} to the staff session that rendered it`,
+    );
+  }
+});
+
+test("each internal kind is reachable by staff and by nobody else", { skip }, async () => {
+  for (const [kind, id] of [
+    ["image", internalImage],
+    ["pdf", internalPdf],
+    ["video", internalVideo],
+    ["audio", internalAudio],
+  ] as const) {
+    assert.equal(
+      (await get(`/studio/workrooms/${studioRoomA}/files/${id}/view`, staff)).status,
+      302,
+      `staff could not view the internal ${kind}`,
+    );
+    assert.equal(
+      (await get(`/studio/workrooms/${studioRoomA}/files/${id}/download`, staff)).status,
+      302,
+      `staff could not download the internal ${kind}`,
+    );
+
+    // The client cannot reach it by any route, before publication.
+    for (const suffix of ["", "/view", "/download", "/preview"]) {
+      assert.equal(
+        (await get(`/workrooms/${roomA}/files/${id}${suffix}`, clientA)).status,
+        404,
+        `a client reached the internal ${kind} at ${suffix || "its page"}`,
+      );
+    }
+  }
+
+  // An unsupported source file has no viewer either way, and downloads both.
+  assert.equal((await get(`/studio/workrooms/${studioRoomA}/files/${internalSource}/view`, staff)).status, 404);
+  assert.equal((await get(`/studio/workrooms/${studioRoomA}/files/${internalSource}/download`, staff)).status, 302);
+
+  // And an internal SVG stays download-only for staff too: the inline rule
+  // protects the person looking, not the tenancy.
+  assert.equal((await get(`/studio/workrooms/${studioRoomA}/files/${internalSvg}/view`, staff)).status, 404);
+  assert.equal((await get(`/studio/workrooms/${studioRoomA}/files/${internalSvg}/download`, staff)).status, 302);
+});
+
+test("staff cannot preview another workroom's file through its own routes", { skip }, async () => {
+  const other = process.env.STUDIO_WORKROOM_B_ID;
+  if (!other) return;
+
+  // The file exists and staff are staff — and the route still refuses,
+  // because the Workroom in the path is not the Workroom the file is in.
+  for (const suffix of ["/view", "/download", "/preview"]) {
+    assert.equal(
+      (await get(`/studio/workrooms/${other}/files/${internalImage}${suffix}`, staff)).status,
+      404,
+      `a staff route served workroom A's file under workroom B${suffix}`,
+    );
+  }
+
+  // And a client session cannot use a Studio viewer route at all.
+  for (const suffix of ["/view", "/download", "/preview"]) {
+    const response = await get(`/studio/workrooms/${studioRoomA}/files/${internalImage}${suffix}`, clientA);
+    assert.equal(response.status, 404, `a client used the studio route${suffix}`);
+  }
+});
+
+test("a staff presentation surface carries no storage address either", { skip }, async () => {
+  for (const path of [
+    `/studio/workrooms/${studioRoomA}/presentations/${draftId}/preview`,
+    `/studio/workrooms/${studioRoomA}/presentations/${shownId}/preview`,
+    `/studio/workrooms/${studioRoomA}/presentations/${shownId}/revisions/1`,
+  ]) {
+    const response = await get(path, staff);
+    assert.equal(response.status, 200, path);
+    assert.match(response.cacheControl, /private/, path);
+    for (const forbidden of ["X-Amz-Signature", "X-Amz-Credential", "BUCKET_", "pending/", "storage_key"]) {
+      assert.ok(!response.body.includes(forbidden), `${path} carried ${forbidden}`);
+    }
+    assert.ok(!/["'(]w\/[0-9a-f]{8}-/.test(response.body), `${path} carried a storage key`);
+    // The bucket's own address, whatever it is configured to be.
+    assert.ok(!/https?:\/\/[^"'\s]*(amazonaws|railway|r2\.cloudflare|127\.0\.0\.1:\d+\/test-bucket)/.test(response.body), `${path} carried the bucket endpoint`);
+  }
+});
+
+test("the published revision renders for staff, with staff routes", { skip }, async () => {
+  // The wider half of the same defect: every file in a published Revision is
+  // shared, and staff still could not fetch one, because they were handed the
+  // client's routes.
+  const page = await get(`/studio/workrooms/${studioRoomA}/presentations/${shownId}/revisions/1`, staff);
+  assert.equal(page.status, 200);
+
+  const studioPaths = new Set(page.body.match(/\/studio\/workrooms\/[0-9a-f-]{36}\/files\/[a-z0-9]{26}\/[a-z]+/g) ?? []);
+  assert.ok(studioPaths.size >= 4, `expected staff routes for every file, found ${studioPaths.size}`);
+  assert.equal(
+    (page.body.match(/\/workrooms\/[a-z0-9]{26}\/files\//g) ?? []).length,
+    0,
+    "a staff page handed out client file routes",
+  );
+
+  for (const path of studioPaths) {
+    assert.equal((await get(path, staff)).status, 302, `${path} did not resolve for staff`);
+  }
+
+  // The client reads the same Revision through the client's routes, and every
+  // one of those resolves for them.
+  const clientPage = await get(client(`/${shown}/revisions/1`), clientA);
+  const clientPaths = new Set(clientPage.body.match(/\/workrooms\/[a-z0-9]{26}\/files\/[a-z0-9]{26}\/[a-z]+/g) ?? []);
+  assert.ok(clientPaths.size >= 3);
+  assert.equal((clientPage.body.match(/\/studio\//g) ?? []).length, 0, "a studio path reached the client");
+  for (const path of clientPaths) {
+    assert.equal((await get(path, clientA)).status, 302, `${path} did not resolve for the client`);
+  }
 });

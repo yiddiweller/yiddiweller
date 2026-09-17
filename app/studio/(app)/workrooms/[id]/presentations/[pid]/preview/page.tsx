@@ -42,7 +42,7 @@ export default async function StudioPresentationPreview({
   const [room, presentation] = await Promise.all([findWorkroom(id), findPresentation(pid)]);
   if (!room || !presentation || presentation.workroomId !== room.id) notFound();
 
-  const view = await draftPreview(presentation, room.publicId);
+  const view = await draftPreview(presentation);
 
   return (
     <>

@@ -775,6 +775,55 @@ the domain, because a CHECK cannot read another table.
 
 ---
 
+### Routes belong to the surface, not to the work
+
+Manual beta acceptance found a real defect, and it was hiding a wider one.
+
+Studio Preview rendered a draft's images through the **client's** file routes.
+Those correctly require `ready`, `shared`, unarchived and active membership — so
+an internal file in a draft rendered as a broken image, and the only ways to
+"fix" that would have been to share the file early or to loosen client
+authorization. Both are wrong.
+
+The wider half: **a published Revision was broken for staff too.** Every file in
+one is shared, so the client's routes resolve — for a client. A Studio session on
+a `/workrooms/...` route is sent to the client sign-in exactly as a stranger is,
+because that is the isolation working. Staff could not fetch their own Workroom's
+files from a Studio page.
+
+**The cause was that paths were content.** `toClientFile` baked the client's
+route prefix into the projection, and publishing froze those paths into the
+Revision snapshot. A surface had no say in where bytes came from, and the content
+hash quietly depended on our URL scheme — so changing a route would have altered
+the hash of work published a year earlier.
+
+**Locked: a Revision stores what was delivered, and each surface supplies its own
+routes.**
+
+```
+PresentedFile   { id, name, kind, viewer, size, hasPreview }   stored, hashed
+FileBase        (filePublicId) => string                        per surface
+withPaths(file, base) -> ClientFile                             at render time
+```
+
+| Surface | Base | Requires |
+| --- | --- | --- |
+| Client presentation, current and historical | `/workrooms/{room}/files/{id}` | active membership, published unarchived Workroom, `ready` + `shared` + unarchived |
+| Studio preview, and Studio's view of a published version | `/studio/workrooms/{workroomId}/files/{id}` | staff, and the file's **own** Workroom in the path. **No visibility filter** — looking at an internal file is what internal means |
+
+Nothing was weakened to achieve it. `clientVisible()` is untouched, the staff
+routes are the ones Stage A already shipped, an SVG is refused inline on both,
+and a staff route still answers 404 for a file belonging to another Workroom.
+**One `PresentationView` and one `FileViewer` render all three surfaces** — the
+data differs by one function, the markup not at all.
+
+**Revisions published before this are read, not rewritten.** They are immutable,
+correctly, and they already carry each file's opaque public id; the reader
+rebuilds routes from that and infers `hasPreview` from the old `previewPath`.
+Nothing about what a client was shown changes, and no stored hash moves.
+
+---
+
 ### The publish transaction — what actually ships
 
 One transaction, in `lib/db/presentations.ts`, and every refusal inside it is

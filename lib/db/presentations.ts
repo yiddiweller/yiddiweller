@@ -26,7 +26,10 @@ import {
   type ClientPresentation,
   type PresentableItem,
   type PresentationContent,
+  type PresentedItem,
 } from "../workrooms/presentation-view.ts";
+import { clientFileBase, studioFileBase } from "../workrooms/delivery-view.ts";
+import { type FileKind, type ViewerKind } from "../storage/policy.ts";
 import { opaquePublicId } from "../workrooms/id.ts";
 
 /**
@@ -241,12 +244,56 @@ export async function listRevisions(presentationId: string): Promise<RevisionRow
  * client reads is the thing that was written for the client, unaltered.
  */
 function readSnapshot(value: unknown): PresentationContent {
-  const snapshot = value as Partial<PresentationContent> | null;
+  const snapshot = value as { title?: unknown; intro?: unknown; items?: unknown } | null;
+  const items = Array.isArray(snapshot?.items) ? snapshot.items : [];
 
   return {
     title: typeof snapshot?.title === "string" ? snapshot.title : "",
     intro: typeof snapshot?.intro === "string" ? snapshot.intro : "",
-    items: Array.isArray(snapshot?.items) ? snapshot.items : [],
+    items: items.map(readSnapshotItem).filter((item): item is PresentedItem => item !== null),
+  };
+}
+
+/**
+ * One frozen item, normalised.
+ *
+ * Revisions published before routes were separated from content froze a file's
+ * four paths into the snapshot. Those rows are immutable — correctly — so they
+ * are read rather than rewritten: the file's opaque public id was always in
+ * there, the routes are rebuilt per surface from it, and whether a thumbnail
+ * exists is taken from the newer boolean or inferred from the old
+ * `previewPath`. Nothing about what the client was shown changes either way.
+ */
+function readSnapshotItem(value: unknown): PresentedItem | null {
+  const item = value as Record<string, unknown> | null;
+  if (!item || typeof item.position !== "number") return null;
+
+  if (item.kind === "note") {
+    return {
+      position: item.position,
+      kind: "note",
+      caption: typeof item.caption === "string" ? item.caption : null,
+      body: typeof item.body === "string" ? item.body : "",
+    };
+  }
+
+  if (item.kind !== "file") return null;
+  const file = item.file as Record<string, unknown> | null;
+  if (!file || typeof file.id !== "string") return null;
+
+  return {
+    position: item.position,
+    kind: "file",
+    caption: typeof item.caption === "string" ? item.caption : null,
+    file: {
+      id: file.id,
+      name: typeof file.name === "string" ? file.name : "",
+      kind: (typeof file.kind === "string" ? file.kind : "other") as FileKind,
+      viewer: (typeof file.viewer === "string" ? file.viewer : "download") as ViewerKind,
+      size: typeof file.size === "string" ? file.size : "",
+      hasPreview:
+        typeof file.hasPreview === "boolean" ? file.hasPreview : typeof file.previewPath === "string",
+    },
   };
 }
 
@@ -265,22 +312,28 @@ export type StaffPresentationView = {
  * when somebody has edited without republishing. The Studio page says which is
  * which rather than leaving staff to infer it.
  */
-export async function draftPreview(
-  presentation: PresentationRow,
-  workroomPublicId: string,
-): Promise<ClientPresentation> {
+export async function draftPreview(presentation: PresentationRow): Promise<ClientPresentation> {
   const [items, revisions] = await Promise.all([
     listDraftItems(presentation.id),
     listRevisions(presentation.id),
   ]);
 
-  const content = toPresentationContent(presentation, items, workroomPublicId);
+  const content = toPresentationContent(presentation, items);
 
-  return toClientPresentationView(presentation.publicId, content, {
-    publishedAt: null,
-    revision: null,
-    revisions: revisions.map((r) => ({ number: r.revisionNumber, publishedAt: r.publishedAt })),
-  });
+  // Staff-authorized routes, deliberately. The preview must render the draft
+  // as it would publish, and a draft is full of files that are still internal
+  // — which the client routes correctly refuse. Making them render by sharing
+  // the file early would be the tail wagging the dog.
+  return toClientPresentationView(
+    presentation.publicId,
+    content,
+    {
+      publishedAt: null,
+      revision: null,
+      revisions: revisions.map((r) => ({ number: r.revisionNumber, publishedAt: r.publishedAt })),
+    },
+    studioFileBase(presentation.workroomId),
+  );
 }
 
 /** One published Revision, for staff, rendered from its own snapshot. */
@@ -303,11 +356,20 @@ export async function revisionForStaff(
 
   const revisions = await listRevisions(presentation.id);
 
-  return toClientPresentationView(presentation.publicId, readSnapshot(row.snapshot), {
-    publishedAt: row.publishedAt,
-    revision: row.revisionNumber,
-    revisions: revisions.map((r) => ({ number: r.revisionNumber, publishedAt: r.publishedAt })),
-  });
+  // Staff routes here too. Every file in a published Revision is shared, so
+  // the client's would also resolve — but staff cannot use them: a Studio
+  // session on a `/workrooms/...` route is sent to the client sign-in, exactly
+  // as a stranger is. Authority decides the route, not the file's visibility.
+  return toClientPresentationView(
+    presentation.publicId,
+    readSnapshot(row.snapshot),
+    {
+      publishedAt: row.publishedAt,
+      revision: row.revisionNumber,
+      revisions: revisions.map((r) => ({ number: r.revisionNumber, publishedAt: r.publishedAt })),
+    },
+    studioFileBase(presentation.workroomId),
+  );
 }
 
 /* ----------------------------------------------------------- client reads */
@@ -455,11 +517,12 @@ export async function presentationForViewer(
     .where(eq(presentationRevisions.presentationId, row.presentationId))
     .orderBy(desc(presentationRevisions.revisionNumber));
 
-  return toClientPresentationView(row.publicId, readSnapshot(row.snapshot), {
-    publishedAt: row.revisionPublishedAt,
-    revision: row.revisionNumber,
-    revisions,
-  });
+  return toClientPresentationView(
+    row.publicId,
+    readSnapshot(row.snapshot),
+    { publishedAt: row.revisionPublishedAt, revision: row.revisionNumber, revisions },
+    clientFileBase(workroomPublicId),
+  );
 }
 
 /* --------------------------------------------------------------- writing */
@@ -1005,7 +1068,7 @@ export async function publishPresentation(
         displayNameSnapshot: item.file?.id ? item.file.displayName : null,
       }));
 
-      const content = toPresentationContent(presentation, presentable, room.publicId);
+      const content = toPresentationContent(presentation, presentable);
       const hash = contentHash(content);
 
       const [highest] = await tx

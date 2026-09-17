@@ -53,20 +53,77 @@ export type ClientFile = {
   previewPath?: string;
 };
 
-export function toClientFile(row: WorkroomFileRow, workroomPublicId: string): ClientFile {
-  const base = `/workrooms/${workroomPublicId}/files/${row.publicId}`;
-  const viewer = viewerKind(row.contentType);
+/**
+ * A file as **content**, with no idea where its bytes are fetched from.
+ *
+ * This is what a Presentation Revision freezes. Paths are a property of the
+ * surface doing the rendering, not of the work: the same published Revision is
+ * read by a client through client-authorized routes and by staff through
+ * staff-authorized ones, and neither of those is a fact about what was
+ * delivered. Keeping them out also keeps the content hash honest — a future
+ * change to our routing must not alter the hash of work published last year.
+ */
+export type PresentedFile = {
+  id: string;
+  name: string;
+  kind: FileKind;
+  viewer: ViewerKind;
+  size: string;
+  /** Whether a browser-made thumbnail exists. Raster images only. */
+  hasPreview: boolean;
+};
 
+/**
+ * Where a surface fetches one file's bytes from.
+ *
+ * Both bases point at **our own** routes, never at storage, and each re-checks
+ * authorization on every request rather than trusting that a page rendered.
+ * The client's requires `ready`, `shared`, unarchived and active membership;
+ * the studio's requires staff and the file's own Workroom, and deliberately
+ * applies no visibility filter — looking at an internal file is what internal
+ * means.
+ */
+export type FileBase = (filePublicId: string) => string;
+
+export const clientFileBase =
+  (workroomPublicId: string): FileBase =>
+  (filePublicId) =>
+    `/workrooms/${workroomPublicId}/files/${filePublicId}`;
+
+export const studioFileBase =
+  (workroomId: string): FileBase =>
+  (filePublicId) =>
+    `/studio/workrooms/${workroomId}/files/${filePublicId}`;
+
+export function toPresentedFile(row: WorkroomFileRow): PresentedFile {
   return {
     id: row.publicId,
     name: row.displayName,
     kind: fileKind(row.contentType),
-    viewer,
+    viewer: viewerKind(row.contentType),
     size: formatBytes(row.byteSize ?? 0),
-    downloadPath: `${base}/download`,
-    ...(viewer === "download" ? {} : { viewPath: base, sourcePath: `${base}/view` }),
-    ...(row.previewKey ? { previewPath: `${base}/preview` } : {}),
+    hasPreview: Boolean(row.previewKey),
   };
+}
+
+/** The one place the shape of a file's four routes is written down. */
+export function withPaths(file: PresentedFile, base: FileBase): ClientFile {
+  const at = base(file.id);
+
+  return {
+    id: file.id,
+    name: file.name,
+    kind: file.kind,
+    viewer: file.viewer,
+    size: file.size,
+    downloadPath: `${at}/download`,
+    ...(file.viewer === "download" ? {} : { viewPath: at, sourcePath: `${at}/view` }),
+    ...(file.hasPreview ? { previewPath: `${at}/preview` } : {}),
+  };
+}
+
+export function toClientFile(row: WorkroomFileRow, workroomPublicId: string): ClientFile {
+  return withPaths(toPresentedFile(row), clientFileBase(workroomPublicId));
 }
 
 export function toClientFiles(rows: WorkroomFileRow[], workroomPublicId: string): ClientFile[] {

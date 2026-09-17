@@ -139,6 +139,14 @@ accepted on beta.
 - **One `PresentationView` renders the client page, the historical version and
   the staff preview**, with a regression test comparing the structure of two of
   them — the `WorkroomOverview` lesson, applied before it could be learned twice.
+- **Manual beta acceptance found one defect and it is fixed.** Studio Preview
+  rendered a draft's internal image through the client's file routes, which
+  correctly refuse anything unshared — and the same fault left a *published*
+  version broken for staff, because a Studio session cannot use client routes at
+  all. Paths were being treated as content and frozen into the snapshot; they
+  are now supplied per surface at render time, with `clientVisible()` untouched
+  and nothing shared early. Four regression tests fail against the old
+  behaviour.
 
 **Beta acceptance.** Migration `0004` deployed and applied. `npm run
 storage:verify` was run **inside the real beta app container against the real

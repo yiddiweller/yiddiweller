@@ -121,6 +121,22 @@ export async function workroomBytes(workroomId: string): Promise<number> {
  * who may not have it never fetches the row at all, and every one of those
  * failures produces the same nothing.
  */
+/**
+ * What makes a file client-visible, independent of who is asking.
+ *
+ * Kept as one expression because two places need it and they must never drift:
+ * the client's own read, and the staff preview that promises to show exactly
+ * what a client would see. A preview built from a *similar* filter is a
+ * preview that lies the first time somebody edits one of them.
+ */
+function clientVisible() {
+  return and(
+    eq(workroomFiles.status, "ready"),
+    eq(workroomFiles.visibility, "shared"),
+    isNull(workroomFiles.archivedAt),
+  );
+}
+
 function viewerScope(contactId: string, workroomPublicId: string) {
   return and(
     eq(workrooms.publicId, workroomPublicId),
@@ -128,10 +144,26 @@ function viewerScope(contactId: string, workroomPublicId: string) {
     eq(workroomMembers.status, "active"),
     eq(workrooms.status, "published"),
     isNull(workrooms.archivedAt),
-    eq(workroomFiles.status, "ready"),
-    eq(workroomFiles.visibility, "shared"),
-    isNull(workroomFiles.archivedAt),
+    clientVisible(),
   );
+}
+
+/**
+ * The same files, for the staff preview.
+ *
+ * No membership clause, because staff authorization already happened and there
+ * is no client session here — that is the whole point of the preview. What it
+ * must not differ on is **visibility**, so it shares `clientVisible()` with the
+ * read above rather than restating it.
+ */
+export async function sharedFilesInWorkroom(workroomId: string): Promise<WorkroomFileRow[]> {
+  const rows = await db()
+    .select(columns)
+    .from(workroomFiles)
+    .where(and(eq(workroomFiles.workroomId, workroomId), clientVisible()))
+    .orderBy(desc(workroomFiles.createdAt));
+
+  return rows as WorkroomFileRow[];
 }
 
 export async function filesForViewer(

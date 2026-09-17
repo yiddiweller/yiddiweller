@@ -29,11 +29,15 @@ const fileA = process.env.WORKROOM_A_FILE;
 const fileB = process.env.WORKROOM_B_FILE;
 const internalA = process.env.WORKROOM_A_INTERNAL_FILE;
 const staff = process.env.STUDIO_OWNER_COOKIE;
+/** The Workroom's internal id, which is what Studio routes are keyed by. */
+const studioRoomA = process.env.STUDIO_WORKROOM_A_ID;
 
-const configured = Boolean(base && clientA && clientB && roomA && roomB && fileA && fileB && internalA && staff);
+const configured = Boolean(
+  base && clientA && clientB && roomA && roomB && fileA && fileB && internalA && staff && studioRoomA,
+);
 const skip = configured
   ? false
-  : "set WORKROOM_BASE_URL, WORKROOM_{A,B}_COOKIE, WORKROOM_{A,B}_ID, WORKROOM_{A,B}_FILE, WORKROOM_A_INTERNAL_FILE and STUDIO_OWNER_COOKIE";
+  : "set WORKROOM_BASE_URL, WORKROOM_{A,B}_COOKIE, WORKROOM_{A,B}_ID, WORKROOM_{A,B}_FILE, WORKROOM_A_INTERNAL_FILE, STUDIO_OWNER_COOKIE and STUDIO_WORKROOM_A_ID";
 
 /** Seeded into every internal field. None may appear in any client response. */
 const MARKERS = [
@@ -153,4 +157,71 @@ test("public pages and robots are untouched by any of it", { skip }, async () =>
 
   const sitemap = await get("/sitemap.xml");
   assert.ok(!sitemap.body.includes("files"), "a private path reached the sitemap");
+});
+
+/* ------------------------------------------- the client's way into Files */
+
+/**
+ * Found by hand on beta: a file was shared, the client's Workroom showed it,
+ * and the staff preview did not — because the two pages each held their own
+ * copy of the same markup and only one of them was updated. Nothing failed.
+ * The preview simply showed an older product, which is the worst way for a
+ * verification surface to be wrong.
+ *
+ * These are the tests that would have caught it.
+ */
+
+/** The headings a client sees, in order, from either surface. */
+function sections(body: string): string[] {
+  return [...body.matchAll(/<h2[^>]*>([^<]+)<\/h2>/g)].map((match) => match[1]!.trim());
+}
+
+test("a client with a shared file is offered a way to reach it", { skip }, async () => {
+  const overview = await get(`/workrooms/${roomA}`, clientA);
+  assert.equal(overview.status, 200);
+
+  assert.ok(sections(overview.body).includes("Files"), "no Files section on the overview");
+  assert.match(
+    overview.body,
+    new RegExp(`href="/workrooms/${roomA}/files"`),
+    "no link to the files page",
+  );
+
+  // And the link goes somewhere that works, rather than merely existing.
+  const files = await get(`/workrooms/${roomA}/files`, clientA);
+  assert.equal(files.status, 200);
+});
+
+test("the staff preview shows the same sections the client is shown", { skip }, async () => {
+  const client = await get(`/workrooms/${roomA}`, clientA);
+  const preview = await get(`/studio/workrooms/${studioRoomA}/preview`, staff);
+  assert.equal(preview.status, 200);
+
+  // The exact claim the preview page makes about itself, asserted rather than
+  // trusted. Two surfaces rendering one component cannot disagree; two copies
+  // of the same markup can, and did.
+  assert.deepEqual(
+    sections(preview.body),
+    sections(client.body),
+    "the preview and the client's page no longer show the same sections",
+  );
+  assert.ok(sections(preview.body).includes("Files"), "the preview lost the Files section");
+});
+
+test("the preview shows shared files and no others", { skip }, async () => {
+  const preview = await get(`/studio/workrooms/${studioRoomA}/preview`, staff);
+
+  // A preview that showed internal files would be worse than no preview: it
+  // would say a client can see something they cannot.
+  assert.ok(preview.body.includes("shared deck"), "the preview hid a shared file");
+  assert.ok(!preview.body.includes("internal deck"), "the preview showed an internal file");
+  assert.deepEqual(leaks(preview.body), [], "an internal field reached the preview");
+});
+
+test("a client with nothing shared is offered nothing to open", { skip }, async () => {
+  // Workroom B's files are shared, so this uses the one surface that is
+  // guaranteed empty for A: another tenant's room, which A cannot reach at all.
+  const refused = await get(`/workrooms/${roomB}`, clientA);
+  assert.equal(refused.status, 404);
+  assert.ok(!refused.body.includes("/files"), "a refusal advertised a files page");
 });

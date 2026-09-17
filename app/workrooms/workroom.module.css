@@ -361,3 +361,6 @@
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
+
+/* The way out of a section into the page that holds all of it. */
+.more { margin-top: var(--w-2); font-size: var(--w-fs-ui); }

@@ -463,6 +463,20 @@ otherwise:
   desktop. The promise this document makes is narrower than it first reads: the
   *recorded* `original_filename` never travels and never follows a rename. The
   name the client sees is the studio's to choose, at share time.
+- **The client overview and the staff preview are one component, not two
+  copies.** They were two, and Build 005 added a Files section to one of them —
+  so a file could be shared, appear in the client's Workroom, and be invisible
+  to the person checking their work. Nothing failed; the preview simply showed
+  an older product, which is the worst way for a verification surface to be
+  wrong. Found by hand on beta. `components/workrooms/WorkroomOverview.tsx` is
+  now rendered by both, so there is no second copy to forget, and a test asserts
+  the two surfaces list identical sections.
+
+  The one thing that legitimately differs is **how the data is fetched** — the
+  preview has no client session and so no membership to scope by. The
+  *visibility* rules are shared rather than restated: `sharedFilesInWorkroom`
+  and `filesForViewer` both build on one `clientVisible()` predicate, so ready,
+  shared and unarchived cannot come to mean two things.
 - **A page under `/workrooms` must not set its own title.** The layout sets a
   plain string, which stops the root template propagating, so a page-level
   title renders bare — "Files" rather than "Files — Yiddi Weller". Every client

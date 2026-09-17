@@ -87,14 +87,12 @@ async function main() {
     return "the signature was honoured";
   });
 
-  let facts = null;
   await check("authenticated HEAD reports the real size and an ETag", async () => {
     const head = await client.send(new HeadObjectCommand({ Bucket: bucket, Key: source }));
     if (head.ContentLength !== body.length) {
       throw new Error(`size ${head.ContentLength} is not ${body.length}`);
     }
     if (!head.ETag) throw new Error("no ETag");
-    facts = { size: head.ContentLength, etag: head.ETag };
     return `${head.ContentLength} bytes`;
   });
 

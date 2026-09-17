@@ -182,7 +182,15 @@ export async function completeMultipart(
  * so neither can end the header early.
  */
 export function contentDisposition(filename: string): string {
-  const ascii = filename.replace(/[^A-Za-z0-9._ -]/g, "_").replace(/^\.+/, "").slice(0, 120).trim();
+  const ascii = filename
+    .replace(/[^A-Za-z0-9._ -]/g, "_")
+    // Runs of dots collapse to one. A filename is not a path and every browser
+    // strips directory components anyway — but `..` in a name a naive client
+    // might join onto a directory is a worry that costs one line to remove.
+    .replace(/\.{2,}/g, ".")
+    .replace(/^[._ -]+/, "")
+    .slice(0, 120)
+    .trim();
   const safe = ascii.length > 0 ? ascii : "download";
   const encoded = encodeURIComponent(filename).replace(/['()*]/g, (c) =>
     `%${c.charCodeAt(0).toString(16).toUpperCase()}`,

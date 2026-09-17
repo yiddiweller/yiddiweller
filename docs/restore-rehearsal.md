@@ -333,8 +333,9 @@ PostgreSQL refuses to update or delete. **Deletion is not defended** — a valid
 credential, or our own mistake, can remove an object, and there is no version
 underneath it to fall back to.
 
-Still unanswered, and **required before Build 005 is promoted** rather than
-before Stage A begins:
+**Stage A passing on beta did not answer any of this.** The verifier proved the
+bucket works and is private; it says nothing about what happens when an object
+is lost. Still unanswered, and **required before Build 005 is promoted**:
 
 - **Is a per-object backup or replication strategy wanted, and which?** Copying
   new permanent objects to a second location is the obvious shape. It is a real

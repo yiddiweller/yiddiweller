@@ -78,8 +78,9 @@ trustworthy.
 
 ### Build 005 — Delivery
 
-**Stage A is on beta and unverified.** Not released, not numbered into
-production, and Build 005 does not claim a production state.
+**Stage A is verified on beta.** Not released, not promoted, and Build 005
+claims no production state. Production has no bucket and has not been touched by
+Build 005 at all.
 
 The architecture is locked in [`delivery.md`](./delivery.md). Stage A builds the
 storage adapter and Files; Presentations, Reviews and Approvals exist as schema
@@ -104,10 +105,28 @@ and nothing else.
   realistic Build 004 database: every row preserved, upgraded schema identical
   to one built from scratch, Build 004 code still writes cleanly to it.
 
-**What Stage A has not done:** run against the real beta bucket. Every storage
-test used an in-process S3-compatible server that accepts any signature, so the
-flow is proven and the provider is not. Stage A is not finished until beta
-answers.
+**Beta acceptance.** Migration `0004` deployed and applied. `npm run
+storage:verify` was run **inside the real beta app container against the real
+Railway Storage Bucket** and every check passed: presigned PUT accepted,
+authenticated HEAD returning a real size and ETag, server-side `CopyObject`,
+presigned GET returning the correct bytes, forced `attachment` disposition
+honoured, multipart upload, pending deletion, a clean 404 for a missing object,
+and **an unsigned GET refused — the bucket is private.**
+
+By hand: Studio Files loaded, `unnamed.png` uploaded, 1.4 MB stored, default
+`internal`, Share moved it to `shared`. Then — after `5f3d206` — the client-safe
+Preview showed the Files section, the file, a safe type and size, `Open files →`
+and the `file.shared` Activity line, with one shared `WorkroomOverview`
+component keeping the Preview and the real client overview aligned.
+
+**What Stage A has still not done**, and none of it is blocked by the above:
+
+- **No production bucket exists**, and none is created until promotion.
+- **The sweep is not scheduled.** Until it is, abandoned uploads accumulate.
+- **No per-object backup or replication strategy**, which is required before
+  Build 005 reaches production — see [`restore-rehearsal.md`](./restore-rehearsal.md).
+- **Stage B has not begun.** Presentations, Reviews and Approvals exist as
+  schema and are read by nothing.
 
 ---
 

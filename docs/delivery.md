@@ -426,33 +426,46 @@ is what keeps it correct across providers.
 Multipart upload is **verified as supported**, so the >100 MB path is settled
 rather than provisional.
 
-### What Stage A proved, and what it did not
+### Stage A is verified on beta
 
-Built on beta-shaped infrastructure and exercised end to end against an
-in-process S3-compatible server: reserve, presigned PUT, authenticated HEAD,
-server-side copy, delete pending, mark ready — then a 302 to a signed GET that
-returns the right bytes. Twenty-two domain tests and eight whole-response tests.
+Migration `0004` deployed and applied on Railway beta, and **`npm run
+storage:verify` was run inside the real beta app container against the real
+Railway Storage Bucket. Every check passed:**
 
-**What that does not prove.** The stub accepts any signature. It shows the SDK
-builds the request, the verbs arrive and the flow holds; it says nothing about
-whether a signed URL satisfies a real provider, whether Railway's multipart
-implementation behaves as S3 does, or whether the beta credentials work. **Only
-the beta bucket answers those**, and Stage A is not finished until it has.
+| | |
+| --- | --- |
+| Presigned PUT | accepted by the provider |
+| Authenticated HEAD | real size and a real ETag |
+| Server-side `CopyObject` | permanent object created |
+| Presigned GET | the correct bytes came back |
+| Forced disposition | `attachment` honoured |
+| Multipart upload | succeeded |
+| Pending object deletion | succeeded |
+| Missing object | clean 404 |
+| **Unsigned GET** | **refused — the bucket is private** |
 
-`npm run storage:verify` is what asks. It runs against whatever bucket an
-environment is configured with and proves the eight things that matter —
-presigned PUT honoured, authenticated HEAD reporting the real size and an ETag,
-server-side copy, presigned GET returning the bytes with the disposition
-forced, multipart across presigned parts, idempotent delete, a clean 404 for an
-absent key, and **an unsigned GET being refused**. It writes and deletes only
-under `verify/`, never `pending/` and never `w/`, so it cannot touch a real file
-even if pointed at the wrong environment, and it prints results rather than
-values.
+That last row is the one a local stub can never answer: an unauthenticated test
+double has nothing to refuse with. It is why the verifier exists rather than
+being replaced by more unit tests, and it is now answered by the thing that
+counts.
 
-That last check cannot pass against a local test double — an unauthenticated
-stub has nothing to refuse with — which is exactly why it belongs on the real
-bucket. **Run it in beta before trusting Files there, and in production before
-Build 005 is promoted.**
+**Manual acceptance passed with it.** Studio Files loaded, `unnamed.png`
+uploaded, 1.4 MB stored, the default state was `internal`, and Share moved it to
+`shared`. Then — after `5f3d206` — the client-safe Preview showed the Files
+section, the file, a safe type and size, `Open files →`, and the `file.shared`
+line in Activity, with `WorkroomOverview` keeping the Preview and the real
+client overview aligned by construction.
+
+**Run the verifier in production too, before Build 005 is promoted.** Nothing
+about beta passing says anything about a bucket that does not exist yet.
+
+#### What the automated tests still do not prove
+
+Everything under `npm test` runs against an in-process S3-compatible server that
+accepts any signature. That was always the limit, and it has not changed — the
+suite proves the flow and the authorization around it, and the *provider* is
+proven by the verifier, per environment, by hand. Both are needed and neither
+substitutes for the other.
 
 Two things implementation changed, recorded here because the document said
 otherwise:
@@ -524,8 +537,8 @@ Five properties, each load-bearing:
   line of defence: a file that any revision references cannot be deleted by
   anything, including this.
 
-**Built as `npm run storage:sweep` (`scripts/sweep-pending.mjs`), and not
-scheduled.** It refuses to run without storage configured, rather than deleting
+**Built as `npm run storage:sweep` (`scripts/sweep-pending.mjs`), and still not
+scheduled** — beta passing its storage verification changed nothing about this. It refuses to run without storage configured, rather than deleting
 rows whose objects would then be unreachable, and logs counts only — no key, no
 filename, no workroom.
 

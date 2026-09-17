@@ -34,7 +34,8 @@ that has not been on `beta` first, and never leave `beta` behind `main`.
 **Phases 1, 2, 3 and 4 are complete and verified in production**, released as
 **Build 001**, **Build 002**, **Build 003** and **Build 004**. **Build 005's
 architecture is locked in `docs/delivery.md`, and Stage A — storage and Files —
-is on beta, unverified against the real bucket.**
+is verified on beta against the real Railway bucket. Stage B has not begun, and
+production has no bucket and has not been touched by Build 005.**
 These are facts about the running system, not proposals. Changing any of them is
 a deliberate decision, not a cleanup.
 
@@ -109,8 +110,8 @@ a deliberate decision, not a cleanup.
 - **An approval names a Presentation Revision, never a Presentation.** Revisions
   and their items are immutable; a terminal approval refuses UPDATE, DELETE and
   TRUNCATE. A new decision about changed work requires a new Revision.
-- **Beta has the five `BUCKET_*` variables through Railway Variable References;
-  production has none.** Missing them breaks the Files routes and nothing else —
+- **Beta has the five `BUCKET_*` variables through Railway Variable References
+  and its bucket is verified private; production has none of it.** Missing them breaks the Files routes and nothing else —
   the public site, Contact, Studio sign-in, the business core and the Workroom
   overview never read them. `scripts/check-env.mjs` reports them as their own
   group, because absent means "not there yet" in production and "broken" on beta.
@@ -126,8 +127,14 @@ a deliberate decision, not a cleanup.
   bytes. The bucket has **no versioning, no object locks, no lifecycle
   configuration and no native snapshots** — so overwrite is defended by
   architecture, deletion is not defended at all, and abandoned uploads are swept
-  by the application rather than expired by the bucket. A per-object backup
-  strategy is open, not solved: `docs/restore-rehearsal.md`.
+  by the application rather than expired by the bucket — and **that sweep is
+  built but not scheduled**, so until it is, abandoned uploads accumulate. A
+  per-object backup strategy is open, not solved, and is **required before
+  Build 005 reaches production**: `docs/restore-rehearsal.md`.
+- **`npm run storage:verify` is run per environment, by hand, before trusting
+  Files there.** Beta has passed it, including the check no local test double
+  can answer — an unsigned GET being refused. Production has not, because it has
+  no bucket.
 - **Studio is live at `studio.yiddiweller.com`**, invite-only, magic-link
   sign-in, Owner and Member roles. The same application serves both worlds and
   tells them apart by `Host`: production has `STUDIO_HOST=studio.yiddiweller.com`

@@ -146,8 +146,18 @@ export class S3Stub {
     if (method === "GET") {
       const object = this.objects.get(key);
       if (!object) return void response.writeHead(404).end();
+      // Response header overrides, which is how the download route forces an
+      // attachment. Honoured here so the tests exercise the same mechanism a
+      // real provider applies rather than assuming it works.
+      const disposition = url.searchParams.get("response-content-disposition");
+      const type = url.searchParams.get("response-content-type");
       response
-        .writeHead(200, { "content-length": String(object.body.length), etag: `"${object.etag}"` })
+        .writeHead(200, {
+          "content-length": String(object.body.length),
+          etag: `"${object.etag}"`,
+          ...(disposition ? { "content-disposition": disposition } : {}),
+          ...(type ? { "content-type": type } : {}),
+        })
         .end(object.body);
       return;
     }

@@ -12,6 +12,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node scripts/migrate.mjs",
     "storage:sweep": "node --experimental-strip-types scripts/sweep-pending.mjs",
+    "storage:verify": "node scripts/verify-storage.mjs",
     "env:check": "node scripts/check-env.mjs",
     "audit": "npm audit --omit=dev",
     "studio:bootstrap-owner": "node scripts/bootstrap-owner.mjs"

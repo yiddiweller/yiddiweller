@@ -439,6 +439,21 @@ whether a signed URL satisfies a real provider, whether Railway's multipart
 implementation behaves as S3 does, or whether the beta credentials work. **Only
 the beta bucket answers those**, and Stage A is not finished until it has.
 
+`npm run storage:verify` is what asks. It runs against whatever bucket an
+environment is configured with and proves the eight things that matter —
+presigned PUT honoured, authenticated HEAD reporting the real size and an ETag,
+server-side copy, presigned GET returning the bytes with the disposition
+forced, multipart across presigned parts, idempotent delete, a clean 404 for an
+absent key, and **an unsigned GET being refused**. It writes and deletes only
+under `verify/`, never `pending/` and never `w/`, so it cannot touch a real file
+even if pointed at the wrong environment, and it prints results rather than
+values.
+
+That last check cannot pass against a local test double — an unauthenticated
+stub has nothing to refuse with — which is exactly why it belongs on the real
+bucket. **Run it in beta before trusting Files there, and in production before
+Build 005 is promoted.**
+
 Two things implementation changed, recorded here because the document said
 otherwise:
 

@@ -44,6 +44,7 @@ import {
   presentationItems,
   presentationRevisionItems,
   presentationRevisions,
+  presentationReviewNotes,
   presentationReviews,
   presentations,
   projects,
@@ -90,20 +91,43 @@ async function clearAudit(): Promise<void> {
   await db().execute(sql`ALTER TABLE audit_events ENABLE TRIGGER audit_events_no_truncate`);
 }
 
+/**
+ * Tables the product cannot delete from. The triggers come off only here, and
+ * only for the wipe — **nothing in the product ever does this**, which is why
+ * the tests that assert those guards live in `reviews-schema.test.ts` and run
+ * with the triggers enabled.
+ */
+const GUARDED = [
+  "presentation_review_notes",
+  "presentation_reviews",
+  "presentation_approvals",
+  "presentation_revision_items",
+  "presentation_revisions",
+];
+
 async function wipe(): Promise<void> {
   await clearAudit();
   // Immutable tables refuse DELETE, so the triggers come off for the wipe and
   // go straight back on. Nothing in the product ever does this.
-  for (const table of ["presentation_approvals", "presentation_revision_items", "presentation_revisions"]) {
+  // Reviews and review notes joined this list in 0006: a Review round is its
+  // Revision's lifecycle record and refuses DELETE, which is what makes "one
+  // round per Revision, ever" mean what it says.
+  for (const table of GUARDED) {
     await db().execute(sql.raw(`ALTER TABLE ${table} DISABLE TRIGGER USER`));
   }
+  await db().delete(presentationReviewNotes);
   await db().delete(presentationReviews);
   await db().delete(presentationApprovals);
   await db().delete(presentationRevisionItems);
+  // A published Presentation still names its current Revision, and that
+  // composite FK restricts — so the pointer is released before the Revisions
+  // go, exactly as `presentations.test.ts` does it. Latent until this file ran
+  // against a database that already held published work.
+  await db().update(presentations).set({ currentRevisionId: null, status: "draft" });
   await db().delete(presentationRevisions);
   await db().delete(presentationItems);
   await db().delete(presentations);
-  for (const table of ["presentation_approvals", "presentation_revision_items", "presentation_revisions"]) {
+  for (const table of GUARDED) {
     await db().execute(sql.raw(`ALTER TABLE ${table} ENABLE TRIGGER USER`));
   }
   await db().delete(workroomFiles);

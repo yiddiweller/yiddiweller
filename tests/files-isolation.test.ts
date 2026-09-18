@@ -225,8 +225,14 @@ test("the preview shows shared files and no others", { skip }, async () => {
 
   // A preview that showed internal files would be worse than no preview: it
   // would say a client can see something they cannot.
-  assert.ok(preview.body.includes("shared deck"), "the preview hid a shared file");
-  assert.ok(!preview.body.includes("internal deck"), "the preview showed an internal file");
+  //
+  // Keyed to the **opaque public ids** the page links to, not to display names.
+  // It was written against two files renamed by hand during an earlier session
+  // — "shared deck" and "internal deck" — which no seed creates, so it could
+  // never pass from a clean environment. The ids come from the same seed as
+  // every other assertion here and cannot drift from it.
+  assert.ok(preview.body.includes(fileA!), "the preview hid a shared file");
+  assert.ok(!preview.body.includes(internalA!), "the preview showed an internal file");
   assert.deepEqual(leaks(preview.body), [], "an internal field reached the preview");
 });
 

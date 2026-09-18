@@ -304,12 +304,19 @@ own deprecation notice says is where that package moved.
 
 ## What Build 005 adds
 
-Seven tables, planned in [`delivery.md`](./delivery.md) and **created by
-migration `0004_delivery.sql`, which is applied on beta**: `workroom_files`,
-`presentations`, `presentation_items`, `presentation_revisions`,
-`presentation_revision_items`, `presentation_reviews`,
-`presentation_approvals`. Stage A reads and writes `workroom_files`; the other
-six exist and are read by nothing until Stage B.
+Eight tables, planned in [`delivery.md`](./delivery.md). Seven come from
+migration `0004_delivery.sql`: `workroom_files`, `presentations`,
+`presentation_items`, `presentation_revisions`, `presentation_revision_items`,
+`presentation_reviews`, `presentation_approvals`. The eighth,
+`presentation_review_notes`, comes from `0006_reviews.sql`, which also rewrites
+`presentation_reviews`.
+
+Stage A reads and writes `workroom_files`. Stage B reads and writes
+`presentations`, `presentation_items`, `presentation_revisions` and
+`presentation_revision_items`. **`presentation_reviews`,
+`presentation_review_notes` and `presentation_approvals` are read and written by
+nothing**: Stage C exists at the schema level and its domain and surfaces are
+not built.
 
 Three conventions they introduce, recorded here because they are new to this
 schema and the next table that needs one should copy rather than reinvent:
@@ -332,6 +339,9 @@ schema and the next table that needs one should copy rather than reinvent:
   Build 005 uses one partial index `WHERE item_id IS NULL` and another
   `WHERE item_id IS NOT NULL`. PostgreSQL 16's `NULLS NOT DISTINCT` would also
   work; two partial indexes say what they mean at the point of definition.
+  **Both of those indexes were dropped by `0006`** — the rule they policed no
+  longer exists — but the technique is recorded because the next nullable
+  uniqueness question will look exactly the same.
 
 **One thing `0004` did not constrain, and `0005` does.**
 `presentations.current_revision_id` shipped with no foreign key — a bare `uuid`
@@ -350,6 +360,60 @@ Revision is inserted against it, and the `UPDATE` closes the loop inside the
 publish transaction. No deferral, no chicken and egg. Drizzle cannot express it
 — `foreignKey()` needs its target defined first — so it lives in the migration's
 hand-written tail beside the triggers.
+
+### What `0006_reviews.sql` adds, and the eight columns it drops
+
+The eighth table, `presentation_review_notes`, and a rewrite of
+`presentation_reviews` — which shipped in `0004` holding one request, one
+response and one resolution, and now holds a **round** of feedback instead. The
+model is in [`delivery.md`](./delivery.md); what matters here is the shape.
+
+**It is corrective, not additive, and that is stated rather than glossed.** It
+drops eight columns. That was only ever free because nothing had written to the
+table: beta's copy was empty and production does not have it at all. So the
+migration opens with a guard that raises if `presentation_reviews` holds a
+single row, which makes the assumption a check rather than a belief — and it was
+tested by seeding a row and watching `0006` refuse to run.
+
+Four things in it are worth copying rather than rediscovering:
+
+- **A three-column composite FK can prove a grandparent.** A note carries both
+  `presentation_review_id` and `presentation_revision_id`, and references
+  `presentation_reviews (workroom_id, id, presentation_revision_id)`. That makes
+  the note's Revision *the same question as* its Review's Revision. A second FK
+  then pins an anchored item to that same Revision. Tenancy alone would have let
+  a note on Revision 2 point at an item from Revision 1.
+- **`MATCH SIMPLE` is the default, and here it is load-bearing.** The item FK is
+  skipped entirely when `revision_item_id` is null, which is how general
+  feedback passes. `MATCH FULL` would refuse every general note.
+- **Depth-one threading is expressible.** `is_root boolean NOT NULL` with
+  `CHECK (is_root = (parent_note_id IS NULL))`, a `UNIQUE (id, is_root)`, and a
+  reply referencing `(parent_note_id, parent_is_root) → (id, is_root)` where
+  `parent_is_root` can only be `true`. A reply to a reply cannot be stored.
+- **A CHECK passes when its expression is NULL, and that is a trap.** The
+  closure rule was first written as `(status = 'closed' AND … closed_reason IN
+  ('staff','superseded') …) OR (status <> 'closed' AND …)`. For a row saying
+  `closed` with no reason, `NULL IN (…)` is NULL, the first branch is NULL, the
+  second is false, and `NULL OR false` is NULL — so the constraint **passed the
+  exact row it existed to refuse.** Rewritten as `CASE WHEN status = 'closed'
+  THEN … ELSE … END`, where every branch returns a real boolean. Found by a test
+  asserting against PostgreSQL rather than by reading the expression, which is
+  the argument for writing those tests.
+
+**Actor columns are joins, never facts.** Every actor foreign key in this schema
+is `ON DELETE set null`, so a constraint or a projection that reads one as
+permanent breaks the day somebody leaves. `presentation_reviews.closed_reason`
+and `presentation_review_notes.author_side` / `resolved_by_side` carry the fact;
+the keys carry the join; the `*_name` snapshots carry the person. Same device as
+`audit_events.actor_type`, and the same reason.
+
+**Two more tables the product cannot delete from.** `presentation_reviews` and
+`presentation_review_notes` refuse `DELETE` and `TRUNCATE` by trigger. For the
+notes that is the business-history rule; for the reviews it is what makes
+`UNIQUE (presentation_revision_id)` mean *one round per Revision, ever* rather
+than *one until somebody deletes it*. Test wipes take the triggers off around a
+`DELETE` and put them straight back — nothing in the product does that, and the
+tests asserting those guards run with the triggers on.
 
 **Bytes are not stored here.** File contents live in a private, S3-compatible
 Railway Storage Bucket; PostgreSQL holds metadata, relationships, authorization,

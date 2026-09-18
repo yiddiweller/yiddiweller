@@ -43,6 +43,13 @@
       "when": 1789660196199,
       "tag": "0005_delivery_integrity",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1789755539737,
+      "tag": "0006_reviews",
+      "breakpoints": true
     }
   ]
 }

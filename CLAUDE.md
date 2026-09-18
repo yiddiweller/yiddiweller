@@ -40,8 +40,10 @@ Railway beta deployment**: draft → Preview → publish Revision 1 → client
 Revision 1 → edit the private draft → client stays on Revision 1 → publish
 Revision 2 → client Revision 2 → client Previous versions → Studio's frozen
 Version 1 → unshare refused → archive refused. The record is
-`docs/delivery.md`. Reviews and Approvals are still schema and nothing else.
-Build 005 is **not promoted**: production has no bucket, the sweep is
+`docs/delivery.md`. **Stage C — Reviews — exists at the schema level only**:
+migration `0006_reviews.sql` is applied on beta, `lib/db/reviews.ts` does not
+exist, there is no client or Studio surface, and nothing reads or writes the
+two tables. Approvals has not begun. Build 005 is **not promoted**: production has no bucket, the sweep is
 unscheduled and there is no per-object backup strategy, so production remains
 Build 004.**
 These are facts about the running system, not proposals. Changing any of them is
@@ -157,6 +159,31 @@ a deliberate decision, not a cleanup.
 - **An approval names a Presentation Revision, never a Presentation.** Revisions
   and their items are immutable; a terminal approval refuses UPDATE, DELETE and
   TRUNCATE. A new decision about changed work requires a new Revision.
+- **A published Revision holds one Review round, ever, and the row cannot be
+  deleted.** `UNIQUE (presentation_revision_id)` plus a trigger refusing DELETE
+  and TRUNCATE — a unique constraint somebody can delete their way around is
+  not a rule, and the rows that look most disposable (withdrawn, closed empty,
+  never answered) are exactly the lifecycle record. A closure by a newer
+  Revision is terminal and cannot be relabelled, in one write or two.
+- **A Review note's anchor belongs to the exact Revision reviewed, and
+  PostgreSQL proves it.** The note carries `presentation_revision_id` as well
+  as `presentation_review_id`, and two composite foreign keys pivot on it — so
+  a note on Revision 2 cannot reference an item from Revision 1, inside one
+  Workroom. Tenancy alone had allowed exactly that. **Replies are depth one**,
+  by a foreign key on `(id, is_root)`, not by the interface. **Staff cannot
+  open a feedback item**, by CHECK. The model is `docs/delivery.md`.
+- **A removed Review note is a tombstone, and no projection returns its body —
+  staff included.** Removal writes `removed_at` beside the text, never over it,
+  so the record is not falsified and the immutability trigger needs no
+  exception; the window is fifteen minutes, it closes the moment anyone
+  replies, and it can never be undone. A staff-readable "removed" comment is
+  not a removal, and a second projection to make one possible is the drift
+  Stage A and Stage B were both caught by.
+- **A CHECK constraint passes when its expression is NULL.** Only `false` is a
+  violation, so `x IN (…)` against a NULL column makes a constraint accept what
+  it was written to refuse — `0006`'s closure rule did exactly that before a
+  test caught it. Write branching shape rules as `CASE … END`, and assert them
+  against PostgreSQL rather than reading them.
 - **A client only ever sees a `ready`, `shared`, unarchived File — inside a
   Presentation exactly as in the Files list, and inside a Revision published
   years ago exactly as today.** There is one predicate, `clientVisible()`, and

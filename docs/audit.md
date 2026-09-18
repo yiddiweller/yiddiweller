@@ -206,14 +206,29 @@ file.uploaded  file.renamed  file.shared  file.unshared  file.replaced
 file.archived  file.restored
 presentation.created  presentation.updated  presentation.published
 presentation.unpublished  presentation.archived  presentation.restored
-review.requested  review.responded  review.resolved  review.withdrawn
+review.requested  review.reopened  review.closed  review.withdrawn
+review.responded  review.replied  review.edited  review.removed
+review.resolved  review.unresolved
 approval.requested  approval.granted  approval.declined  approval.withdrawn
 ```
 
-Three are client-caused — `review.responded`, `approval.granted`,
-`approval.declined` — and carry `actor_type = 'client_user'` with
-`client_actor_id` set. The shape CHECK makes it structurally impossible to file
-a client under the staff foreign key.
+Client-caused ones — `review.responded`, `review.replied`, `review.edited`,
+`review.removed`, `review.resolved`, `review.unresolved`, `approval.granted`,
+`approval.declined` — carry `actor_type = 'client_user'` with `client_actor_id`
+set. The shape CHECK makes it structurally impossible to file a client under the
+staff foreign key.
+
+**`action` is length-checked, never enumerated**, so widening this vocabulary
+costs no migration — `0006` added six review actions and touched neither CHECK.
+`entity_type` *is* enumerated, which is why review notes are filed under
+`presentation_review` with the note's ordinal in metadata rather than earning an
+entity type of their own.
+
+**A removed note's words never reach here.** `review.removed` carries
+`{ "note": 3 }` and nothing else — no body, no fragment, no anchor. This is the
+`metadata` rule's hardest case, because a tombstone is exactly where somebody
+would be tempted to keep a copy, and `delivery.md` is explicit that the stored
+text is reachable only by an Owner querying the database deliberately.
 
 **The approval record itself is not audit.** `presentation_approvals` is a
 business record whose *content* matters: which revision, which person, what

@@ -1021,59 +1021,191 @@ above: the sweep is unscheduled and there is no per-object backup strategy.
 
 ## Reviews
 
-**Request → response → resolution. No threads.**
+**Schema only. Nothing reads or writes these tables.** Migration
+`0006_reviews.sql` is applied; `lib/db/reviews.ts` does not exist, there is no
+client surface and there is no Studio surface. What follows is the model the
+schema now holds, not a description of something working.
 
-A Review attaches to a **Revision**, optionally narrowing to one **revision
-item** within it.
+**A Review is one round of client feedback on one published Revision, at the
+studio's invitation.** Not a chat, not a ticket queue, not a second Presentation
+system, and not an approval — `presentation_approvals` stays a separate table
+with its own lifecycle, and a Revision can still be approved with feedback wide
+open.
 
-| `status` | |
+| | |
 | --- | --- |
-| `requested` | Staff asked. A client cannot open one unprompted in Build 005 |
-| `responded` | The client wrote back, once |
-| `resolved` | The studio recorded what it did about it |
-| `withdrawn` | Staff took the request back before an answer |
+| `presentation_reviews` | the round: one per Revision, ever |
+| `presentation_review_notes` | the feedback items and their replies |
 
-### The tradeoff, argued rather than asserted
+### The no-threads rule is withdrawn
 
-Threaded replies are what a client will occasionally want, and what will
-reliably become chat. Once there are threads there are unread counts, then
-notifications, then mentions, then attachments inside replies — and the studio
-has built a worse Slack inside its delivery tool. `blueprint.md` places
-Communications at Build 007 for a reason.
+`0004` shipped request → response → resolution as three columns on one row, with
+threads refused on the argument that they become chat. That argument was made
+before the benchmark was gathered, and this document already recorded that it
+would be re-argued rather than inherited. It was, and it lost.
 
-The cost is real: a client with two separate thoughts gets one field. The
-argument for accepting it is that the studio's answer is to make the change and
-publish Revision 2 with a fresh review request. The conversation moves the
-deliverable forward instead of sprawling underneath it, and anything needing
-genuine discussion happens on a call — where it already happens — with the
-*outcome* landing in the resolution note.
+Frame.io, Filestage, Ziflow and ReviewStudio all put comments bound to an asset
+and a version, with replies and a resolve action, at the *centre* of how review
+works. Against four products converging, one paragraph of reasoning does not
+hold — and the concrete cost was plain: a client with three thoughts about three
+images got one textarea and one shot.
 
-Adding `review_notes` later is additive. Starting with threads and removing them
-is not.
+**What actually turns a comment surface into chat is unbounded depth, an
+always-open entry point, and a notification per message.** So each is refused
+separately, and the first is refused by PostgreSQL rather than by intention:
 
-**This decision is deliberately not permanent, and the Stage B benchmark is why.**
-Frame.io, Filestage, Ziflow and ReviewStudio all ship comments bound to an
-asset and a version, with annotations, replies and a resolve action — not as a
-fringe feature but as the centre of how review works in them. The argument above
-was made before that evidence was gathered, and one paragraph of reasoning does
-not outrank four products converging.
+- **Depth is exactly one.** A reply's parent must itself be a root, proved by
+  `(parent_note_id, parent_is_root)` referencing `(id, is_root)`. A reply to a
+  reply **cannot be stored**.
+- **There is no always-open entry.** A published Revision with no round has no
+  feedback affordance at all. The studio asks; the client answers.
+- **Replies never send email.** One message per round, on the client's first
+  note.
 
-So: **the review interaction model is re-benchmarked before the Reviews stage is
-implemented, and the no-threads decision is re-argued against the evidence
-rather than inherited.** This authorises nothing now — the schema is unchanged
-and Stage B builds no Reviews. It records that "already decided" is not a reason
-to skip the question when the stage arrives.
+### One round per Revision, ever
 
-**Reviews block nothing.** A Revision can be approved with an open review, or
-reviewed and never approved. Two different acts, two independent records.
+`UNIQUE (presentation_revision_id)`, a full unique constraint rather than a
+partial index over open rows. The difference is the model: a partial index says
+*one at a time*, which is scheduling; a full unique says *one, ever*, which is a
+fact about the Revision. It also makes the client projection honestly singular,
+which it was not before.
 
-**Version comparison is a Review-stage question, not a delivery one.** Ziflow
-and its peers offer side-by-side revisions, overlays, synchronised navigation
-and version-aware comments. None of it is a prerequisite for delivering a
-Presentation, and all of it is machinery in service of a *critique*, which is
-the Reviews stage's subject. Recorded here as a candidate to evaluate then, and
-explicitly not built in Stage B. Reliable immutable revision history is what
-makes evaluating it possible later; that is what Stage B owes it.
+**And the row cannot be deleted**, by trigger, because a unique constraint
+somebody can delete their way around is not a rule. The rows most likely to look
+disposable are exactly the ones whose existence is the record: a round withdrawn
+before anybody wrote, a round closed with no notes, a request never answered.
+
+```
+(no row) --request--> open --staff close----> closed/staff  <--> open
+                           --publish N+1----> closed/superseded  TERMINAL
+                           --withdraw-------> withdrawn      <--> open
+```
+
+Reopening a staff closure or a withdrawal is allowed only while that Revision is
+still the Presentation's current one — a condition on another table, so the
+domain will hold it. **A supersession never reopens**, and the trigger refuses
+the two-write route as well as the obvious one: the closure reason cannot be
+relabelled while the row stays closed, so `superseded → staff → open` fails at
+the first step.
+
+**Why a `closed_reason` column rather than inferring it.** "Exactly one of
+`closed_by_user_id` or `closed_by_revision_id`" reads like the right constraint
+and is a landmine: every actor foreign key here is `ON DELETE set null`, so
+deleting a staff member would empty the staff branch and the constraint would
+refuse the deletion. The reason is the fact; the key is the join.
+
+### Feedback belongs to the exact Revision, and the database proves it
+
+A note carries `presentation_revision_id` as well as `presentation_review_id`,
+and two composite foreign keys pivot on it:
+
+```
+note.(workroom_id, presentation_review_id, presentation_revision_id)
+        → presentation_reviews (workroom_id, id, presentation_revision_id)
+
+note.(workroom_id, presentation_revision_id, revision_item_id)
+        → presentation_revision_items (workroom_id, presentation_revision_id, id)
+```
+
+**A note on Revision 2 cannot reference an item from Revision 1**, even inside
+one Workroom, one Presentation and one client relationship. Tenancy alone would
+have allowed it, and that would have quietly falsified the sentence Stage B
+exists to make true. Nothing migrates feedback forward: Revision N+1 begins with
+its own empty round, and Revision N's notes stay where they were said.
+
+### General, item-level and precise, in one representation
+
+```
+revision_item_id NULL,     anchor NULL     →  about the Revision
+revision_item_id set,      anchor NULL     →  about that item
+revision_item_id set,      anchor set      →  about a place or a time in it
+```
+
+An anchor without a subject is refused: there is no point at 42% of a Revision.
+
+**Coordinates are normalised fractions of the media's own intrinsic box, and
+seconds from its start — never viewport pixels.** A phone and a desktop resolve
+to the same place, and a later overlay or side-by-side comparison stays
+possible. The database holds the cheap half — the kind is one of `point`,
+`region`, `time`, every coordinate is between 0 and 1, `t >= 0`, `t2 > t` — and
+a whitelist parser in the domain will hold the exact shape, the way every
+client-safe projection is a whitelist rather than a filter.
+
+**What precision can mean is decided by the viewer, not by ambition.** `image`
+and `video` render through elements we own, so a point or a region is real.
+`audio` gets a timestamp shown as a text locator that seeks, because
+`<audio controls>` is the browser's and we cannot draw in its scrubber — and
+neither can we in the video's, so the video marker sits on the frame. `pdf`
+renders in an iframe running the browser's own viewer, which is opaque to us, so
+PDF feedback is item-level until there is a reason to adopt a PDF renderer. The
+anchor column already fits `{kind: "page", …}` on the day there is.
+
+### Authorship, resolution and removal
+
+**Staff cannot open a feedback item.** Enforced by a CHECK: a root must be
+client-authored. The studio's contribution is replies, resolutions and the next
+Revision — a studio that can raise items on its own work has built a shared
+to-do list, not a client's voice.
+
+**Either side may resolve; the client may reopen what the studio resolved**, for
+as long as the round is open. *Resolved* therefore means *the studio believes
+this has been dealt with*, and the client can say otherwise. Resolution hides
+nothing, moves nothing and deletes nothing.
+
+**Removal is the one thing the earlier draft got wrong.** "No deletion, ever"
+was recorded here as discipline and it was not the professional standard —
+mature products let an author remove their own comment under defined conditions.
+Trapping somebody who pasted the wrong paragraph into a client-facing surface is
+not rigour. So: **an author may remove their own note**, only while the round is
+open, only within fifteen minutes, only while nothing has replied to it, and
+only once.
+
+**It is a tombstone, not a delete.** `removed_at` is written **beside** the body
+rather than over it, so the immutability rule needs no exception and the record
+is not falsified. The row keeps its ordinal, its authorship, its timestamps and
+its Audit trail; the projection returns *Comment removed* and no body, no
+anchor, no location.
+
+**And no projection returns the body to either surface — staff included.** There
+is one projection for both worlds, so a staff-only body would mean a second one,
+which is precisely the drift that produced the Stage A Preview defect and the
+Stage B route defect. The thing most likely to be removed in a panic is
+something private, and a removal the studio can still read is not a removal.
+Reaching the stored text means an Owner querying the database deliberately,
+which is the right amount of friction for the right rare reason.
+
+**Restore is refused by trigger.** `removed_at` cannot be cleared. A restore
+would make *removed* a toggle, and the other side may already have read it.
+
+### What the database holds, and what the domain will
+
+| Rule | Held by |
+| --- | --- |
+| One round per Revision | **PostgreSQL** — `UNIQUE` |
+| A note's item belongs to the reviewed Revision | **PostgreSQL** — composite FK |
+| Depth exactly one | **PostgreSQL** — composite FK on `(id, is_root)` |
+| Staff cannot author a root | **PostgreSQL** — CHECK |
+| A supersession is terminal and unrewritable | **PostgreSQL** — trigger |
+| No delete, no truncate, no restore | **PostgreSQL** — triggers |
+| Body immutable after fifteen minutes or after removal | **PostgreSQL** — trigger |
+| **No edit or removal once a reply exists** | **the domain**, not yet written |
+| The round must be open; the actor must be the author | **the domain**, not yet written |
+| Reopening requires the Revision to be current | **the domain**, not yet written |
+| The exact anchor shape | **the domain**, not yet written |
+
+The last four need another row, and a per-row trigger doing child counts would
+pay for that on every write. They are named here rather than half-held by a
+CHECK, because a constraint that half-holds a relational invariant reads like
+protection and is none.
+
+**Reviews block nothing.** A Revision can be approved with an open round, or
+reviewed and never approved. Two acts, two records.
+
+**Version comparison is architected, not built.** Nothing in this model
+prevents side-by-side, synchronised navigation or an overlay: notes are bound to
+their own Revision, items are keyed by position, and anchors are normalised
+against the media rather than the screen. It is not built because two tabs
+already work.
 
 ---
 
@@ -1194,7 +1326,11 @@ presentation_revisions      FK (workroom_id, presentation_id)          →  pres
 presentation_revision_items FK (workroom_id, presentation_revision_id) →  presentation_revisions
 presentation_revision_items FK (workroom_id, file_id)                  →  workroom_files
 presentation_reviews        FK (workroom_id, presentation_revision_id) →  presentation_revisions
-presentation_reviews        FK (workroom_id, revision_item_id)         →  presentation_revision_items
+presentation_reviews        FK (workroom_id, closed_by_revision_id)    →  presentation_revisions
+presentation_review_notes   FK (workroom_id, presentation_review_id,
+                                presentation_revision_id)              →  presentation_reviews
+presentation_review_notes   FK (workroom_id, presentation_revision_id,
+                                revision_item_id)                      →  presentation_revision_items
 presentation_approvals      FK (workroom_id, presentation_revision_id) →  presentation_revisions
 ```
 
@@ -1226,7 +1362,8 @@ ClientFile          { id, name, kind, size, previewPath?, downloadPath }
 ClientPresentation  { id, title, intro, publishedAt, revision, items[], revisions[] }
 ClientRevisionRef   { number, publishedAt, current }
 ClientRevisionItem  { id, kind, caption, body?, file? }
-ClientReview        { id, status, requestedAt, response?, resolution?, resolvedAt? }
+ClientReview        { status, requestedAt, canWrite, closedNote?, notes[] }
+ClientReviewNote    { n, author, at, body?, removed, edited, anchor?, resolved, replies[] }
 ClientApproval      { id, status, requestedAt, decidedAt?, decidedBy?, declineReason? }
 ```
 
@@ -1345,7 +1482,7 @@ data nonsensical — the business-core rule, unchanged.
 | Presentation with any Revision | Owner | No |
 | Presentation with a decided Revision | **Refused**, naming the decision | No |
 | Revision, revision item | Never. Immutable | Never |
-| Review | Follows its Presentation | No |
+| Review round, review note | Never. **Refused by trigger**, as is TRUNCATE | Never |
 | Approval | Never | Never |
 
 The abandoned upload is the whole of the delete surface: a `pending` row whose
@@ -1402,9 +1539,12 @@ Enforced server-side in the domain module, re-checked in every server action.
 | Publish / unpublish | ✓ | ✓ | — | — | — |
 | See **published** Presentation | ✓ | ✓ | ✓ | — | — |
 | Archive / restore Presentation | ✓ | — | — | — | — |
-| Request review | ✓ | ✓ | — | — | — |
-| **Respond to review** | — | — | **✓** | — | — |
-| Resolve / withdraw review | ✓ | ✓ | — | — | — |
+| Request feedback; close, withdraw or reopen a round | ✓ | ✓ | — | — | — |
+| **Open a feedback item** | **—** | **—** | **✓** | — | — |
+| Reply to one | ✓ | ✓ | ✓ | — | — |
+| Resolve or reopen **any** feedback item | ✓ | ✓ | — | — | — |
+| Resolve or reopen **their own** | ✓ | ✓ | ✓ | — | — |
+| Edit or remove **their own**, inside the window | ✓ | ✓ | ✓ | — | — |
 | Request approval | ✓ | ✓ | — | — | — |
 | **Grant / decline approval** | — | — | **✓** | — | — |
 | Withdraw approval request | ✓ | ✓ | — | — | — |
@@ -1415,8 +1555,14 @@ Three rows deserve naming.
 **Staff cannot approve.** An approval is the client's decision; a studio able to
 record one on their behalf has built a forgery tool.
 
-**Staff cannot respond to a review.** The resolution note is the studio's voice;
-the response is the client's.
+**Staff cannot open a feedback item**, enforced by a CHECK rather than by a
+guard. The round is the client's voice; the studio's contribution is replies,
+resolutions and the next Revision. A studio able to raise items on its own work
+has built a shared to-do list, not a review.
+
+**Nobody removes anybody else's words**, staff included. Removal is the
+author's, inside fifteen minutes, before any reply — and it is a tombstone, so
+nothing is erased either.
 
 **Archive is Owner-only**, matching every other archive in the business core.
 
@@ -1496,9 +1642,12 @@ thing this storage design avoids.
 
 ## Migration shape
 
-One migration, `0004_delivery.sql`, generated then extended by hand as `0003`
-was. **Additive throughout.** No column is dropped, renamed or retyped anywhere
-in Builds 001–004.
+Three migrations now: `0004_delivery.sql`, `0005_delivery_integrity.sql` and
+`0006_reviews.sql`. The first two are **additive throughout** — no column is
+dropped, renamed or retyped anywhere in Builds 001–005. **`0006` is not**, and
+that is recorded rather than glossed: see below.
+
+`0004` was generated then extended by hand as `0003` was.
 
 - Six `CREATE TABLE`, their indexes and composite unique keys
 - `bump_version()` on the versioned tables; `set_updated_at()` on the rest
@@ -1518,6 +1667,63 @@ in Builds 001–004.
 
 PostgreSQL has no way to widen a CHECK, so both are `DROP CONSTRAINT` then
 `ADD CONSTRAINT` — the pattern `0003` used and documented.
+
+### `0006_reviews.sql` — corrective, and the window that made it free
+
+**It drops eight columns**, the whole one-response model `0004` shipped:
+`revision_item_id`, `response_body`, `responded_at`,
+`responded_by_identity_id`, `responded_by_name`, `resolution_note`,
+`resolved_at`, `resolved_by`, with their CHECKs, their foreign keys and both
+partial unique indexes.
+
+That is a departure from the additive rule, and the justification is narrow and
+checkable rather than a matter of taste: **`presentation_reviews` has never held
+a row.** No code outside two test-cleanup lines referenced it, beta's copy was
+empty, and production does not have the table at all — production is Build 004
+and `0004` has never run there. So this corrects a table before it goes live
+rather than migrating data.
+
+**The assumption is a guard, not a belief.** The migration opens with a `DO`
+block that raises if `presentation_reviews` holds a single row, so the day that
+stops being true it refuses to run instead of destroying something. That was
+tested by seeding a row and watching it refuse, with `response_body` still
+standing afterwards.
+
+**The window closes at promotion, or at the first real beta row**, whichever
+comes first. After that the same change becomes a genuine data migration.
+
+Contents:
+
+- One `CREATE TABLE`, `presentation_review_notes`, with its indexes, three
+  unique keys and fourteen CHECKs
+- `UNIQUE (workroom_id, presentation_revision_id, id)` added to
+  `presentation_revision_items` **purely as a foreign-key target** — the one
+  statement that touches a table already holding real Stage B rows on beta
+- The `presentation_reviews` rewrite above, plus five new columns and
+  `UNIQUE (presentation_revision_id)`
+- A lifecycle trigger on `presentation_reviews`: identity immutable, the
+  permitted transitions and nothing else, a supersession unrewritable in one
+  write or two, and `DELETE` and `TRUNCATE` refused
+- A guard trigger on `presentation_review_notes`: identity, subject and
+  authorship immutable; the body correctable for fifteen minutes and then
+  never; removal only inside that window and never undone; `DELETE` and
+  `TRUNCATE` refused
+- `bump_version()` on the notes table
+
+**Statement order is hand-set, not generated.** Unique constraints must exist
+before the foreign keys that target them, and `drizzle-kit` emits additions in
+its own order — the first run failed on exactly that. The file is one
+`0006_reviews.sql` with a machine-accurate snapshot; `npx drizzle-kit generate`
+reports *no schema changes*, which is how the ORM and the migration are proven
+not to have drifted.
+
+**Rehearsed on both paths before anything read it**, as `0005` was:
+
+| Path | Result |
+| --- | --- |
+| Build 004 schema → `0004` → `0005` → `0006`, with real Build 004 rows | Every row preserved; fingerprint identical before and after |
+| A Stage B database at `0005` holding real Presentations and Revisions → `0006` | Every Revision, revision item and content hash identical |
+| Both, compared against a database built from scratch through the whole chain | **Byte-identical schema dumps**, all three |
 
 **Build 004 code tolerates the Build 005 schema.** Everything is a new table or
 a widened constraint; no existing insert becomes invalid. A code rollback
@@ -1588,32 +1794,35 @@ Presentation naming another Presentation's Revision, a `published` row with
 nothing to show, and a file revision item with no snapshotted name are all
 refused by the database with the code removed from the question.
 
-### Review uniqueness and NULL semantics
+### Review uniqueness, and the NULL semantics that used to matter
 
-An open review may be revision-level (`revision_item_id IS NULL`) or item-level.
-A conventional unique index treats NULLs as **distinct**, so a single index on
-`(presentation_revision_id, revision_item_id)` would permit unlimited
-revision-level reviews — the exact case it was meant to prevent.
+`0004` allowed an open review to be revision-level (`revision_item_id IS NULL`)
+or item-level, and used **two partial unique indexes** rather than one, because
+a conventional unique index treats NULLs as **distinct** — so a single index on
+`(presentation_revision_id, revision_item_id)` would have permitted unlimited
+revision-level reviews, the exact case it existed to prevent.
 
-**Two partial unique indexes, not one:**
+**`0006` drops both.** Item-level *requests* are withdrawn: the studio asks
+about the delivery, and precision belongs to the feedback rather than to the
+ask. What replaces them is simpler and stronger — `UNIQUE
+(presentation_revision_id)`, no predicate, no nullable column, *one round per
+Revision, ever*.
 
-```sql
-CREATE UNIQUE INDEX presentation_reviews_open_revision_idx
-  ON presentation_reviews (presentation_revision_id)
-  WHERE revision_item_id IS NULL AND status IN ('requested','responded');
+The technique is kept here because the next nullable uniqueness question will
+look identical, and because the reasoning outlived the rule: PostgreSQL 16 also
+offers `NULLS NOT DISTINCT`, and two partial indexes were still preferred for
+saying what they mean at the point of definition rather than depending on a
+server-version feature being remembered.
 
-CREATE UNIQUE INDEX presentation_reviews_open_item_idx
-  ON presentation_reviews (presentation_revision_id, revision_item_id)
-  WHERE revision_item_id IS NOT NULL AND status IN ('requested','responded');
-```
-
-PostgreSQL 16 also offers `NULLS NOT DISTINCT`, which would work. Two partial
-indexes are chosen because they say what they mean at the point of definition
-and do not depend on a server-version feature flag being remembered.
-
-**This is tested directly at the PostgreSQL level** — two revision-level review
-inserts must raise — rather than through the domain layer, which would pass for
-the wrong reason.
+**A second NULL trap, found while writing `0006`, and worth more attention than
+the first.** A CHECK constraint passes when its expression evaluates to NULL —
+only an outright `false` is a violation. The closure rule was first written as
+`(status = 'closed' AND … closed_reason IN ('staff','superseded') …) OR (status
+<> 'closed' AND …)`. For a row claiming `closed` with no reason, `NULL IN (…)`
+is NULL, so the first branch is NULL, the second is false, and `NULL OR false`
+is NULL — **the constraint accepted the exact row it was written to refuse.** It
+is now a `CASE`, where every branch returns a real boolean. A test asserting
+against PostgreSQL caught it; reading the expression had not.
 
 ---
 
@@ -1643,12 +1852,22 @@ the wrong reason.
 
 ## What Build 005 is not
 
-Chat. Slack-style comments. Threaded review replies. Client uploads. Folders or
+Chat. Slack-style comments. Client uploads. Folders or
 collections. Server-side media processing. PDF rasterization. Video transcoding.
 Presentation ZIP downloads. Workroom member roles. `presentation.viewed`
 tracking. A notification centre. Public file sharing. External anonymous
 approvals. Per-file roles. A Dropbox replacement. A DAM. Invoicing, payments,
 contracts or e-signatures — those are Build 006. Inbound email — Build 007.
+
+Also refused inside Reviews, each deliberately: @mentions, reactions, labels,
+assignments, due dates, reviewer groups, a private internal comment lane,
+comment export, live synchronised review, custom review statuses, anonymous
+reviewers, staff-authored feedback items, and carrying feedback forward to a
+later Revision.
+
+**Threaded review replies were on this list and are not any more.** They are
+built into `0006`, bounded to depth one by a foreign key. The reversal and its
+evidence are under *Reviews*.
 
 Each of these was considered against the blueprint and excluded on purpose, not
 forgotten.

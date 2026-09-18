@@ -172,6 +172,35 @@ frozen Version 1 → unshare refused → archive refused.
   Workroom moved to 1 member / 0 waiting, Studio showed HAS ACCESS, and later
   returns went through the ordinary sign-in — the invitation stays single use.
 
+**Stage C — Reviews.** **Schema only.** Migration `0006_reviews.sql` exists and
+is applied on beta; `lib/db/reviews.ts` does not exist, and there is no client
+surface and no Studio surface. Nothing reads or writes the two tables.
+
+- **A Revision holds one Review round, ever** — a full `UNIQUE`, not a partial
+  index over open rows — and the row cannot be deleted or truncated, because a
+  unique constraint somebody can delete their way around is not a rule.
+- **Feedback belongs to the exact Revision, proved by the database.** A note
+  carries its Revision as well as its Review, and two composite foreign keys
+  pivot on it, so a note on Revision 2 **cannot** reference an item from
+  Revision 1 even inside one Workroom. Tenancy alone had allowed it.
+- **Replies are depth one, enforced in PostgreSQL**, not by the interface: a
+  reply's parent must itself be a root. This reverses the no-threads rule, on
+  the benchmark evidence the Stage B lock said would be re-argued rather than
+  inherited.
+- **Removal is a tombstone, not a delete** — the author's own, inside fifteen
+  minutes, before any reply, never undone, and the body is returned to no
+  surface afterwards, staff included.
+- **Corrective, not additive.** It drops the eight columns of `0004`'s
+  one-response model, which was free only because the table had never held a
+  row — and the migration opens with a guard that refuses to run if it ever
+  does. Rehearsed on both paths and compared byte-for-byte against a database
+  built from scratch.
+- **A CHECK passes when its expression is NULL**, and the first closure
+  constraint did exactly that for the row it existed to refuse. Found by a test
+  asserting against PostgreSQL rather than by reading the SQL.
+- **Stage C is not usable and has not been accepted anywhere.** Schema is not a
+  feature.
+
 **Stage A beta acceptance.** Migration `0004` deployed and applied. `npm run
 storage:verify` was run **inside the real beta app container against the real
 Railway Storage Bucket** and every check passed: presigned PUT accepted,
@@ -199,8 +228,8 @@ These are the gates between beta and production:
 - **`npm run env:check` has not been run against production for Build 005's
   variables.** Beta had `CLIENT_AUTH_SECRE` for a whole round of investigation;
   one command would have found it, and one command is the gate.
-- **Reviews and Approvals have not begun.** They exist as schema and are read
-  by nothing.
+- **Stage C Reviews is schema and nothing else**, and Approvals has not begun.
+  Neither is read or written by any code.
 
 The viewer and Stage B were both on this list and are no longer: the viewer was
 accepted on beta by hand — image, PDF, MP4 and video seeking — and Stage B's

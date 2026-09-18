@@ -1429,6 +1429,15 @@ export const presentationRevisionItems = pgTable(
     }).onDelete("restrict"),
 
     unique("presentation_revision_items_workroom_id_id_key").on(table.workroomId, table.id),
+    // The FK target that proves an anchored Review note points at an item of
+    // the **exact Revision being reviewed**. Tenancy alone is not enough: a
+    // Workroom with two Revisions of one Presentation would otherwise accept a
+    // note on Revision 2 anchored to an item that only existed in Revision 1.
+    unique("presentation_revision_items_revision_id_key").on(
+      table.workroomId,
+      table.presentationRevisionId,
+      table.id,
+    ),
     uniqueIndex("presentation_revision_items_position_idx").on(
       table.presentationRevisionId,
       table.position,
@@ -1456,13 +1465,60 @@ export const presentationRevisionItems = pgTable(
 
 /* ------------------------------------------------ reviews and approvals */
 
-export const REVIEW_STATUSES = ["requested", "responded", "resolved", "withdrawn"] as const;
+export const REVIEW_STATUSES = ["open", "closed", "withdrawn"] as const;
 export type ReviewStatus = (typeof REVIEW_STATUSES)[number];
 
 /**
- * Feedback on a Revision, or on one item inside it. Request, response,
- * resolution — deliberately not a thread. The tradeoff is argued in
- * docs/delivery.md.
+ * Why a round closed. The discriminator, and it is load-bearing.
+ *
+ * Every actor foreign key in this schema is `ON DELETE set null`, so
+ * "exactly one of `closed_by_user_id` / `closed_by_revision_id`" would hold
+ * until a staff row went away and then refuse the deletion from a constraint
+ * that was never about staff. The reason is stored as a fact; the actor key is
+ * only a join. Same device as `audit_events.actor_type`.
+ */
+export const REVIEW_CLOSURE_REASONS = ["staff", "superseded"] as const;
+export type ReviewClosureReason = (typeof REVIEW_CLOSURE_REASONS)[number];
+
+/** Which side of the relationship wrote or resolved something. */
+export const NOTE_SIDES = ["studio", "client"] as const;
+export type NoteSide = (typeof NOTE_SIDES)[number];
+
+/** What a precise anchor points at. The exact shapes are parsed in the domain. */
+export const REVIEW_ANCHOR_KINDS = ["point", "region", "time"] as const;
+export type ReviewAnchorKind = (typeof REVIEW_ANCHOR_KINDS)[number];
+
+/**
+ * How long an author may still correct or remove what they wrote.
+ *
+ * The database holds this one, in `presentation_review_notes_guard`, so it
+ * is a property of the row rather than a convention in a module. The relational
+ * half of the same policy — no edit and no removal once a reply exists — is the
+ * domain's, under the Review row lock, because a row trigger would pay a child
+ * count on every write.
+ */
+export const NOTE_GRACE_MINUTES = 15;
+
+/**
+ * One round of client feedback on one published Revision.
+ *
+ * **One row per Revision, ever** — `UNIQUE (presentation_revision_id)`, a full
+ * unique rather than a partial index over open rows. The difference is the
+ * model: a partial index says "one at a time", which is scheduling; a full
+ * unique says "one, ever", which is a fact about the Revision. The row is that
+ * Revision's lifecycle record whether or not a word was ever written into it,
+ * which is why the migration also refuses DELETE and TRUNCATE. A unique
+ * constraint that someone can delete their way around is not a rule.
+ *
+ * Lifecycle, enforced by `presentation_reviews_guard` in the migration:
+ *
+ *     (no row) --request--> open --staff close----> closed/staff  <--> open
+ *                                --publish N+1----> closed/superseded  TERMINAL
+ *                                --withdraw-------> withdrawn      <--> open
+ *
+ * Reopening a staff closure or a withdrawal is the domain's to allow, and only
+ * while that Revision is still the Presentation's current one. A supersession
+ * never reopens and its closure fields can never be rewritten.
  */
 export const presentationReviews = pgTable(
   "presentation_reviews",
@@ -1473,26 +1529,19 @@ export const presentationReviews = pgTable(
       .notNull()
       .references(() => workrooms.id, { onDelete: "restrict" }),
     presentationRevisionId: uuid("presentation_revision_id").notNull(),
-    /** Null means the whole Revision. See the two partial indexes below. */
-    revisionItemId: uuid("revision_item_id"),
 
-    status: text("status").notNull().default("requested").$type<ReviewStatus>(),
+    status: text("status").notNull().default("open").$type<ReviewStatus>(),
 
     requestedAt: timestamp("requested_at", { withTimezone: true }).notNull().defaultNow(),
     requestedBy: text("requested_by").references(() => user.id, { onDelete: "set null" }),
 
-    /** The client's words. Their voice, and only theirs. */
-    responseBody: text("response_body"),
-    respondedAt: timestamp("responded_at", { withTimezone: true }),
-    respondedByIdentityId: text("responded_by_identity_id").references(() => clientIdentity.id, {
-      onDelete: "set null",
-    }),
-    respondedByName: text("responded_by_name"),
+    closedAt: timestamp("closed_at", { withTimezone: true }),
+    closedReason: text("closed_reason").$type<ReviewClosureReason>(),
+    closedByUserId: text("closed_by_user_id").references(() => user.id, { onDelete: "set null" }),
+    /** The Revision whose publication ended this round. Never its own. */
+    closedByRevisionId: uuid("closed_by_revision_id"),
 
-    /** What the studio did about it. The studio's voice, and only theirs. */
-    resolutionNote: text("resolution_note"),
-    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
-    resolvedBy: text("resolved_by").references(() => user.id, { onDelete: "set null" }),
+    withdrawnAt: timestamp("withdrawn_at", { withTimezone: true }),
 
     version: integer("version").notNull().default(1),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -1505,29 +1554,286 @@ export const presentationReviews = pgTable(
       name: "presentation_reviews_revision_fk",
     }).onDelete("restrict"),
     foreignKey({
-      columns: [table.workroomId, table.revisionItemId],
-      foreignColumns: [presentationRevisionItems.workroomId, presentationRevisionItems.id],
-      name: "presentation_reviews_item_fk",
+      columns: [table.workroomId, table.closedByRevisionId],
+      foreignColumns: [presentationRevisions.workroomId, presentationRevisions.id],
+      name: "presentation_reviews_closed_by_revision_fk",
     }).onDelete("restrict"),
 
+    // One round per Revision, ever.
+    unique("presentation_reviews_revision_id_key").on(table.presentationRevisionId),
+    // The note's FK target. Carrying the Revision through it is what lets a
+    // note prove its own Revision is its Review's Revision.
+    unique("presentation_reviews_workroom_id_revision_key").on(
+      table.workroomId,
+      table.id,
+      table.presentationRevisionId,
+    ),
+
     index("presentation_reviews_workroom_idx").on(table.workroomId, table.status),
-    index("presentation_reviews_revision_idx").on(table.presentationRevisionId),
 
     check("presentation_reviews_status_check", sql.raw(`status IN (${quoted(REVIEW_STATUSES)})`)),
+    // Exactly one closure reason when closed, none otherwise — and the staff
+    // branch deliberately does not require `closed_by_user_id`, so a later
+    // `ON DELETE set null` cannot break a row that is already history.
+    //
+    // Written as CASE rather than `(closed AND …) OR (not closed AND …)`, and
+    // that is not style. A CHECK passes when its expression is NULL, and the
+    // OR form evaluates to NULL — not false — for a row that says `closed`
+    // and names no reason, because `NULL IN (…)` is NULL. It let exactly the
+    // row it exists to refuse straight through. Found by the test below, which
+    // is the argument for asserting constraints against PostgreSQL rather than
+    // reading them.
     check(
-      "presentation_reviews_response_shape_check",
+      "presentation_reviews_closure_shape_check",
       sql.raw(
-        "(response_body IS NULL AND responded_at IS NULL)" +
-          " OR (response_body IS NOT NULL AND responded_at IS NOT NULL)",
+        "CASE WHEN status = 'closed' THEN" +
+          " closed_at IS NOT NULL AND closed_reason IS NOT NULL" +
+          " AND ((closed_reason = 'staff' AND closed_by_revision_id IS NULL)" +
+          " OR (closed_reason = 'superseded' AND closed_by_revision_id IS NOT NULL" +
+          " AND closed_by_user_id IS NULL))" +
+          " ELSE closed_at IS NULL AND closed_reason IS NULL" +
+          " AND closed_by_user_id IS NULL AND closed_by_revision_id IS NULL END",
       ),
     ),
     check(
-      "presentation_reviews_response_length_check",
-      sql.raw("response_body IS NULL OR char_length(response_body) <= 8000"),
+      "presentation_reviews_withdrawn_shape_check",
+      sql.raw("(status = 'withdrawn') = (withdrawn_at IS NOT NULL)"),
     ),
+    // A round cannot be superseded by the Revision it belongs to.
     check(
-      "presentation_reviews_resolution_length_check",
-      sql.raw("resolution_note IS NULL OR char_length(resolution_note) <= 8000"),
+      "presentation_reviews_superseded_by_other_check",
+      sql.raw(
+        "closed_by_revision_id IS NULL OR closed_by_revision_id <> presentation_revision_id",
+      ),
+    ),
+  ],
+);
+
+/**
+ * One feedback item, or one reply to one. **Depth is exactly one**, and
+ * PostgreSQL holds that rather than the interface: a reply's parent must itself
+ * be a root, proved by `(parent_note_id, parent_is_root)` referencing
+ * `(id, is_root)`. A depth-2 reply cannot be stored.
+ *
+ * Three integrity properties are worth naming because each was a real hole
+ * before it was closed:
+ *
+ *   exact Revision   `(workroom_id, presentation_review_id,
+ *                      presentation_revision_id)` proves the note's Revision is
+ *                    its Review's, and `(workroom_id, presentation_revision_id,
+ *                    revision_item_id)` proves an anchored item belongs to that
+ *                    same Revision. Tenancy alone would have allowed a note on
+ *                    Revision 2 to point at an item from Revision 1.
+ *   authorship       `author_side` is the durable fact. The actor keys are
+ *                    joins that go null when somebody leaves, so nothing may
+ *                    infer which side wrote a note from which key is set.
+ *   removal          Additive. `removed_at` is written **beside** the body,
+ *                    never over it, so the immutability trigger needs no
+ *                    exception and the record is not falsified. No projection
+ *                    returns a removed body to either surface.
+ */
+export const presentationReviewNotes = pgTable(
+  "presentation_review_notes",
+  {
+    id: uuid("id").primaryKey(),
+
+    workroomId: uuid("workroom_id")
+      .notNull()
+      .references(() => workrooms.id, { onDelete: "restrict" }),
+    presentationReviewId: uuid("presentation_review_id").notNull(),
+    /** Redundant with the Review's, and constrained so it cannot diverge. */
+    presentationRevisionId: uuid("presentation_revision_id").notNull(),
+
+    /** Creation order within the round. The only handle a client receives. */
+    number: integer("number").notNull(),
+
+    parentNoteId: uuid("parent_note_id"),
+    isRoot: boolean("is_root").notNull(),
+    /** Always true when there is a parent, null when there is not. */
+    parentIsRoot: boolean("parent_is_root"),
+
+    /** The subject. Null means the note is about the Revision as a whole. */
+    revisionItemId: uuid("revision_item_id"),
+    /**
+     * Where inside that item. Normalised fractions of the media's own intrinsic
+     * box and seconds from its start — never viewport pixels, so a phone and a
+     * desktop resolve to the same place and a later overlay stays possible.
+     */
+    anchor: jsonb("anchor"),
+
+    body: text("body").notNull(),
+
+    authorSide: text("author_side").notNull().$type<NoteSide>(),
+    authorUserId: text("author_user_id").references(() => user.id, { onDelete: "set null" }),
+    authorIdentityId: text("author_identity_id").references(() => clientIdentity.id, {
+      onDelete: "set null",
+    }),
+    /** Snapshot, so history reads correctly after somebody leaves. */
+    authorName: text("author_name").notNull(),
+
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    resolvedBySide: text("resolved_by_side").$type<NoteSide>(),
+    resolvedByUserId: text("resolved_by_user_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    resolvedByIdentityId: text("resolved_by_identity_id").references(() => clientIdentity.id, {
+      onDelete: "set null",
+    }),
+    resolvedByName: text("resolved_by_name"),
+
+    editedAt: timestamp("edited_at", { withTimezone: true }),
+    /** The tombstone. Set once, inside the grace window, and never cleared. */
+    removedAt: timestamp("removed_at", { withTimezone: true }),
+
+    version: integer("version").notNull().default(1),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    // The note's Revision is its Review's Revision. Proved, not trusted.
+    foreignKey({
+      columns: [table.workroomId, table.presentationReviewId, table.presentationRevisionId],
+      foreignColumns: [
+        presentationReviews.workroomId,
+        presentationReviews.id,
+        presentationReviews.presentationRevisionId,
+      ],
+      name: "presentation_review_notes_review_fk",
+    }).onDelete("restrict"),
+    // An anchored item belongs to that same Revision. MATCH SIMPLE is the
+    // default and is load-bearing: with `revision_item_id` null the constraint
+    // is skipped, which is exactly how general feedback passes. MATCH FULL
+    // here would refuse every general note.
+    foreignKey({
+      columns: [table.workroomId, table.presentationRevisionId, table.revisionItemId],
+      foreignColumns: [
+        presentationRevisionItems.workroomId,
+        presentationRevisionItems.presentationRevisionId,
+        presentationRevisionItems.id,
+      ],
+      name: "presentation_review_notes_item_fk",
+    }).onDelete("restrict"),
+    // A reply belongs to the same round as its root.
+    foreignKey({
+      columns: [table.presentationReviewId, table.parentNoteId],
+      foreignColumns: [table.presentationReviewId, table.id],
+      name: "presentation_review_notes_parent_fk",
+    }).onDelete("restrict"),
+    // …and that root is a root. This is the depth-one guarantee.
+    foreignKey({
+      columns: [table.parentNoteId, table.parentIsRoot],
+      foreignColumns: [table.id, table.isRoot],
+      name: "presentation_review_notes_parent_is_root_fk",
+    }).onDelete("restrict"),
+
+    unique("presentation_review_notes_id_is_root_key").on(table.id, table.isRoot),
+    unique("presentation_review_notes_review_id_key").on(table.presentationReviewId, table.id),
+    // Ordinals are allocated under the Review row lock; this is the last line.
+    unique("presentation_review_notes_number_key").on(table.presentationReviewId, table.number),
+
+    index("presentation_review_notes_review_idx").on(table.workroomId, table.presentationReviewId),
+    index("presentation_review_notes_parent_idx").on(table.parentNoteId),
+
+    check("presentation_review_notes_number_check", sql.raw("number >= 1")),
+    check(
+      "presentation_review_notes_body_length_check",
+      sql.raw("char_length(body) BETWEEN 1 AND 8000"),
+    ),
+
+    check("presentation_review_notes_is_root_check", sql.raw("is_root = (parent_note_id IS NULL)")),
+    check(
+      "presentation_review_notes_parent_is_root_check",
+      sql.raw(
+        "parent_is_root IS NOT DISTINCT FROM" +
+          " (CASE WHEN parent_note_id IS NULL THEN NULL ELSE true END)",
+      ),
+    ),
+
+    check(
+      "presentation_review_notes_author_side_check",
+      sql.raw(`author_side IN (${quoted(NOTE_SIDES)})`),
+    ),
+    // At most one, never exactly one: a deleted actor sets its key null and
+    // `author_name` carries the identity from then on.
+    check(
+      "presentation_review_notes_author_shape_check",
+      sql.raw(
+        "NOT (author_user_id IS NOT NULL AND author_identity_id IS NOT NULL)" +
+          " AND (author_side <> 'studio' OR author_identity_id IS NULL)" +
+          " AND (author_side <> 'client' OR author_user_id IS NULL)",
+      ),
+    ),
+    // Staff cannot open a feedback item. Their contribution is replies and
+    // resolutions; the round is the client's voice.
+    check(
+      "presentation_review_notes_root_is_client_check",
+      sql.raw("author_side = 'client' OR parent_note_id IS NOT NULL"),
+    ),
+
+    // A reply inherits its root's subject and carries no state of its own.
+    check(
+      "presentation_review_notes_reply_shape_check",
+      sql.raw(
+        "parent_note_id IS NULL OR (anchor IS NULL AND revision_item_id IS NULL" +
+          " AND resolved_at IS NULL AND resolved_by_side IS NULL" +
+          " AND resolved_by_user_id IS NULL AND resolved_by_identity_id IS NULL" +
+          " AND resolved_by_name IS NULL)",
+      ),
+    ),
+    // Precision requires a subject: there is no point at 42% of a Revision.
+    check(
+      "presentation_review_notes_anchor_subject_check",
+      sql.raw("anchor IS NULL OR revision_item_id IS NOT NULL"),
+    ),
+    // Cheap structural and range validation only. The exact shape is parsed by
+    // a whitelist in the domain, the way every client-safe projection is.
+    // `jsonb_typeof` guards each cast so a wrong type refuses rather than
+    // raising, and `jsonb_exists` is spelled out rather than `?` so no tool in
+    // the chain can mistake it for a parameter marker.
+    check(
+      "presentation_review_notes_anchor_shape_check",
+      sql.raw(
+        "anchor IS NULL OR (jsonb_typeof(anchor) = 'object'" +
+          ` AND (anchor->>'kind') IN (${quoted(REVIEW_ANCHOR_KINDS)})` +
+          " AND CASE anchor->>'kind'" +
+          "   WHEN 'point' THEN jsonb_exists(anchor, 'x') AND jsonb_exists(anchor, 'y')" +
+          "   WHEN 'region' THEN jsonb_exists(anchor, 'x') AND jsonb_exists(anchor, 'y')" +
+          "     AND jsonb_exists(anchor, 'w') AND jsonb_exists(anchor, 'h')" +
+          "   WHEN 'time' THEN jsonb_exists(anchor, 't')" +
+          "   ELSE false END" +
+          " AND (NOT jsonb_exists(anchor, 'x') OR (jsonb_typeof(anchor->'x') = 'number'" +
+          "   AND (anchor->>'x')::numeric BETWEEN 0 AND 1))" +
+          " AND (NOT jsonb_exists(anchor, 'y') OR (jsonb_typeof(anchor->'y') = 'number'" +
+          "   AND (anchor->>'y')::numeric BETWEEN 0 AND 1))" +
+          " AND (NOT jsonb_exists(anchor, 'w') OR (jsonb_typeof(anchor->'w') = 'number'" +
+          "   AND (anchor->>'w')::numeric BETWEEN 0 AND 1))" +
+          " AND (NOT jsonb_exists(anchor, 'h') OR (jsonb_typeof(anchor->'h') = 'number'" +
+          "   AND (anchor->>'h')::numeric BETWEEN 0 AND 1))" +
+          " AND (NOT jsonb_exists(anchor, 't') OR (jsonb_typeof(anchor->'t') = 'number'" +
+          "   AND (anchor->>'t')::numeric >= 0))" +
+          " AND (NOT jsonb_exists(anchor, 't2') OR (jsonb_typeof(anchor->'t2') = 'number'" +
+          "   AND jsonb_exists(anchor, 't')" +
+          "   AND (anchor->>'t2')::numeric > (anchor->>'t')::numeric)))",
+      ),
+    ),
+
+    check(
+      "presentation_review_notes_resolved_side_check",
+      sql.raw(`resolved_by_side IS NULL OR resolved_by_side IN (${quoted(NOTE_SIDES)})`),
+    ),
+    // The name snapshot is what makes resolution provenance survive a deleted
+    // actor, so it is the column the shape requires — not the foreign key.
+    check(
+      "presentation_review_notes_resolved_shape_check",
+      sql.raw(
+        "(resolved_at IS NULL AND resolved_by_side IS NULL AND resolved_by_name IS NULL" +
+          " AND resolved_by_user_id IS NULL AND resolved_by_identity_id IS NULL)" +
+          " OR (resolved_at IS NOT NULL AND resolved_by_side IS NOT NULL" +
+          " AND resolved_by_name IS NOT NULL" +
+          " AND NOT (resolved_by_user_id IS NOT NULL AND resolved_by_identity_id IS NOT NULL)" +
+          " AND (resolved_by_side <> 'studio' OR resolved_by_identity_id IS NULL)" +
+          " AND (resolved_by_side <> 'client' OR resolved_by_user_id IS NULL))",
+      ),
     ),
   ],
 );

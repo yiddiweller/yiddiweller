@@ -14,20 +14,22 @@ tooling, nothing to keep in sync.
 
 ## Current state
 
-| Environment | Build | Commit |
+| Environment | Build | Last commit that changed the running system |
 | --- | --- | --- |
 | Production | **Build 004** | `6b4ca20` |
-| Beta | **Build 004** | `6b4ca20` |
+| Beta | **Build 005** | `04d5c89` |
 
-Both environments sit on the identical commit. Build 004 was promoted on
-2026-09-16 by fast-forward, so there is nothing on one that is not on the
-other, and no build is awaiting promotion.
+**Beta is ahead, which is the normal state during testing.** Build 004 was
+promoted on 2026-09-16 by fast-forward and is what production runs. Build 005 —
+Delivery, Stages A and B — is on beta, has passed manual acceptance there, and
+is **not promoted**: the gates below have to close first.
 
-The commits above are what each branch actually points at, which is not always
-the commit that claimed the number. A documentation commit changes nothing
-about the running system, so it claims no number and does not move the build —
+**The commits above are the last ones that changed anything**, which is not
+always where the branch now points. A documentation commit changes nothing about
+the running system, so it claims no number and does not move the build —
 Build 003's own commit was `1e4af21`, and production ran `8d0fd80` on top of it
-until this promotion.
+until this promotion. Beta likewise carries documentation on top of `04d5c89`,
+including the commit that recorded Stage B's acceptance.
 
 ---
 
@@ -78,9 +80,9 @@ trustworthy.
 
 ### Build 005 — Delivery
 
-**Stage A is verified on beta.** Not released, not promoted, and Build 005
-claims no production state. Production has no bucket and has not been touched by
-Build 005 at all.
+**Stages A and B are verified on beta, by hand.** Not released, not promoted,
+and Build 005 claims no production state. Production has no bucket and has not
+been touched by Build 005 at all.
 
 The architecture is locked in [`delivery.md`](./delivery.md). Stage A builds the
 storage adapter and Files; Presentations, Reviews and Approvals exist as schema
@@ -113,8 +115,14 @@ and nothing else.
   realistic Build 004 database: every row preserved, upgraded schema identical
   to one built from scratch, Build 004 code still writes cleanly to it.
 
-**Stage B — Presentations and immutable Revisions.** Implemented, not yet
-accepted on beta.
+**Stage B — Presentations and immutable Revisions.** Implemented, and
+**manually accepted on the real Railway beta deployment** — Studio on a desktop,
+the client on a real phone. The full record is in
+[`delivery.md`](./delivery.md#stage-b-is-verified-on-beta); the journey it
+proves end to end is draft → Studio Preview → publish Revision 1 → client
+Revision 1 → edit the private draft → client stays on Revision 1 → publish
+Revision 2 → client Revision 2 → client Previous versions → Revision 1 → Studio's
+frozen Version 1 → unshare refused → archive refused.
 
 - **`0005_delivery_integrity.sql`**, additive, applied before the first line of
   Presentation code: `presentations.current_revision_id` bound by composite key
@@ -146,9 +154,25 @@ accepted on beta.
   all. Paths were being treated as content and frozen into the snapshot; they
   are now supplied per surface at render time, with `clientVisible()` untouched
   and nothing shared early. Four regression tests fail against the old
-  behaviour.
+  behaviour. **Retested on beta and it passes** — the internal image renders in
+  Preview, the File is still `internal` afterwards, and one `PresentationView`
+  over one `FileViewer` serves all three surfaces.
+- **Browser-native confirmations were found during acceptance and replaced.**
+  Every occurrence was classified first — needs confirming, belongs inline as
+  status, or should never have asked — and what remained was rebuilt on one
+  `ConfirmDialog` on native `<dialog>`. Verified by hand on beta: publishing
+  reads *Publish presentation? / One file will also be shared with the client. /
+  Cancel · Publish.* A source scan keeps a native one from coming back.
+- **The client invitation journey failed three times on beta before it
+  succeeded**, for three unrelated reasons — a landing page promising what the
+  acceptance refused, three refusal layers that answered alike, and a limiter
+  keyed on the address rather than the invitation — plus one configuration
+  fault, a beta variable set as `CLIENT_AUTH_SECRE`. All four are recorded in
+  [`client-auth.md`](./client-auth.md). After them, a real client accepted, the
+  Workroom moved to 1 member / 0 waiting, Studio showed HAS ACCESS, and later
+  returns went through the ordinary sign-in — the invitation stays single use.
 
-**Beta acceptance.** Migration `0004` deployed and applied. `npm run
+**Stage A beta acceptance.** Migration `0004` deployed and applied. `npm run
 storage:verify` was run **inside the real beta app container against the real
 Railway Storage Bucket** and every check passed: presigned PUT accepted,
 authenticated HEAD returning a real size and ETag, server-side `CopyObject`,
@@ -162,20 +186,25 @@ Preview showed the Files section, the file, a safe type and size, `Open files �
 and the `file.shared` Activity line, with one shared `WorkroomOverview`
 component keeping the Preview and the real client overview aligned.
 
-**What Stage A has still not done**, and none of it is blocked by the above:
+**What Build 005 has still not done**, and none of it is blocked by the above.
+These are the gates between beta and production:
 
 - **No production bucket exists**, and none is created until promotion.
 - **The sweep is not scheduled.** Until it is, abandoned uploads accumulate.
 - **No per-object backup or replication strategy**, which is required before
   Build 005 reaches production — see [`restore-rehearsal.md`](./restore-rehearsal.md).
-- **The viewer has not been accepted on beta by hand.** It passes the full
-  automated suite, the responsive sweep and the quality gate locally; the
-  by-hand beta acceptance recorded above predates it.
-- **Stage B has not been accepted on beta by hand either.** Same position: it
-  passes everything locally and has been seen by nobody on the real
-  deployment.
+- **`npm run storage:verify` has not been run in production**, because there is
+  nothing there to run it against yet. Beta passing says nothing about a bucket
+  that does not exist.
+- **`npm run env:check` has not been run against production for Build 005's
+  variables.** Beta had `CLIENT_AUTH_SECRE` for a whole round of investigation;
+  one command would have found it, and one command is the gate.
 - **Reviews and Approvals have not begun.** They exist as schema and are read
   by nothing.
+
+The viewer and Stage B were both on this list and are no longer: the viewer was
+accepted on beta by hand — image, PDF, MP4 and video seeking — and Stage B's
+acceptance is recorded above.
 
 ---
 

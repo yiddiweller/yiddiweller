@@ -33,12 +33,17 @@ that has not been on `beta` first, and never leave `beta` behind `main`.
 
 **Phases 1, 2, 3 and 4 are complete and verified in production**, released as
 **Build 001**, **Build 002**, **Build 003** and **Build 004**. **Build 005's
-architecture is locked in `docs/delivery.md`, and Stage A — storage and Files —
-is verified on beta against the real Railway bucket. **Stage B — Presentations
-and immutable Revisions — is implemented and passes the full gate locally; it
-has not had manual beta acceptance yet.** Reviews and Approvals are still schema
-and nothing else. Production has no bucket and has not been touched by
-Build 005.**
+architecture is locked in `docs/delivery.md`. Stage A — storage and Files —
+is verified on beta against the real Railway bucket, viewer included. Stage B —
+Presentations and immutable Revisions — is now **manually accepted on the real
+Railway beta deployment**: draft → Preview → publish Revision 1 → client
+Revision 1 → edit the private draft → client stays on Revision 1 → publish
+Revision 2 → client Revision 2 → client Previous versions → Studio's frozen
+Version 1 → unshare refused → archive refused. The record is
+`docs/delivery.md`. Reviews and Approvals are still schema and nothing else.
+Build 005 is **not promoted**: production has no bucket, the sweep is
+unscheduled and there is no per-object backup strategy, so production remains
+Build 004.**
 These are facts about the running system, not proposals. Changing any of them is
 a deliberate decision, not a cleanup.
 
@@ -107,6 +112,19 @@ a deliberate decision, not a cleanup.
   resent invitation inherited the old one's failures. The key is `inv:` plus a
   fingerprint derived differently from `token_hash`, and the raw token is never
   written anywhere. See `docs/client-auth.md`.
+- **An invitation is single use, and it is not how a client comes back.** It
+  attaches an identity to a Contact and grants a membership, once. Every later
+  entry is the ordinary client sign-in at `/workrooms/sign-in`, which lands in
+  the Workroom because the membership is already there. The one accommodation
+  is a repeat press that already holds a session for that same Contact: it is
+  told where to go, mutates nothing and consumes nothing.
+- **The beta runtime variable is `CLIENT_AUTH_SECRET`, spelled in full.** Beta
+  ran with `CLIENT_AUTH_SECRE` and every client acceptance failed for a reason
+  that had nothing to do with invitations; it was corrected in Railway and
+  redeployed, and the real journey succeeded straight afterwards. A missing
+  secret is a hard refusal, not a quiet default, and it looks like an
+  application fault from outside. `npm run env:check` is the first thing to run
+  when a whole flow fails at once rather than for one person.
 - **A client authentication flow may only land under `/workrooms`.** Better
   Auth refuses another origin; it cannot know `/studio` is a second product on
   this one. Every `callbackURL` is sanitised on both halves of the flow, in
@@ -171,7 +189,8 @@ a deliberate decision, not a cleanup.
   a Studio session on a `/workrooms/...` route is sent to the client sign-in
   exactly as a stranger is. Found by manual beta acceptance — a draft's internal
   image rendered broken in Preview — and fixed at the cause rather than by
-  sharing the file early or loosening `clientVisible()`.
+  sharing the file early or loosening `clientVisible()`. **Retested on beta and
+  it passes**, with the File still `internal` afterwards.
 - **Staff Preview renders the *draft* through the same component and projection
   as the client page, and says so.** For a published Presentation it is
   deliberately not what the client currently sees — that is the current
@@ -281,7 +300,9 @@ broken by accident:
   button repeating the verb — never "Are you sure?" and never "OK". Destructive
   is the outlined button rather than a colour, Cancel holds the focus, and a
   test scans the source so a native one cannot come back. Confirm consequence,
-  not every edit: `docs/studio-design.md`.
+  not every edit: `docs/studio-design.md`. Verified by hand on beta — publishing
+  reads *Publish presentation? / One file will also be shared with the client. /
+  Cancel · Publish.*
 - **Spacing** comes from `--page-x` and `--page-y`, so the gutter matches on
   every page.
 

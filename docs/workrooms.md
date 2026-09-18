@@ -164,6 +164,13 @@ Acceptance is one transaction: claim the invitation, create or reuse the client
 identity, grant the membership, write the audit event and the client-safe
 activity. Any failure rolls all of it back. Only then is the session issued.
 
+**Once spent, the link is finished and nobody returns through it.** Later entry
+is the ordinary client sign-in, which reaches the Workroom because the
+membership the invitation granted is already there. What refuses a tap, what a
+refusal is allowed to say, and why the acceptance budget belongs to the
+invitation rather than the address it was tapped from all live in
+[`client-auth.md`](./client-auth.md) — one statement, not two.
+
 ---
 
 ## What the client sees

@@ -822,6 +822,13 @@ correctly, and they already carry each file's opaque public id; the reader
 rebuilds routes from that and infers `hasPreview` from the old `previewPath`.
 Nothing about what a client was shown changes, and no stored hash moves.
 
+**Retested by hand on beta, and it passes.** A draft holding a `ready`
+**internal** image renders that image correctly in Studio Preview; the File is
+still `internal` afterwards, because Preview reads it as staff rather than
+sharing it early; and one `PresentationView` over one `FileViewer` still renders
+the client page, the historical Revision and the Preview. Nothing about client
+authorization moved to achieve it.
+
 ---
 
 ### The publish transaction — what actually ships
@@ -956,6 +963,59 @@ not a route around anything; it is the ordinary route, reading older rows.
 the correct granularity: the studio retracts a delivery, not one paragraph of
 one version of it. And it is refused outright once a Revision carries a terminal
 approval.
+
+---
+
+## Stage B is verified on beta
+
+Exercised by hand on the real Railway beta deployment, Studio on a desktop and
+the client on a real phone — not Preview standing in for a client, and not a
+test harness standing in for either.
+
+The Presentation was **Brand Direction**: an introduction, one `ready`
+**internal** image captioned *Primary identity direction*, and a note headed
+*Direction*.
+
+| | |
+| --- | --- |
+| Draft created, composed, and private to the studio | **passed** |
+| Studio Preview rendered the draft's **internal** image | **passed** |
+| The File stayed `internal` — Preview shared nothing early | **passed** |
+| Publish named the consequence before the press: one file would be shared | **passed** |
+| Publishing created **Revision 1** and opened the Presentation to the client | **passed** |
+| The referenced File became `shared` | **passed** |
+| Activity recorded the file sharing and the Presentation being published | **passed** |
+| No email was sent automatically | **passed** |
+| The client opened Revision 1 on their phone — image, caption, introduction, note, and the original file downloadable | **passed** |
+| The draft was then edited and **not** published; the client still saw Revision 1 and none of the new text | **passed** |
+| **Revision 2** published: Studio said *2 versions published*, the client moved to Version 2, Version 1 was preserved and listed beneath it | **passed** |
+| The client opened **Previous versions → Version 1**, and its original content was intact | **passed** |
+| Studio's own view of Version 1 identified itself as frozen and showed the original introduction, image, caption, download and note | **passed** |
+| *Stop sharing* on the File was **refused**, naming Brand Direction and saying the Presentation must be unpublished first | **passed** |
+| *Archive* on the same File was **refused**, because what a client was shown has to stay where they were shown it | **passed** |
+
+**The draft-immutability step is the one worth naming.** Editing the live draft
+while a client held Revision 1, refreshing their phone, and seeing the old
+Revision unchanged is the whole argument for relational immutable Revisions
+demonstrated on real infrastructure rather than asserted in a test. Nothing
+leaked, because there is no path by which it could: a Revision's items are its
+own rows, written once.
+
+**The two guards were tried deliberately and both refused.** They are the pair
+that keep *"a client only ever sees a `ready`, `shared`, unarchived File — in a
+Revision published years ago exactly as today"* true, and a guard nobody has
+attempted to trip is a guard nobody has tested.
+
+**Getting to the client at all needed the invitation journey**, which refused
+on beta for three unrelated defects and one configuration fault before it
+succeeded. All four are recorded in [`client-auth.md`](./client-auth.md) and are
+not repeated here. The invitation is **single use**; the client's later returns
+went through the ordinary client sign-in.
+
+**What this does not claim.** Nothing about production — it has no bucket and
+has not been touched by Build 005. Nothing about Reviews or Approvals, which
+remain schema read by nothing. And nothing about the promotion gates still open
+above: the sweep is unscheduled and there is no per-object backup strategy.
 
 ---
 

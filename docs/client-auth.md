@@ -202,6 +202,28 @@ the identity, granting the membership, writing audit and activity — is one
 PostgreSQL transaction in `lib/db/workrooms.ts`, and the session is issued only
 after it commits.
 
+### An invitation is spent once, and is not how anybody comes back
+
+**The link is single use and stays single use.** It exists to do one thing —
+attach an identity to a Contact and grant a membership — and once it has done
+it there is nothing left for it to do. The row is marked accepted, the token
+matches nothing that can be claimed again, and no expiry, revocation or
+identity check is bypassed to make a second tap work.
+
+**Coming back later is the ordinary client sign-in**, `/workrooms/sign-in`, a
+magic link to the address the identity holds. The membership the invitation
+granted is already there, so the sign-in lands in the Workroom with nothing
+further to accept. An invitation grants access; it is not a key kept by the
+door.
+
+The one accommodation is narrow and changes neither of those. A browser that
+sent the same press twice — the second arriving to find the invitation spent —
+is **told where to go** rather than told it cannot be used, but only when it
+presents the token *and* a live client session for the very Contact the
+invitation was issued to, and that Contact is still an active member of an open
+Workroom. Nothing is mutated, nothing is consumed, and no session is issued.
+Somebody holding only the token gets `already_used`, exactly as before.
+
 ---
 
 ## Rate limiting
@@ -211,12 +233,16 @@ rather than the in-memory default. It survives a deploy and would survive a
 second instance. Staff auth moves to the same strategy in its own table, which
 closes the in-memory rate-limiting item that has been open since Build 002.
 
-| Path | Window | Max |
-| --- | --- | --- |
-| `/sign-in/magic-link` | 5 minutes | 5 |
-| `/magic-link/verify` | 5 minutes | 10 |
-| `/workroom-invitation/accept` | 5 minutes | 10 |
-| everything else | 1 minute | 30 |
+| Path | Window | Max | What it is for |
+| --- | --- | --- | --- |
+| `/sign-in/magic-link` | 5 minutes | 5 | the sign-in form |
+| `/magic-link/verify` | 5 minutes | 10 | the link in the mail |
+| `/workroom-invitation/accept` | 1 minute | 60 | **flooding only** — the gate an ordinary person meets is the per-invitation budget below |
+| everything else | 1 minute | 30 | |
+
+**The acceptance row was `5 minutes / 10` and that was the wrong model.** It is
+recorded under *Security assumptions* below, because the reason matters more
+than the number: an address is not what should be charged for an invitation.
 
 Invitation creation and resend are Studio server actions behind staff
 authorization, so they are limited by having to be signed in as staff.
@@ -249,6 +275,20 @@ re-enabled; Workroom published, unpublished, archived, restored.
 | `CLIENT_AUTH_URL` | every environment that serves Workrooms | The public origin clients reach — `https://yiddiweller.com` in production, the Railway beta hostname in beta. Invitation and sign-in links are built from it, so a wrong value sends a client a link into the other environment. Not a secret. |
 
 `scripts/check-env.mjs` reports both.
+
+**The name is `CLIENT_AUTH_SECRET`, in full, and beta cost a round of
+investigation proving it.** The Railway beta variable was set as
+`CLIENT_AUTH_SECRE` — one character short — so `requireAll(["CLIENT_AUTH_SECRET"])`
+found nothing and every client acceptance failed for a reason that had nothing
+to do with invitations, tokens or limits. It was corrected in Railway beta and
+redeployed, and the real client journey succeeded immediately afterwards.
+
+Worth stating plainly because of how it presents: a missing secret is not a
+quiet default, it is a hard refusal, and it looks exactly like an application
+fault from outside. The variable names in the table above are the exact strings
+`lib/env.ts` asks for, and the only names that work. `npm run env:check` in the
+target environment is the one-command answer, and it is the first thing to run
+when a whole flow fails at once rather than for one person.
 
 ---
 
@@ -363,3 +403,50 @@ re-enabled; Workroom published, unpublished, archived, restored.
   the second half of the flow while the first half looks fine — measured while
   building the endpoint tests, when a test server on another port did exactly
   that.
+
+---
+
+## The client journey is verified on beta
+
+Exercised by hand on the real Railway beta deployment, on a real phone, during
+Build 005 Stage B acceptance. It took three code fixes and one configuration
+correction to get there, and all four are recorded rather than smoothed over.
+
+**Build 004 recorded this journey as passing on beta and that record stands.**
+What failed here was not a regression in it: a Build 004 test Contact had come
+to hold the same human's address, and beta's secret had been entered one
+character short. A journey verified once, against one state of the data, is
+verified for that state — which is the argument for
+`tests/client-invite-endpoint.test.ts` rather than for repeating the tap.
+
+| | |
+| --- | --- |
+| Invitation created in Studio and delivered | **passed** |
+| Landing page named the right person and promised entry | **passed** |
+| Acceptance succeeded and signed the client in | **passed** |
+| Workroom moved from 0 members / 1 waiting to **1 member / 0 waiting** | **passed** |
+| Studio shows **HAS ACCESS** for that Contact | **passed** |
+| Signing in again later, through the ordinary client sign-in, reaches the Workroom | **passed** |
+
+**What stood between the first attempt and that table**, in the order they were
+found:
+
+1. **The landing page promised what the acceptance refused** — an address held
+   by another Contact's identity. Fixed by checking the identity's standing in
+   all three places, and by giving `access_off` and `email_taken` their own
+   reasons. Above, under *Security assumptions*.
+2. **Nothing said which layer had refused.** Three can, and they answered alike.
+   Fixed by `workroom.invite_accept_attempted`, a distinct code per refusal, and
+   a page that tells them apart.
+3. **The limiter was keyed on the address.** Corrected to a per-invitation
+   budget with the address limit demoted to a flooding backstop.
+4. **Beta's runtime variable was `CLIENT_AUTH_SECRE`.** Corrected in Railway and
+   redeployed; see *Environment*.
+
+Only the last was a configuration fault. The first three were real defects and
+the fixes are in the code, with tests — `tests/client-invite-endpoint.test.ts`
+drives the endpoint over HTTP precisely because none of them could have been
+found from the domain layer alone.
+
+**Production repeats none of this.** The journey is verified on beta and
+unproven in production, exactly as Build 004's was.

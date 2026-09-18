@@ -269,6 +269,23 @@ file asks nothing: it is the everyday action its page exists for, its result is
 visible in the row, and *un*-sharing is the direction that now needs a
 conversation.
 
+**Verified on beta, and it was found by using the product rather than reading
+it.** Manual Stage B acceptance ran into a browser's own dialog on a real
+deployment; every occurrence was then classified — needs confirming, belongs
+inline as status, or should never have asked — and the ones that stayed were
+rebuilt on this component. Retested by hand, publishing a Presentation on beta
+now reads:
+
+```
+Publish presentation?
+One file will also be shared with the client.
+                                    [Cancel]  [Publish]
+```
+
+No browser chrome, no *Are you sure?*, and the sentence counts the files it is
+about to hand over. `tests/dialogs.test.ts` scans `app`, `components` and `lib`
+for `confirm(`, `alert(` and `prompt(` so a native one cannot return quietly.
+
 **Adding a screen means composing these.** Build 003 added seven pages and
 needed nine new classes, all of them here — no page-local CSS, no inline style,
 no one-off spacing value off the 4px scale.

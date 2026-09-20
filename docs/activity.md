@@ -80,6 +80,15 @@ written until Build 005 is built** — there is no placeholder for them:
 | `approval.requested` | *Approval was requested for Identity concepts* |
 | `approval.decided` | *Ana Alder approved Identity concepts* |
 
+**The two review kinds are written once each per round, and that is the whole
+of it.** `review.requested` when the round is first opened — a later withdrawal
+and re-request add no second line, because *your thoughts were requested* stays
+true either way and a timeline is a history rather than a status. `review.received`
+on the client's **first** note. Nothing else in a round reaches this table: not
+a second note, not a reply, not an edit, not a removal, not a resolution, not a
+reopen, not a close. A row per reply would flood a timeline built to be calm,
+and there is a test that counts.
+
 `subject` carries a File's `display_name` or a Presentation's `title` — both
 already client-facing fields, never internal ones. **`approval.decided` is one
 kind, not two**: the verb comes from the approval record, and a decline is not a

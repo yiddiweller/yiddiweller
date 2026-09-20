@@ -197,8 +197,9 @@ way.
 
 ## What Build 005 adds
 
-Planned in [`delivery.md`](./delivery.md), **not written until Build 005 is
-built**. Entity types `workroom_file`, `presentation`, `presentation_revision`,
+Planned in [`delivery.md`](./delivery.md). The file, presentation and review
+actions are **written**; the approval ones are not, because Approvals has not
+begun. Entity types `workroom_file`, `presentation`, `presentation_revision`,
 `presentation_review` and `presentation_approval`, and these actions:
 
 ```
@@ -223,6 +224,12 @@ costs no migration — `0006` added six review actions and touched neither CHECK
 `entity_type` *is* enumerated, which is why review notes are filed under
 `presentation_review` with the note's ordinal in metadata rather than earning an
 entity type of their own.
+
+**Every review action is written by `lib/db/reviews.ts`, inside the same
+transaction as the change**, so a round's state and the record of how it got
+there cannot drift apart. A test seeds a marker string into every review body
+and asserts the whole audit trail, serialised as one string, does not contain
+it.
 
 **A removed note's words never reach here.** `review.removed` carries
 `{ "note": 3 }` and nothing else — no body, no fragment, no anchor. This is the

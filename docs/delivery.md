@@ -1021,10 +1021,10 @@ above: the sweep is unscheduled and there is no per-object backup strategy.
 
 ## Reviews
 
-**Schema only. Nothing reads or writes these tables.** Migration
-`0006_reviews.sql` is applied; `lib/db/reviews.ts` does not exist, there is no
-client surface and there is no Studio surface. What follows is the model the
-schema now holds, not a description of something working.
+**Schema and domain. No surface.** Migration `0006_reviews.sql` is applied on
+beta and `lib/db/reviews.ts` holds the rules; there is no client page, no Studio
+page, no projection and no notification. **Reviews are not usable**, and what
+follows is the model the schema and the domain hold between them.
 
 **A Review is one round of client feedback on one published Revision, at the
 studio's invitation.** Not a chat, not a ticket queue, not a second Presentation
@@ -1128,8 +1128,20 @@ seconds from its start — never viewport pixels.** A phone and a desktop resolv
 to the same place, and a later overlay or side-by-side comparison stays
 possible. The database holds the cheap half — the kind is one of `point`,
 `region`, `time`, every coordinate is between 0 and 1, `t >= 0`, `t2 > t` — and
-a whitelist parser in the domain will hold the exact shape, the way every
+`parseAnchor` in `lib/db/reviews.ts` holds the exact shape, the way every
 client-safe projection is a whitelist rather than a filter.
+
+**The parser refuses rather than normalises**, so a caller never gets back a
+different anchor from the one it sent. An unknown key, an unknown kind, `NaN`,
+`Infinity`, a string where a number belongs, a coordinate outside the box, a
+viewport pixel, `t2 <= t`, a point with no `y` — each is a refusal.
+
+**And what precision can mean is decided by the viewer, not by the caller.** The
+parser is given the item's own viewer kind, resolved from the Revision item
+under review, and refuses a temporal anchor on an image, a spatial one on audio,
+a frame region on anything but video, any anchor on a PDF or a download, and any
+anchor at all on a written note — there is nothing there to point at. An anchor
+with no subject is refused before any of that.
 
 **What precision can mean is decided by the viewer, not by ambition.** `image`
 and `video` render through elements we own, so a point or a region is real.
@@ -1177,26 +1189,78 @@ which is the right amount of friction for the right rare reason.
 **Restore is refused by trigger.** `removed_at` cannot be cleared. A restore
 would make *removed* a toggle, and the other side may already have read it.
 
-### What the database holds, and what the domain will
+### What the database holds, and what the domain holds
 
 | Rule | Held by |
 | --- | --- |
 | One round per Revision | **PostgreSQL** — `UNIQUE` |
 | A note's item belongs to the reviewed Revision | **PostgreSQL** — composite FK |
 | Depth exactly one | **PostgreSQL** — composite FK on `(id, is_root)` |
-| Staff cannot author a root | **PostgreSQL** — CHECK |
+| A root admitting to be the studio's | **PostgreSQL** — CHECK |
 | A supersession is terminal and unrewritable | **PostgreSQL** — trigger |
 | No delete, no truncate, no restore | **PostgreSQL** — triggers |
 | Body immutable after fifteen minutes or after removal | **PostgreSQL** — trigger |
-| **No edit or removal once a reply exists** | **the domain**, not yet written |
-| The round must be open; the actor must be the author | **the domain**, not yet written |
-| Reopening requires the Revision to be current | **the domain**, not yet written |
-| The exact anchor shape | **the domain**, not yet written |
+| **No edit or removal once a reply exists** | `lib/db/reviews.ts`, under the round lock |
+| The round must be open; the actor must be the author | same |
+| **A studio actor cannot open a feedback item at all** | same |
+| Reopening requires the Revision to be current | same |
+| The exact anchor shape, against the item's viewer | same |
+| Active membership, read on every call | same |
 
-The last four need another row, and a per-row trigger doing child counts would
-pay for that on every write. They are named here rather than half-held by a
-CHECK, because a constraint that half-holds a relational invariant reads like
+The lower half needs another row, and a per-row trigger doing child counts would
+pay for that on every write. Each is named rather than half-held by a CHECK,
+because a constraint that half-holds a relational invariant reads like
 protection and is none.
+
+**One of them is stronger than the lock said it would be.** The CHECK refuses a
+root that says `author_side = 'studio'` — but a studio actor cast into the
+client's shape would have been stored as a client, with nobody behind it. The
+domain refuses the actor rather than the column, and a test proves the cast no
+longer works.
+
+### The round lock, and why there is only one
+
+```
+presentations  →  presentation_reviews  →  presentation_review_notes
+```
+
+Never acquired upward. **Every mutating function in `lib/db/reviews.ts` opens by
+locking the Review row**, which is the round's single serialization point: every
+mutation of a round passes through it, so a second lock on the root note would
+protect nothing the first does not — and a second lock is a second chance to
+order it wrongly, which is how deadlocks are actually born.
+
+Only two paths reach `presentations`, and both take it first: `reopenReview`,
+whose precondition is `current_revision_id`, and `publishPresentation`, which
+already held that lock before Reviews existed. A concurrent publish and a
+concurrent reopen therefore serialize instead of racing.
+
+The lock is a convention held in one module. The backstops behind it are
+structural, so a mutation written outside it fails loudly rather than corrupting
+a round quietly: the note's optimistic `version`, `UNIQUE (presentation_review_id,
+number)`, and the `0006` triggers.
+
+**Proved under real load**, in `tests/reviews-concurrency.test.ts`: two roots at
+once take two ordinals; a reply racing a removal never lands on a tombstone; an
+edit never lands after the reply it would have preceded; a withdrawn round never
+holds feedback; a superseded version is never left open; two decisions on one
+point produce one clean conflict; and a storm of every operation at once
+deadlocks nothing. Each race runs both start orders, because the first call
+started reliably takes the lock — measured, after one race went the same way six
+times out of six and left half its assertions unreached.
+
+### Publishing ends the round it replaces
+
+Inside `publishPresentation`'s own transaction, after the optimistic gate and
+before the Activity row. The outgoing Revision is re-read under the lock rather
+than taken from the row loaded before it, because a concurrent publish may have
+moved the pointer.
+
+It closes the container and touches nothing inside it: no note is resolved, no
+feedback is copied forward, no round is created for the new Revision, and
+publishing is never blocked by an open one. A round staff already closed keeps
+that reason; a withdrawn one stays withdrawn. **Publishing is the studio's answer
+to feedback, not a rewrite of what was said.**
 
 **Reviews block nothing.** A Revision can be approved with an open round, or
 reviewed and never approved. Two acts, two records.

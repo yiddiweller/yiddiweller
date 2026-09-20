@@ -8,6 +8,7 @@ import { type WorkroomFileRow } from "./files.ts";
 import { db, type Tx } from "./index.ts";
 import { uuidv7 } from "./id.ts";
 import { ok, refuse, expectUnchanged, type Outcome } from "./outcome.ts";
+import { supersedeReviewOnPublish } from "./reviews.ts";
 import {
   presentationItems,
   presentationRevisionItems,
@@ -1080,6 +1081,14 @@ export async function publishPresentation(
       const revisionId = uuidv7();
       const publishedAt = new Date();
 
+      // Which Revision this one replaces, read under the lock rather than from
+      // the row loaded before it — a concurrent publish may have moved it.
+      const [pointing] = await tx
+        .select({ currentRevisionId: presentations.currentRevisionId })
+        .from(presentations)
+        .where(eq(presentations.id, id));
+      const outgoingRevisionId = pointing?.currentRevisionId ?? null;
+
       await tx.insert(presentationRevisions).values({
         id: revisionId,
         workroomId: presentation.workroomId,
@@ -1122,6 +1131,20 @@ export async function publishPresentation(
         const conflict = expectUnchanged(0);
         if (!conflict.ok) throw new Refused(conflict as Outcome<never>);
       }
+
+      // Publishing ends the round on the version it replaces, terminally, and
+      // touches nothing inside it. Unresolved notes stay unresolved — visibly,
+      // permanently — because auto-resolving them would be the studio marking
+      // the client's points handled without saying so. A round staff already
+      // closed keeps that reason; a withdrawn one stays withdrawn.
+      await supersedeReviewOnPublish(
+        tx,
+        actor,
+        outgoingRevisionId,
+        revisionId,
+        presentation.title,
+        revisionNumber,
+      );
 
       await recordActivity(tx, presentation.workroomId, {
         kind: firstPublication ? "presentation.published" : "presentation.revised",

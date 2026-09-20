@@ -40,10 +40,11 @@ Railway beta deployment**: draft → Preview → publish Revision 1 → client
 Revision 1 → edit the private draft → client stays on Revision 1 → publish
 Revision 2 → client Revision 2 → client Previous versions → Studio's frozen
 Version 1 → unshare refused → archive refused. The record is
-`docs/delivery.md`. **Stage C — Reviews — exists at the schema level only**:
-migration `0006_reviews.sql` is applied on beta, `lib/db/reviews.ts` does not
-exist, there is no client or Studio surface, and nothing reads or writes the
-two tables. Approvals has not begun. Build 005 is **not promoted**: production has no bucket, the sweep is
+`docs/delivery.md`. **Stage C — Reviews — is schema and domain, with no
+surface**: migration `0006_reviews.sql` is applied and accepted on beta, and
+`lib/db/reviews.ts` holds the rules the database could not. There is no client
+page, no Studio page, no projection and no notification, so **Reviews are not
+usable**. Approvals has not begun. Build 005 is **not promoted**: production has no bucket, the sweep is
 unscheduled and there is no per-object backup strategy, so production remains
 Build 004.**
 These are facts about the running system, not proposals. Changing any of them is
@@ -179,6 +180,24 @@ a deliberate decision, not a cleanup.
   replies, and it can never be undone. A staff-readable "removed" comment is
   not a removal, and a second projection to make one possible is the drift
   Stage A and Stage B were both caught by.
+- **Every write to `presentation_reviews` and `presentation_review_notes` goes
+  through `lib/db/reviews.ts`, and every mutation there opens by locking the
+  Review row.** That row is the round's serialization point, so there is
+  deliberately no second lock on the root note — it would protect nothing the
+  first does not, and a second lock is a second chance to order it wrongly. The
+  order is `presentations → presentation_reviews → presentation_review_notes`
+  and is never acquired upward; only `reopenReview` and `publishPresentation`
+  reach the first, and both take it before the Review. Ordinals are allocated
+  under that lock, never from an unlocked MAX.
+- **Publishing ends the round on the version it replaces and touches nothing
+  inside it.** No note is resolved, no feedback is copied forward, no round is
+  created for the new Revision, and an open round never blocks a publish. A
+  staff closure keeps its reason and a withdrawal stays withdrawn.
+- **A type is not a guard.** The CHECK refuses a root that says
+  `author_side = 'studio'`, but a studio actor cast into the client's shape
+  would have been stored as a client with nobody behind it, so the domain
+  refuses the actor. Found by a test that expected the database to catch it and
+  watched it not.
 - **A CHECK constraint passes when its expression is NULL.** Only `false` is a
   violation, so `x IN (…)` against a NULL column makes a constraint accept what
   it was written to refuse — `0006`'s closure rule did exactly that before a

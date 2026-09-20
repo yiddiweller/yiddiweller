@@ -172,9 +172,29 @@ frozen Version 1 → unshare refused → archive refused.
   Workroom moved to 1 member / 0 waiting, Studio showed HAS ACCESS, and later
   returns went through the ordinary sign-in — the invitation stays single use.
 
-**Stage C — Reviews.** **Schema only.** Migration `0006_reviews.sql` exists and
-is applied on beta; `lib/db/reviews.ts` does not exist, and there is no client
-surface and no Studio surface. Nothing reads or writes the two tables.
+**Stage C — Reviews.** **Schema and domain. No surface, so not usable.**
+Migration `0006_reviews.sql` is applied and accepted on beta;
+`lib/db/reviews.ts` holds the round lifecycle, the notes, the anchors and the
+authorization. There is no client page, no Studio page, no projection and no
+notification.
+
+- **Every write goes through one module, and every mutation opens by locking
+  the Review row** — the round's serialization point. The order is
+  `presentations → presentation_reviews → presentation_review_notes` and is
+  never acquired upward; `reopenReview` and `publishPresentation` are the only
+  two that reach the first, and both take it before the Review.
+- **Publishing ends the round on the version it replaces, inside the publish
+  transaction**, and touches nothing inside it: no note resolved, nothing
+  copied forward, no round created for the new Revision, and an open round
+  never blocks a publish.
+- **The lock is proved under real simultaneous transactions**, not sequential
+  awaits — ten races, each run in both start orders because the first call
+  started reliably wins, which one race proved by going the same way six times
+  out of six before it was fixed.
+- **A type is not a guard**: the CHECK refuses a root that admits to being the
+  studio's, but a studio actor cast into the client's shape would have been
+  stored as a client. The domain refuses the actor. Found by a test that
+  expected the database to catch it and watched it not.
 
 - **A Revision holds one Review round, ever** — a full `UNIQUE`, not a partial
   index over open rows — and the row cannot be deleted or truncated, because a

@@ -1021,12 +1021,18 @@ above: the sweep is unscheduled and there is no per-object backup strategy.
 
 ## Reviews
 
-**Schema, domain, projection and authorization. No surface.** Migration
-`0006_reviews.sql` is applied and accepted on beta, `lib/db/reviews.ts` holds
-the rules, `lib/workrooms/review-view.ts` is the only producer of client-visible
-Review data, and both worlds have a guarded action layer. There is still no
-client page, no Studio page and no notification: **Reviews are not usable**, and
-nothing renders any of this.
+**Schema, domain, projection, authorization and, now, both surfaces.**
+Migration `0006_reviews.sql` is applied and accepted on beta, `lib/db/reviews.ts`
+holds the rules, `lib/workrooms/review-view.ts` is the only producer of
+client-visible Review data, both worlds have a guarded action layer, and
+`components/workrooms/ReviewThread.tsx` renders the round on all four routes.
+General and item-level feedback only: **precise anchor capture is stored,
+projected and not yet drawn**, and there are no notifications — telling somebody
+a round is open is still a separate decision, made by a person.
+
+**Not manually accepted on beta.** Everything below is proved by the automated
+suites and by a browser driving the real forms against a local build. The beta
+journey is the studio's to walk.
 
 **A Review is one round of client feedback on one published Revision, at the
 studio's invitation.** Not a chat, not a ticket queue, not a second Presentation
@@ -1319,9 +1325,10 @@ about history.
 | --- | --- | --- |
 | Guard | `requireStaff` | `currentViewer` |
 | Reader | `reviewForStaff(workroomId, presentationId, revision?)` | `reviewForViewer(contactId, room, presentation, revision?)` |
+| Surface reader | `reviewPanelForStaff` — projection, sidecar and lifecycle | `reviewPanelForViewer` — projection and sidecar |
 | Scope | the Presentation's own Workroom; unpublished included | membership active, Workroom and Presentation published and unarchived |
-| May | request, close, withdraw, reopen, reply, resolve, reopen a note | open a feedback item, reply, edit and remove their own, resolve and reopen their own |
-| May not | open a feedback item, edit or remove a client's words | anything about the round's lifecycle |
+| May | request, close, withdraw, reopen, reply, resolve, reopen a note, correct and take back **their own reply** | open a feedback item, reply, edit and remove their own, resolve and reopen their own |
+| May not | open a feedback item, edit or remove a **client's** words | anything about the round's lifecycle |
 
 Membership is **part of the query**, not a check after it, so a non-member's
 request never reads the round at all — the `workroomForViewer` discipline,
@@ -1350,6 +1357,132 @@ prevents side-by-side, synchronised navigation or an overlay: notes are bound to
 their own Revision, items are keyed by position, and anchors are normalised
 against the media rather than the screen. It is not built because two tabs
 already work.
+
+### The surfaces — one thread, four routes
+
+`components/workrooms/ReviewThread.tsx` renders the round, and it is the only
+thing that renders a round. Four routes use it:
+
+| Route | Reads | Writes through |
+| --- | --- | --- |
+| `/workrooms/{room}/presentations/{p}` | the current Revision's round | the client actions |
+| `/workrooms/{room}/presentations/{p}/revisions/{n}` | that Revision's round | the same, refused because closed |
+| `/studio/workrooms/{id}/presentations/{p}` | the **current** Revision's round | the staff actions |
+| `/studio/workrooms/{id}/presentations/{p}/revisions/{n}` | that Revision's round | the same |
+
+**There is no `if (isStaff)` inside it.** Not in the markup, not in the copy,
+not in the ordering. The content is a `ClientReview` — one projection, the same
+for both worlds — and every control is drawn from a capability sidecar the
+server computed. Which world is rendering shows up in exactly two places, both
+outside the content: the one `lead` sentence a page passes in, and which server
+actions it hands over. A capability that is true with no action behind it draws
+nothing, so neither is load-bearing on its own. A test scans the component for
+`isStaff`, `StaffReview` and their relatives and fails if one appears.
+
+It carries **its own stylesheet**, built from the global tokens rather than from
+Studio's `--s-*` or the Workroom's `--w-*`. A component that reached for either
+would render unstyled in the other world, and one that reached for both would be
+the fork moved into CSS. The thread therefore looks the same to both parties,
+which is what it is.
+
+### The capability sidecar — guidance, never security
+
+`lib/workrooms/review-capabilities.ts` answers *what may this person do*, as
+booleans, keyed by a note's ordinal:
+
+```
+{ comment: boolean,
+  notes: { [n]: { reply, edit, remove, resolve, reopen } } }
+```
+
+It exists because the two things a surface would otherwise have to work out for
+itself are exactly the two it cannot: **whether this person wrote that note**,
+which is a comparison against an author id the projection deliberately does not
+carry, and **whether the fifteen-minute window is still open**, which a
+browser's clock has no business answering. The author keys are read inside
+`lib/db/reviews.ts`, compared, and thrown away as `mine`; no identifier travels
+as far as this module.
+
+**It is not a permission system.** Every server action re-authorizes from
+scratch — the caller, the Workroom, the Presentation, the Revision, the round,
+the note, the window, the authorship — inside the transaction that holds the
+round's row lock. The sidecar's only job is that a control nobody may press is
+not drawn. A test presses the withheld ones anyway, against a real database, and
+asserts the domain refuses every one and that the round is byte-identical
+afterwards.
+
+**It carries booleans and nothing else**, which is why it is a second object
+rather than fields on `ClientReview`. A permission flag living inside the shape a
+removed body is kept out of gives the next person a fifty-fifty chance of adding
+the wrong kind of field to it. A leak test serialises the whole sidecar and
+asserts no identifier, no marker and no note text is anywhere in it.
+
+Its facts are derived from the same rows the projection is built from, in the
+same request, so the two can never disagree about which notes exist. A removed
+note keeps an entry with every flag false: leaving it out would make a missing
+key mean two different things.
+
+### The lifecycle — Studio's alone
+
+`lib/workrooms/review-lifecycle.ts` is the one thing Studio gets that the client
+does not:
+
+| State | Means | Offers |
+| --- | --- | --- |
+| `none` | nobody has been asked about this Revision | Ask for feedback |
+| `open` | the client may write | Close; Take the request back, while nothing is written |
+| `closed` | the studio ended it | Reopen, while this is the version the client is reading |
+| `superseded` | a newer Revision ended it | nothing — terminal in the domain and in a trigger |
+| `withdrawn` | asked, and taken back before a word | Ask again |
+
+It exists because `toClientReview` returns **null** for a withdrawn round —
+correctly, for a client, to whom a retracted request should look exactly like one
+never made. Studio still has to tell *nobody has asked* from *I asked and took it
+back*, or the same person asks twice. Rather than fork the projection, the fork
+is a separate object carrying five states, one Revision number and four
+booleans, and **not one word anybody wrote**. A test serialises it and asserts
+the same.
+
+*Take the request back* disappears permanently the moment anybody writes, a
+comment that was taken back included: the row exists, the ordinal is spent, and
+presenting an untouched round to somebody who had already used it would be a lie
+about their own Workroom. The button is absent rather than refusing.
+
+### What each world says, and when
+
+The client sees:
+
+| | |
+| --- | --- |
+| no round, or withdrawn | **nothing at all** — no heading, no empty state |
+| open | *The studio asked for your thoughts on this version.* and somewhere to write |
+| closed by the studio | the thread, read-only, and one quiet line saying so |
+| superseded | the thread, read-only, and *closed when version N was published* |
+
+Studio sees the same thread with the same words, and its administration above
+it. It is offered no way to open a feedback item — a CHECK refuses a
+studio-authored root, the domain refuses the actor, and there is no action —
+but it **can** correct and take back **its own reply**.
+
+**That last one revises Implementation C.** Those two actions were left out while
+Studio had no way to write at all: with no reply there was nothing to correct.
+Their absence once Studio can reply would mean the studio can put a sentence in
+front of a client and never take it back, while the client can take theirs back
+within fifteen minutes. The domain always allowed either side, the five
+conditions are unchanged, and `claimOwnNote` compares the author key — so they
+reach a studio reply and nothing else. Asserted against a running database
+rather than by a source scan, because *whose note is this* is not a question a
+scan can answer.
+
+### Confirmations, in two worlds
+
+Remove, resolve, request, close and withdraw each open the platform's one
+`ConfirmDialog`. It was Studio's, and a modal renders in the browser's top layer
+— outside whichever token root the page has — so it now **composes** Studio's
+token block onto itself rather than inheriting it. One line of CSS, no second
+dialog, and no copy of the values to drift. Measured in a real browser in the
+client world: 32px padding, a 1px rule at `rgba(255,255,255,.18)`, black ground,
+a 38px button, Cancel holding the focus, and Escape mutating nothing.
 
 ---
 

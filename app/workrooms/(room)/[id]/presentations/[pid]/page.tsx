@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import PresentationView from "@/components/workrooms/PresentationView";
+import ReviewPanel from "@/app/workrooms/(room)/[id]/presentations/ReviewPanel";
 import { requireViewer } from "@/lib/client-auth/guard";
 import { presentationForViewer } from "@/lib/db/presentations";
 import { workroomForViewer } from "@/lib/db/workrooms";
@@ -41,6 +42,16 @@ export default async function ClientPresentation({
       <PresentationView
         presentation={presentation}
         revisionHref={(revision) => `/workrooms/${id}/presentations/${pid}/revisions/${revision}`}
+      />
+
+      {/* Below the work, never beside it. A round is a response to something
+          that has to be read first, and a comment box competing with the piece
+          it is about is how a presentation becomes a form. */}
+      <ReviewPanel
+        viewer={{ contactId: viewer.contactId, identityId: viewer.id }}
+        room={id}
+        presentation={pid}
+        items={presentation.items}
       />
     </>
   );

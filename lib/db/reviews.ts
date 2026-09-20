@@ -20,6 +20,13 @@ import {
   type ReviewStatus,
 } from "./schema.ts";
 import { viewerKind, type ViewerKind } from "../storage/policy.ts";
+import {
+  reviewCapabilities,
+  NO_CAPABILITIES,
+  type NoteFacts,
+  type ReviewCapabilities,
+} from "../workrooms/review-capabilities.ts";
+import { reviewLifecycle, type ReviewLifecycle } from "../workrooms/review-lifecycle.ts";
 import { toClientReview, type ClientReview } from "../workrooms/review-view.ts";
 
 /**
@@ -1602,4 +1609,300 @@ export async function currentRevisionForStaff(
     .limit(1);
 
   return row?.id ?? null;
+}
+
+/* --------------------------------------------------- the surface's bundle */
+
+/**
+ * What one Review surface needs, in one place: the content, and what this
+ * person may do to it.
+ *
+ * **Two objects, deliberately, and the split is where the leak risk is.**
+ * `ClientReview` is the one content model and is unchanged by any of this;
+ * `ReviewCapabilities` is booleans only. Merging them would mean a permission
+ * flag living inside the shape a removed body is kept out of, and the next
+ * person to add a field there has a fifty-fifty chance of adding it to the one
+ * that travels with words in it.
+ *
+ * The author keys stop here. They are read below, compared, and thrown away as
+ * `mine` — no surface, either world, ever receives one.
+ */
+
+/** Who wrote each note, settled inside this module and never returned. */
+async function noteOwners(
+  reviewId: string,
+): Promise<Map<number, { userId: string | null; identityId: string | null }>> {
+  const rows = await db()
+    .select({
+      number: presentationReviewNotes.number,
+      userId: presentationReviewNotes.authorUserId,
+      identityId: presentationReviewNotes.authorIdentityId,
+    })
+    .from(presentationReviewNotes)
+    .where(eq(presentationReviewNotes.presentationReviewId, reviewId));
+
+  return new Map(rows.map((row) => [row.number, { userId: row.userId, identityId: row.identityId }]));
+}
+
+/** The identity a capability is decided against. Never the whole actor. */
+type CapabilityActor = { side: "studio"; userId: string } | { side: "client"; identityId: string };
+
+function wroteRow(
+  owner: { userId: string | null; identityId: string | null } | undefined,
+  actor: CapabilityActor,
+): boolean {
+  if (!owner) return false;
+  return actor.side === "studio"
+    ? owner.userId === actor.userId
+    : owner.identityId === actor.identityId;
+}
+
+type AuthorizedRound = {
+  reviewId: string;
+  status: ReviewStatus;
+  closedReason: ReviewClosureReason | null;
+  closedByRevisionId: string | null;
+  requestedAt: Date;
+};
+
+/**
+ * One round, projected and costed, from rows read once.
+ *
+ * The notes are fetched a single time and used for both halves, so the
+ * projection and the sidecar cannot disagree about which notes exist — a
+ * capability keyed to an ordinal the content does not contain would be a
+ * control floating over nothing.
+ */
+async function panelFor(
+  round: AuthorizedRound,
+  actor: CapabilityActor,
+  standing: boolean,
+  now: Date,
+): Promise<{ review: ClientReview | null; capabilities: ReviewCapabilities; notes: number }> {
+  const [rows, owners] = await Promise.all([reviewNotes(round.reviewId), noteOwners(round.reviewId)]);
+
+  const review = toClientReview(
+    {
+      status: round.status,
+      closedReason: round.closedReason,
+      requestedAt: round.requestedAt,
+      supersededByVersion: await supersededBy(round.closedByRevisionId),
+      canWrite: standing && round.status === "open",
+    },
+    rows,
+  );
+
+  // A withdrawn round has no content for anybody, so it has no controls for
+  // anybody either — Studio's own lifecycle object is what tells it apart.
+  if (!review) {
+    return { review: null, capabilities: NO_CAPABILITIES, notes: rows.length };
+  }
+
+  const replies = new Map<number, number>();
+  for (const row of rows) {
+    if (row.isRoot || row.parentNumber === null) continue;
+    replies.set(row.parentNumber, (replies.get(row.parentNumber) ?? 0) + 1);
+  }
+
+  const facts: NoteFacts[] = rows.map((row) => ({
+    n: row.number,
+    isRoot: row.isRoot,
+    mine: wroteRow(owners.get(row.number), actor),
+    removed: row.removedAt !== null,
+    resolved: row.resolvedAt !== null,
+    createdAt: row.createdAt,
+    replies: replies.get(row.number) ?? 0,
+  }));
+
+  return {
+    review,
+    capabilities: reviewCapabilities(
+      facts,
+      { open: round.status === "open", standing, side: actor.side },
+      now,
+    ),
+    notes: rows.length,
+  };
+}
+
+export type ClientReviewPanel = { review: ClientReview; capabilities: ReviewCapabilities };
+
+/**
+ * Everything the client's Review surface renders — or null, which is the
+ * client's whole vocabulary for *there is nothing here*.
+ *
+ * Null still covers the same four things it did in the authorized read: never
+ * asked for, withdrawn, not a Revision this person may open, and not their
+ * Workroom at all. A surface that could tell those apart would be telling
+ * somebody outside the company about the studio's administration.
+ */
+export async function reviewPanelForViewer(
+  viewer: { contactId: string; identityId: string },
+  workroomPublicId: string,
+  presentationPublicId: string,
+  revisionNumber?: number,
+  now: Date = new Date(),
+): Promise<ClientReviewPanel | null> {
+  const wanted =
+    revisionNumber === undefined
+      ? eq(presentationRevisions.id, presentations.currentRevisionId)
+      : and(
+          eq(presentationRevisions.presentationId, presentations.id),
+          eq(presentationRevisions.revisionNumber, revisionNumber),
+        );
+
+  const [row] = await db()
+    .select({
+      reviewId: presentationReviews.id,
+      status: presentationReviews.status,
+      closedReason: presentationReviews.closedReason,
+      closedByRevisionId: presentationReviews.closedByRevisionId,
+      requestedAt: presentationReviews.requestedAt,
+    })
+    .from(presentationReviews)
+    .innerJoin(
+      presentationRevisions,
+      eq(presentationRevisions.id, presentationReviews.presentationRevisionId),
+    )
+    .innerJoin(presentations, eq(presentations.id, presentationRevisions.presentationId))
+    .innerJoin(workrooms, eq(workrooms.id, presentations.workroomId))
+    .innerJoin(workroomMembers, eq(workroomMembers.workroomId, workrooms.id))
+    .where(
+      and(
+        wanted,
+        eq(workrooms.publicId, workroomPublicId),
+        eq(workrooms.status, "published"),
+        isNull(workrooms.archivedAt),
+        eq(workroomMembers.contactId, viewer.contactId),
+        eq(workroomMembers.status, "active"),
+        eq(presentations.publicId, presentationPublicId),
+        eq(presentations.status, "published"),
+        isNull(presentations.archivedAt),
+      ),
+    )
+    .limit(1);
+
+  if (!row) return null;
+
+  const panel = await panelFor(row, { side: "client", identityId: viewer.identityId }, true, now);
+  return panel.review ? { review: panel.review, capabilities: panel.capabilities } : null;
+}
+
+export type StaffReviewPanel = {
+  /** Null when no round was ever asked for, and when one was withdrawn. */
+  review: ClientReview | null;
+  capabilities: ReviewCapabilities;
+  /** The only thing Studio gets that the client does not. No content in it. */
+  lifecycle: ReviewLifecycle;
+};
+
+/**
+ * The same round, for staff — **the same projection, plus its administration**.
+ *
+ * Studio reads what the client reads, a removed note included: there is no
+ * staff path to a removed body and no second content shape to drift from the
+ * first. What Studio gets in addition is `lifecycle`, which carries five
+ * states, a Revision number and four booleans, and not one word anybody wrote.
+ *
+ * It starts from the **Revision** rather than from the round, because the state
+ * Studio most needs to see is the one where no round exists.
+ */
+export async function reviewPanelForStaff(
+  staff: { userId: string },
+  workroomId: string,
+  presentationId: string,
+  revisionNumber?: number,
+  now: Date = new Date(),
+): Promise<StaffReviewPanel> {
+  const nothing: StaffReviewPanel = {
+    review: null,
+    capabilities: NO_CAPABILITIES,
+    lifecycle: reviewLifecycle({
+      status: null,
+      closedReason: null,
+      supersededByVersion: null,
+      notes: 0,
+      current: false,
+      live: false,
+    }),
+  };
+
+  const wanted =
+    revisionNumber === undefined
+      ? eq(presentationRevisions.id, presentations.currentRevisionId)
+      : and(
+          eq(presentationRevisions.presentationId, presentations.id),
+          eq(presentationRevisions.revisionNumber, revisionNumber),
+        );
+
+  const [row] = await db()
+    .select({
+      revisionId: presentationRevisions.id,
+      currentRevisionId: presentations.currentRevisionId,
+      presentationStatus: presentations.status,
+      presentationArchivedAt: presentations.archivedAt,
+      reviewId: presentationReviews.id,
+      status: presentationReviews.status,
+      closedReason: presentationReviews.closedReason,
+      closedByRevisionId: presentationReviews.closedByRevisionId,
+      requestedAt: presentationReviews.requestedAt,
+    })
+    .from(presentationRevisions)
+    .innerJoin(presentations, eq(presentations.id, presentationRevisions.presentationId))
+    .leftJoin(
+      presentationReviews,
+      eq(presentationReviews.presentationRevisionId, presentationRevisions.id),
+    )
+    .where(
+      and(
+        wanted,
+        eq(presentations.id, presentationId),
+        eq(presentations.workroomId, workroomId),
+        isNull(presentations.archivedAt),
+      ),
+    )
+    .limit(1);
+
+  if (!row) return nothing;
+
+  const live = row.presentationStatus === "published" && row.presentationArchivedAt === null;
+  const current = row.currentRevisionId === row.revisionId;
+
+  if (!row.reviewId || !row.status) {
+    return {
+      review: null,
+      capabilities: NO_CAPABILITIES,
+      lifecycle: reviewLifecycle({
+        status: null,
+        closedReason: null,
+        supersededByVersion: null,
+        notes: 0,
+        current,
+        live,
+      }),
+    };
+  }
+
+  const round: AuthorizedRound = {
+    reviewId: row.reviewId,
+    status: row.status,
+    closedReason: row.closedReason,
+    closedByRevisionId: row.closedByRevisionId,
+    requestedAt: row.requestedAt ?? new Date(),
+  };
+
+  const panel = await panelFor(round, { side: "studio", userId: staff.userId }, true, now);
+
+  return {
+    review: panel.review,
+    capabilities: panel.capabilities,
+    lifecycle: reviewLifecycle({
+      status: row.status,
+      closedReason: row.closedReason,
+      supersededByVersion: await supersededBy(row.closedByRevisionId),
+      notes: panel.notes,
+      current,
+      live,
+    }),
+  };
 }

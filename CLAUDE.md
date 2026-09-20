@@ -40,13 +40,15 @@ Railway beta deployment**: draft → Preview → publish Revision 1 → client
 Revision 1 → edit the private draft → client stays on Revision 1 → publish
 Revision 2 → client Revision 2 → client Previous versions → Studio's frozen
 Version 1 → unshare refused → archive refused. The record is
-`docs/delivery.md`. **Stage C — Reviews — is schema, domain, projection and
-authorization, with no surface**: migration `0006_reviews.sql` is applied and
+`docs/delivery.md`. **Stage C — Reviews — now has both surfaces, and is not
+manually accepted on beta**: migration `0006_reviews.sql` is applied and
 accepted on beta, `lib/db/reviews.ts` holds the rules the database could not,
 `lib/workrooms/review-view.ts` is the only producer of client-visible Review
-data, and both worlds have a guarded action layer. There is no client page, no
-Studio page and no notification, so **Reviews are not usable** and nothing
-renders any of it. Approvals has not begun. Build 005 is **not promoted**: production has no bucket, the sweep is
+data, both worlds have a guarded action layer, and
+`components/workrooms/ReviewThread.tsx` renders the round on all four routes.
+General and item-level feedback only — precise anchors are stored and projected
+but not yet drawn — and there are **no notifications**. Approvals has not
+begun. Build 005 is **not promoted**: production has no bucket, the sweep is
 unscheduled and there is no per-object backup strategy, so production remains
 Build 004.**
 These are facts about the running system, not proposals. Changing any of them is
@@ -205,7 +207,33 @@ a deliberate decision, not a cleanup.
   does not match the vocabulary fails closed to item-level.
 - **`canWrite` is decided on the server and never recomputed by a surface.** A
   page deciding for itself would be a second authorization system, and the
-  wrong one would eventually win.
+  wrong one would eventually win. What a surface may *draw* comes from a
+  **capability sidecar** computed in the same request from the same rows —
+  booleans keyed by a note's ordinal, no words, no identifiers — because
+  *whether this person wrote that note* compares an author id the projection
+  deliberately does not carry, and *whether the fifteen minutes are still
+  running* is not a browser's clock's question. **It is guidance, not
+  security**: every action re-authorizes under the round's row lock, and a test
+  presses every control the sidecar withholds and watches the domain refuse it.
+- **One `ReviewThread`, four routes, and no `if (isStaff)` inside it.** Studio
+  renders the same `ClientReview` the client does, from the same component, with
+  its own stylesheet built from the global tokens rather than either world's.
+  The only things a page supplies are one `lead` sentence and which server
+  actions it hands over. The studio's administration — never requested, open,
+  closed, superseded, withdrawn — is a **separate lifecycle object carrying no
+  Review content at all**, because a withdrawn round projects as null to both
+  worlds and Studio still has to tell that from one nobody asked for.
+- **The studio may correct and take back its own reply, and nothing else.** This
+  revises Implementation C, which left those actions out while Studio could not
+  write at all. `claimOwnNote` compares the author key, so they reach a studio
+  reply and never a client's words — asserted against a running database, since
+  *whose note is this* is not a question a source scan can answer.
+- **There is one `ConfirmDialog` for the platform, and it now renders in the
+  client world too.** A modal lives in the browser's top layer, outside
+  whichever token root the page has, so `.dialog` **composes** Studio's token
+  block onto itself rather than inheriting it. One line of CSS, no second
+  dialog, and no copy of the values to drift — verified in a real browser in a
+  Workroom, down to the 32px padding and the 1px rule.
 - **No `version` reaches a browser.** Every Review mutation holds the round's
   row lock from read to commit, so a version from a form would add nothing the
   lock does not already give. Two simultaneous presses still each get one clean

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import PresentationView from "@/components/workrooms/PresentationView";
+import ReviewPanel from "@/app/studio/(app)/workrooms/[id]/presentations/ReviewPanel";
 import { requireStaff } from "@/lib/auth/guard";
 import { isId } from "@/lib/business";
 import { findPresentation, listRevisions, revisionForStaff } from "@/lib/db/presentations";
@@ -24,7 +25,7 @@ export default async function StudioPresentationRevision({
 }: {
   params: Promise<{ id: string; pid: string; n: string }>;
 }) {
-  await requireStaff();
+  const staff = await requireStaff();
   const { id, pid, n } = await params;
   if (!isId(id) || !isId(pid)) notFound();
   if (!/^[1-9][0-9]{0,8}$/.test(n)) notFound();
@@ -72,6 +73,17 @@ export default async function StudioPresentationRevision({
           }
         />
       </div>
+
+      {/* This version's own round, if it ever had one. A round belongs to the
+          Revision it was asked about, so an older version keeps what was said
+          about it — closed, because publishing a newer one closed it. */}
+      <ReviewPanel
+        staff={{ userId: staff.id }}
+        workroomId={room.id}
+        presentationId={presentation.id}
+        revision={number}
+        loadItems={async () => view.items}
+      />
     </>
   );
 }

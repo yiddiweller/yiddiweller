@@ -201,7 +201,15 @@
 .room:hover { opacity: 0.72; }
 
 .roomTitle { font-size: var(--w-fs-title); color: var(--w-fg); overflow-wrap: anywhere; }
-.roomMeta { margin-top: 4px; font-size: var(--w-fs-ui); color: var(--w-fg-3); }
+/* Block, because the `margin-top` beside it always assumed so and a span is
+   inline: the history list read "Version 120 Sept, 13:49" at every width until
+   a design review of the rendered page caught it. */
+.roomMeta {
+  display: block;
+  margin-top: 4px;
+  font-size: var(--w-fs-ui);
+  color: var(--w-fg-3);
+}
 
 /* -------------------------------------------------------------- entrance */
 

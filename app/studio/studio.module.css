@@ -602,6 +602,15 @@
 /* --------------------------------------------------------------- dialog */
 
 .dialog {
+  /* A confirmation is the one Studio element that renders in the *client*
+     world too: "Confirmations are ours, never the browser's" is a platform
+     rule, and there is one ConfirmDialog for the whole platform rather than a
+     second one per world. A modal is in the top layer, outside whichever
+     `.tokens` root the page has, so it carries the token block itself — by
+     composing it, not by copying it, so the two can never drift. Inside
+     Studio this is a no-op: the same values, declared one level nearer. */
+  composes: tokens;
+
   /* The global reset zeroes every margin, which takes the UA's own
      `margin: auto` with it and pins a modal dialog to the top-left corner. */
   margin: auto;

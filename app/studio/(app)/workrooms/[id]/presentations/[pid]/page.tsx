@@ -4,7 +4,8 @@ import { notFound } from "next/navigation";
 import FormDialog from "@/components/studio/FormDialog";
 import Moment from "@/components/studio/Moment";
 import RecordAction from "@/components/studio/RecordAction";
-import { currentStaff, requireStaff } from "@/lib/auth/guard";
+import ReviewPanel from "@/app/studio/(app)/workrooms/[id]/presentations/ReviewPanel";
+import { requireStaff } from "@/lib/auth/guard";
 import { isId } from "@/lib/business";
 import {
   filesToShareOnPublish,
@@ -12,6 +13,7 @@ import {
   listDraftRows,
   listRevisions,
   presentableFiles,
+  revisionForStaff,
   BODY_MAX,
   CAPTION_MAX,
   INTRO_MAX,
@@ -53,8 +55,7 @@ export default async function StudioPresentation({
 }: {
   params: Promise<{ id: string; pid: string }>;
 }) {
-  await requireStaff();
-  const staff = await currentStaff();
+  const staff = await requireStaff();
   const { id, pid } = await params;
   if (!isId(id) || !isId(pid)) notFound();
 
@@ -434,7 +435,7 @@ export default async function StudioPresentation({
             />
           ) : null}
 
-          {staff?.role === "owner" && !published ? (
+          {staff.role === "owner" && !published ? (
             <RecordAction
               action={archivePresentationAction}
               fields={{ id: presentation.id, workroomId: room.id, version }}
@@ -453,6 +454,21 @@ export default async function StudioPresentation({
           Publishing sends no email. Telling the client is a separate decision.
         </p>
       </section>
+
+      {/* The round on the version the client is reading, never on the draft.
+          Which version that is, is the database's answer rather than this
+          page's: `reviewPanelForStaff` reads `current_revision_id` itself. */}
+      <ReviewPanel
+        staff={{ userId: staff.id }}
+        workroomId={room.id}
+        presentationId={presentation.id}
+        loadItems={async () => {
+          const current = revisions.find((entry) => entry.id === presentation.currentRevisionId);
+          if (!current) return [];
+          const view = await revisionForStaff(presentation, current.revisionNumber);
+          return view?.items ?? [];
+        }}
+      />
 
       {revisions.length > 0 ? (
         <section className={styles.section}>

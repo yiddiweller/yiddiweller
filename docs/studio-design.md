@@ -242,6 +242,17 @@ as every other dialog here — so the focus trap, Escape, the inert background a
 returning focus to the trigger are the platform's rather than a reimplementation
 that quietly stops working.
 
+**It is the platform's now, not Studio's.** Build 005 gave clients things worth
+confirming — taking a comment back, saying a point is dealt with — and
+"confirmations are ours" is a rule about the whole product, so there is one
+dialog rather than one per world. A modal renders in the browser's **top
+layer**, outside whichever `.tokens` root the page has, so `.dialog` composes
+that token block onto itself instead of inheriting it. One line of CSS, no
+second component, and no copy of the values to drift; inside Studio it is a
+no-op, the same values declared one level nearer. Measured in a real browser
+inside a Workroom: 32px padding, a 1px rule at `rgba(255,255,255,.18)`, a black
+ground, a 38px button, Cancel holding the focus, and Escape mutating nothing.
+
 Three parts, and none of them generic:
 
 ```

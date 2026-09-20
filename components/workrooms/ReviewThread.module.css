@@ -1,0 +1,309 @@
+/* One conversation, rendered identically to both sides of it.
+
+   ReviewThread is the only component in the platform that a client and a
+   member of staff read on the same day about the same words, so it does not
+   borrow either world's design system. Studio's `--s-*` tokens exist on a
+   Studio root and the Workroom's `--w-*` on a Workroom root; a component that
+   reached for either would render unstyled in the other, and a component that
+   reached for both would be the `if (isStaff)` fork moved into CSS.
+
+   Everything below is composed from the *global* tokens in app/globals.css —
+   the same black, the same white at reduced opacity, the reader's own system
+   typeface — which every root on both domains already carries. The result is
+   that the thread looks the same to both parties, which is what it is.
+
+   Nothing here introduces a grey value, an accent, a shadow or a downloaded
+   font, and the only motion is opacity and a small rise. */
+
+.review {
+  --r-1: 6px;
+  --r-2: 12px;
+  --r-3: 20px;
+  --r-4: 32px;
+  --r-hit: 44px;
+  --r-control-h: 38px;
+
+  display: flex;
+  flex-direction: column;
+  gap: var(--r-3);
+  margin-top: clamp(40px, 8vw, 72px);
+  padding-top: var(--r-4);
+  border-top: 1px solid var(--rule-faint);
+}
+
+/* ------------------------------------------------------------------ head */
+
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--r-2) var(--r-3);
+}
+
+.title {
+  font-size: var(--fs-label);
+  font-weight: 400;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--w-45);
+}
+
+.count {
+  font-size: var(--fs-ui);
+  color: var(--w-45);
+}
+
+/* The one sentence that says why this is on the page. */
+.lead {
+  font-size: var(--fs-ui);
+  color: var(--w-72);
+  max-width: 62ch;
+}
+
+/* Why it is read-only. Quiet, factual, and never an apology. */
+.closed {
+  font-size: var(--fs-ui);
+  color: var(--w-45);
+  max-width: 62ch;
+}
+
+.empty {
+  font-size: var(--fs-ui);
+  color: var(--w-45);
+  max-width: 62ch;
+}
+
+/* ---------------------------------------------------------------- thread */
+
+.thread {
+  display: flex;
+  flex-direction: column;
+  gap: var(--r-4);
+  list-style: none;
+}
+
+.note {
+  display: flex;
+  flex-direction: column;
+  gap: var(--r-2);
+}
+
+.noteHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--r-1) var(--r-2);
+}
+
+.author {
+  font-size: var(--fs-ui);
+  color: var(--white);
+}
+
+.meta {
+  font-size: var(--fs-ui);
+  color: var(--w-45);
+}
+
+/* Which part of the work a point is about. A position, written out as the
+   thing in that position — "On Cover artwork", never "On item 2". */
+.subject {
+  font-size: var(--fs-ui);
+  color: var(--w-45);
+}
+
+.body {
+  font-size: 1rem;
+  line-height: 1.6;
+  color: var(--w-72);
+  /* Preserved rather than parsed. A paragraph break somebody typed reads as
+     one, and nothing anybody writes is ever treated as markup. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-width: 68ch;
+}
+
+/* A tombstone. The row is still here and says so; the words are not, for
+   anybody, and there is no second projection that would produce them. */
+.gone {
+  font-size: var(--fs-ui);
+  color: var(--w-45);
+}
+
+.flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--r-1) var(--r-2);
+  font-size: var(--fs-ui);
+  color: var(--w-45);
+}
+
+/* ---------------------------------------------------------------- replies */
+
+.replies {
+  display: flex;
+  flex-direction: column;
+  gap: var(--r-3);
+  margin-top: var(--r-1);
+  padding-left: var(--r-3);
+  border-left: 1px solid var(--rule-faint);
+  list-style: none;
+}
+
+/* --------------------------------------------------------------- controls */
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--r-2) var(--r-3);
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--r-control-h);
+  padding: 0 var(--r-3);
+  font-size: var(--fs-ui);
+  color: var(--black);
+  background: var(--white);
+  border-radius: 0;
+  cursor: pointer;
+  transition: opacity 180ms var(--ease);
+}
+.button:hover { opacity: 0.86; }
+.button:disabled { opacity: 0.45; cursor: default; }
+
+.buttonQuiet {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--r-1) 0;
+  font-size: var(--fs-ui);
+  color: var(--w-45);
+  background: none;
+  cursor: pointer;
+  transition: color 180ms var(--ease);
+}
+.buttonQuiet:hover { color: var(--white); }
+.buttonQuiet:disabled { opacity: 0.45; cursor: default; }
+
+.button:focus-visible,
+.buttonQuiet:focus-visible {
+  outline: 1px solid var(--white);
+  outline-offset: 4px;
+}
+
+/* A thumb needs a real target; the visual size does not change. */
+@media (pointer: coarse) {
+  .buttonQuiet { min-height: var(--r-hit); }
+}
+
+/* --------------------------------------------------------------- composer */
+
+.composer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--r-2);
+}
+
+/* Set against the page so a form is obviously a place to write rather than
+   more of the reading. One surface, no card, no shadow.
+
+   `flex: 1 1 100%` because a composer that opened behind a trigger is sitting
+   in the row of controls that held the trigger: without it the form is sized
+   by the flex row and a reply box ends up the width of the word Reply. */
+.composerOpen {
+  flex: 1 1 100%;
+  padding: var(--r-3);
+  border: 1px solid var(--rule-faint);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--r-1);
+}
+
+.label {
+  font-size: var(--fs-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--w-45);
+}
+
+.textarea {
+  width: 100%;
+  min-height: 92px;
+  padding: var(--r-2) 0;
+  font-size: 1rem;
+  line-height: 1.6;
+  color: var(--white);
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--w-45);
+  border-radius: 0;
+  resize: vertical;
+  transition: border-color 180ms var(--ease);
+}
+.textarea:focus { outline: none; border-bottom-color: var(--white); }
+.textarea:focus-visible { outline: 1px solid var(--white); outline-offset: 4px; }
+
+.select {
+  width: 100%;
+  min-height: var(--r-control-h);
+  padding: var(--r-1) var(--r-4) var(--r-1) 0;
+  font-size: 1rem;
+  color: var(--white);
+  background-color: var(--black);
+  border: 0;
+  border-bottom: 1px solid var(--w-45);
+  border-radius: 0;
+  /* Chromium draws its own bordered box over the underline otherwise, and
+     removing the appearance removes the chevron, so it is drawn back. */
+  appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--w-45) 50%),
+    linear-gradient(135deg, var(--w-45) 50%, transparent 50%);
+  background-position: right 7px center, right 2px center;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  transition: border-color 180ms var(--ease);
+}
+.select:focus { outline: none; border-bottom-color: var(--white); }
+.select:focus-visible { outline: 1px solid var(--white); outline-offset: 4px; }
+.select option { background: var(--black); color: var(--white); }
+
+.hint {
+  font-size: var(--fs-ui);
+  color: var(--w-45);
+}
+
+/* Always present, so a message arriving does not shift the form under the
+   thumb that is about to press the button again. */
+.status {
+  font-size: var(--fs-ui);
+  color: var(--w-45);
+  min-height: 1.4em;
+}
+
+.statusError { color: var(--white); }
+
+/* ---------------------------------------------------------------- motion */
+
+.rise {
+  animation: reviewRise 200ms var(--ease) both;
+}
+
+@keyframes reviewRise {
+  from { transform: translateY(4px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rise { animation: none; }
+  .button,
+  .buttonQuiet,
+  .textarea,
+  .select { transition: none; }
+}

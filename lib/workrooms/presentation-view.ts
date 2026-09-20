@@ -235,3 +235,37 @@ export function canonical(value: unknown): string {
 
   return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonical(v)}`).join(",")}}`;
 }
+
+/* ------------------------------------------------- naming a part of a version */
+
+/**
+ * What one block is called when something else has to refer to it.
+ *
+ * A Review note carries an item **position**, which is an integer and useless
+ * to a person. This turns it into the thing in that position, so a point reads
+ * *On Cover artwork* rather than *On item 2* — and both worlds run the same
+ * function, so the studio and the client are looking at the same name for the
+ * same block.
+ *
+ * It never reaches for an identifier and never invents one: a file item is its
+ * caption or the name the client was shown, and a note item is its heading or
+ * the opening of what it says.
+ */
+export function itemLabel(item: ClientRevisionItem): string {
+  if (item.kind === "file") return item.caption ?? item.file.name;
+  if (item.caption) return item.caption;
+
+  const opening = item.body.trim().split(/\s*\n/, 1)[0] ?? "";
+  return opening.length > 48 ? `${opening.slice(0, 47)}…` : opening || "A note in this version";
+}
+
+/** Every block a feedback point may be about, in the order they appear. */
+export function itemSubjects(items: ClientRevisionItem[]): { value: string; label: string }[] {
+  return items.map((item) => ({ value: String(item.position), label: itemLabel(item) }));
+}
+
+/** The label for one position, or null when that position is not in this version. */
+export function labelAt(items: ClientRevisionItem[], position: number): string | null {
+  const item = items.find((candidate) => candidate.position === position);
+  return item ? itemLabel(item) : null;
+}

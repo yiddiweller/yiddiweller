@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import PresentationView from "@/components/workrooms/PresentationView";
+import ReviewPanel from "@/app/workrooms/(room)/[id]/presentations/ReviewPanel";
 import { requireViewer } from "@/lib/client-auth/guard";
 import { presentationForViewer } from "@/lib/db/presentations";
 import { workroomForViewer } from "@/lib/db/workrooms";
@@ -49,6 +50,17 @@ export default async function ClientPresentationRevision({
       <PresentationView
         presentation={presentation}
         revisionHref={(other) => `/workrooms/${id}/presentations/${pid}/revisions/${other}`}
+      />
+
+      {/* The round that belonged to *this* version, with whatever was said in
+          it. Read-only, and not because history is special: publishing a newer
+          version closed it, and a closed round takes nothing from anybody. */}
+      <ReviewPanel
+        viewer={{ contactId: viewer.contactId, identityId: viewer.id }}
+        room={id}
+        presentation={pid}
+        items={presentation.items}
+        revision={revision}
       />
     </>
   );

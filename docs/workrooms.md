@@ -202,6 +202,20 @@ written for the studio, and "it is probably fine" is not a privacy model. The
 Workroom's `summary` is the field written for the client, and staff can see
 exactly what that produces before publishing.
 
+Build 005 adds Files, Presentations and — now — **Reviews** under the same rule,
+each with its own whitelist: `delivery-view.ts`, `presentation-view.ts` and
+`review-view.ts`. The Review surface is the strictest of the three. It carries
+**no database identifier at all**: a note is named by its ordinal inside a round
+the caller has already been authorized for, and a part of the work by its
+position in the Revision. A removed comment's words are returned to nobody,
+staff included. And what the page may *draw* comes from a capability sidecar of
+booleans rather than from anything the page works out for itself — the model is
+[`delivery.md`](./delivery.md).
+
+A client sees **nothing at all** — no heading, no empty state — until the studio
+asks for their thoughts on a version. A request the studio takes back looks
+exactly like one that was never made.
+
 ---
 
 ## Preview

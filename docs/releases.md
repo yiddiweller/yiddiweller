@@ -229,8 +229,35 @@ page, no Studio page and no notification, and nothing renders any of it.
 - **A CHECK passes when its expression is NULL**, and the first closure
   constraint did exactly that for the row it existed to refuse. Found by a test
   asserting against PostgreSQL rather than by reading the SQL.
-- **Stage C is not usable and has not been accepted anywhere.** Schema is not a
-  feature.
+- **Both Review surfaces are built.** One `ReviewThread`, four routes, and no
+  `if (isStaff)` inside it: Studio renders the `ClientReview` the client does,
+  from the same component, with its own stylesheet built from the global tokens
+  rather than either world's. A page supplies one sentence and a set of server
+  actions, and nothing else.
+- **What a surface may draw is a capability sidecar**, computed on the server in
+  the same request from the same rows — booleans keyed by a note's ordinal, no
+  words and no identifiers. It exists because *did this person write it* and
+  *are the fifteen minutes still running* are the two questions a page cannot
+  answer for itself. **It is guidance, not security**: a test presses every
+  control it withholds and watches the domain refuse each one, then asserts the
+  round is byte-identical afterwards.
+- **Studio's lifecycle is a separate object with no Review content in it** —
+  never requested, open, closed, superseded, withdrawn. A withdrawn round
+  projects as null to both worlds, correctly, and Studio still has to tell that
+  from one nobody asked for. *Take the request back* disappears permanently the
+  moment anybody writes, a comment that was taken back included.
+- **The studio may correct and take back its own reply**, which Implementation C
+  left out while Studio could not write at all. `claimOwnNote` compares the
+  author key, so it reaches a studio reply and never a client's words.
+- **One `ConfirmDialog` now serves both worlds.** A modal renders in the top
+  layer, outside any token root, so `.dialog` composes Studio's token block onto
+  itself. Verified in a real browser inside a Workroom.
+- **A pre-existing rendering defect was found by reviewing the rendered page**:
+  `.roomMeta` was a `<span>` carrying a `margin-top`, so *Previous versions*
+  read `Version 120 Sept, 13:49` at every width. One line of CSS.
+- **Stage C is not manually accepted on beta, and there are no notifications.**
+  Feedback is general or item-level; precise anchors are stored and projected
+  but not yet drawn.
 
 **Stage A beta acceptance.** Migration `0004` deployed and applied. `npm run
 storage:verify` was run **inside the real beta app container against the real
@@ -259,8 +286,10 @@ These are the gates between beta and production:
 - **`npm run env:check` has not been run against production for Build 005's
   variables.** Beta had `CLIENT_AUTH_SECRE` for a whole round of investigation;
   one command would have found it, and one command is the gate.
-- **Stage C Reviews is schema and nothing else**, and Approvals has not begun.
-  Neither is read or written by any code.
+- **Stage C Reviews has not been walked by hand on beta.** Everything it claims
+  is proved by the automated suites and by a browser driving the real forms
+  against a local build; neither is a substitute for the journey. Approvals has
+  not begun and is read or written by no code.
 
 The viewer and Stage B were both on this list and are no longer: the viewer was
 accepted on beta by hand — image, PDF, MP4 and video seeking — and Stage B's

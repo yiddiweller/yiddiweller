@@ -7,6 +7,8 @@ import { isId } from "@/lib/business";
 import {
   closeReview,
   currentRevisionForStaff,
+  editReviewNote,
+  removeReviewNote,
   reopenReview,
   reopenReviewNote,
   replyToReviewNote,
@@ -33,6 +35,15 @@ import { failed, fromOutcome, type ActionResult } from "@/lib/studio-result";
  * `createReviewNote` is refused by the domain and by a CHECK as well, so the
  * absence of a button is the least of the three defences rather than the only
  * one.
+ *
+ * **Correcting and taking back are here, and they were not in Implementation
+ * C.** They were left out while Studio had no way to write at all — with no
+ * reply there was nothing to correct. Now that there is, their absence would
+ * mean the studio can put a sentence in front of a client and never take it
+ * back, while the client can take theirs back within fifteen minutes. The
+ * domain always allowed either side; the five conditions are its own, the
+ * window is the same, and `claimOwnNote` compares the author key, so these
+ * reach a studio reply and nothing else.
  *
  * **There is no version in any of these forms**, and that is a decision rather
  * than an omission. Every Review mutation holds the round's row lock from its
@@ -202,4 +213,45 @@ export async function reopenReviewNoteAction(
   const outcome = await reopenReviewNote(actorFor(staff), { reviewId: round.reviewId, number });
   refreshed(round.workroomId, round.presentationId);
   return fromOutcome(outcome, "Open again.");
+}
+
+export async function editReviewNoteAction(
+  _previous: ActionResult | null,
+  form: FormData,
+): Promise<ActionResult> {
+  const staff = await requireStaff();
+
+  const round = await roundFor(form);
+  if (!round) return failed("That feedback round no longer exists.");
+
+  const number = readOrdinal(form.get("n"));
+  if (number === null) return failed("That comment is no longer there.");
+
+  const body = readBody(form.get("body"));
+  if (body === null) return failed("Write something first.");
+
+  const outcome = await editReviewNote(actorFor(staff), {
+    reviewId: round.reviewId,
+    number,
+    body,
+  });
+  refreshed(round.workroomId, round.presentationId);
+  return fromOutcome(outcome, "Corrected.");
+}
+
+export async function removeReviewNoteAction(
+  _previous: ActionResult | null,
+  form: FormData,
+): Promise<ActionResult> {
+  const staff = await requireStaff();
+
+  const round = await roundFor(form);
+  if (!round) return failed("That feedback round no longer exists.");
+
+  const number = readOrdinal(form.get("n"));
+  if (number === null) return failed("That comment is no longer there.");
+
+  const outcome = await removeReviewNote(actorFor(staff), { reviewId: round.reviewId, number });
+  refreshed(round.workroomId, round.presentationId);
+  return fromOutcome(outcome, "Taken back.");
 }

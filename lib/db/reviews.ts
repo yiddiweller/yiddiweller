@@ -1,4 +1,4 @@
-import { and, count, eq, sql } from "drizzle-orm";
+import { and, count, eq, isNull, sql } from "drizzle-orm";
 
 import { record as recordActivity } from "./activity.ts";
 import { record as recordAudit, type AuditActor } from "./audit.ts";
@@ -20,6 +20,7 @@ import {
   type ReviewStatus,
 } from "./schema.ts";
 import { viewerKind, type ViewerKind } from "../storage/policy.ts";
+import { toClientReview, type ClientReview } from "../workrooms/review-view.ts";
 
 /**
  * Reviews: one round of client feedback on one published Revision.
@@ -475,11 +476,20 @@ async function openReuse(
   return reviewId;
 }
 
-/** The studio has read enough. Reversible while this Revision is current. */
+/**
+ * The studio has read enough. Reversible while this Revision is current.
+ *
+ * `expectedVersion` is **optional throughout this module**, and omitting it is
+ * not a weakening. The round's row lock is held from the read to the commit, so
+ * the version read under it is the version the update will find; passing it is
+ * only useful to a caller that loaded the row earlier and wants to be told it
+ * has moved. The server actions do not, which is why no `version` column
+ * reaches a browser — see `docs/delivery.md`.
+ */
 export async function closeReview(
   actor: StaffActor,
   reviewId: string,
-  expectedVersion: number,
+  expectedVersion?: number,
 ): Promise<Outcome<void>> {
   return settle(
     db().transaction(async (tx): Promise<Outcome<void>> => {
@@ -498,7 +508,7 @@ export async function closeReview(
         .where(
           and(
             eq(presentationReviews.id, reviewId),
-            eq(presentationReviews.version, expectedVersion),
+            eq(presentationReviews.version, expectedVersion ?? round.version),
           ),
         )
         .returning({ id: presentationReviews.id });
@@ -529,7 +539,7 @@ export async function closeReview(
 export async function withdrawReview(
   actor: StaffActor,
   reviewId: string,
-  expectedVersion: number,
+  expectedVersion?: number,
 ): Promise<Outcome<void>> {
   return settle(
     db().transaction(async (tx): Promise<Outcome<void>> => {
@@ -557,7 +567,7 @@ export async function withdrawReview(
         .where(
           and(
             eq(presentationReviews.id, reviewId),
-            eq(presentationReviews.version, expectedVersion),
+            eq(presentationReviews.version, expectedVersion ?? round.version),
           ),
         )
         .returning({ id: presentationReviews.id });
@@ -593,7 +603,7 @@ export async function withdrawReview(
 export async function reopenReview(
   actor: StaffActor,
   reviewId: string,
-  expectedVersion: number,
+  expectedVersion?: number,
 ): Promise<Outcome<void>> {
   return settle(
     db().transaction(async (tx): Promise<Outcome<void>> => {
@@ -644,7 +654,7 @@ export async function reopenReview(
         .where(
           and(
             eq(presentationReviews.id, reviewId),
-            eq(presentationReviews.version, expectedVersion),
+            eq(presentationReviews.version, expectedVersion ?? round.version),
           ),
         )
         .returning({ id: presentationReviews.id });
@@ -1006,7 +1016,7 @@ async function claimOwnNote(
 /** Fix what you just wrote. The words only — never the subject or the author. */
 export async function editReviewNote(
   actor: ReviewActor,
-  input: { reviewId: string; number: number; body: string; expectedVersion: number },
+  input: { reviewId: string; number: number; body: string; expectedVersion?: number },
   now: Date = new Date(),
 ): Promise<Outcome<void>> {
   return settle(
@@ -1023,7 +1033,7 @@ export async function editReviewNote(
         .where(
           and(
             eq(presentationReviewNotes.id, note.id),
-            eq(presentationReviewNotes.version, input.expectedVersion),
+            eq(presentationReviewNotes.version, input.expectedVersion ?? note.version),
           ),
         )
         .returning({ id: presentationReviewNotes.id });
@@ -1054,7 +1064,7 @@ export async function editReviewNote(
  */
 export async function removeReviewNote(
   actor: ReviewActor,
-  input: { reviewId: string; number: number; expectedVersion: number },
+  input: { reviewId: string; number: number; expectedVersion?: number },
   now: Date = new Date(),
 ): Promise<Outcome<void>> {
   return settle(
@@ -1070,7 +1080,7 @@ export async function removeReviewNote(
         .where(
           and(
             eq(presentationReviewNotes.id, note.id),
-            eq(presentationReviewNotes.version, input.expectedVersion),
+            eq(presentationReviewNotes.version, input.expectedVersion ?? note.version),
           ),
         )
         .returning({ id: presentationReviewNotes.id });
@@ -1124,7 +1134,7 @@ async function claimRoot(
 /** Mark one feedback item dealt with. It hides nothing and deletes nothing. */
 export async function resolveReviewNote(
   actor: ReviewActor,
-  input: { reviewId: string; number: number; expectedVersion: number },
+  input: { reviewId: string; number: number; expectedVersion?: number },
   now: Date = new Date(),
 ): Promise<Outcome<void>> {
   return settle(
@@ -1147,7 +1157,7 @@ export async function resolveReviewNote(
         .where(
           and(
             eq(presentationReviewNotes.id, note.id),
-            eq(presentationReviewNotes.version, input.expectedVersion),
+            eq(presentationReviewNotes.version, input.expectedVersion ?? note.version),
           ),
         )
         .returning({ id: presentationReviewNotes.id });
@@ -1177,7 +1187,7 @@ export async function resolveReviewNote(
  */
 export async function reopenReviewNote(
   actor: ReviewActor,
-  input: { reviewId: string; number: number; expectedVersion: number },
+  input: { reviewId: string; number: number; expectedVersion?: number },
 ): Promise<Outcome<void>> {
   return settle(
     db().transaction(async (tx): Promise<Outcome<void>> => {
@@ -1199,7 +1209,7 @@ export async function reopenReviewNote(
         .where(
           and(
             eq(presentationReviewNotes.id, note.id),
-            eq(presentationReviewNotes.version, input.expectedVersion),
+            eq(presentationReviewNotes.version, input.expectedVersion ?? note.version),
           ),
         )
         .returning({ id: presentationReviewNotes.id });
@@ -1315,4 +1325,281 @@ export async function reviewNotes(reviewId: string): Promise<ReviewNoteRow[]> {
     .orderBy(presentationReviewNotes.number);
 
   return rows as ReviewNoteRow[];
+}
+
+/* ----------------------------------------------------- the authorized read */
+
+/**
+ * The round on one Revision, ready for a surface — or null.
+ *
+ * Null covers three different things on purpose: no round was ever asked for,
+ * the round was withdrawn, and the caller may not see this Revision at all. A
+ * surface that could tell those apart would be telling somebody outside the
+ * company about the studio's administration, or about a Workroom that is not
+ * theirs. Concealment over explanation, as everywhere else here.
+ */
+async function projected(
+  reviewId: string,
+  facts: { canWrite: boolean; supersededByVersion: number | null },
+): Promise<ClientReview | null> {
+  const [round] = await db()
+    .select({
+      status: presentationReviews.status,
+      closedReason: presentationReviews.closedReason,
+      requestedAt: presentationReviews.requestedAt,
+    })
+    .from(presentationReviews)
+    .where(eq(presentationReviews.id, reviewId))
+    .limit(1);
+
+  if (!round) return null;
+
+  return toClientReview(
+    {
+      status: round.status,
+      closedReason: round.closedReason,
+      requestedAt: round.requestedAt,
+      supersededByVersion: facts.supersededByVersion,
+      // A closed round accepts nothing from anybody, whichever world is asking.
+      canWrite: facts.canWrite && round.status === "open",
+    },
+    await reviewNotes(reviewId),
+  );
+}
+
+/** Which Revision number ended this round, when one did. Never its id. */
+async function supersededBy(closedByRevisionId: string | null): Promise<number | null> {
+  if (!closedByRevisionId) return null;
+
+  const [row] = await db()
+    .select({ number: presentationRevisions.revisionNumber })
+    .from(presentationRevisions)
+    .where(eq(presentationRevisions.id, closedByRevisionId))
+    .limit(1);
+
+  return row?.number ?? null;
+}
+
+/**
+ * One round, for one client, on one Revision of one Presentation.
+ *
+ * **Membership is part of the query, not a check after it**, the
+ * `workroomForViewer` discipline: a non-member's request never reads the round
+ * at all. Everything a client may open is joined in one go — the Workroom
+ * published and unarchived, the membership active, the Presentation published
+ * and unarchived, and the Revision belonging to that Presentation — so a wrong
+ * Workroom, a wrong Presentation and a wrong Revision all produce the same
+ * null.
+ *
+ * `revisionNumber` omitted means the current Revision. Historical Revisions are
+ * readable and never writable, which falls out of the round being closed rather
+ * than from a rule about history.
+ */
+export async function reviewForViewer(
+  contactId: string,
+  workroomPublicId: string,
+  presentationPublicId: string,
+  revisionNumber?: number,
+): Promise<ClientReview | null> {
+  const wanted =
+    revisionNumber === undefined
+      ? eq(presentationRevisions.id, presentations.currentRevisionId)
+      : and(
+          eq(presentationRevisions.presentationId, presentations.id),
+          eq(presentationRevisions.revisionNumber, revisionNumber),
+        );
+
+  const [row] = await db()
+    .select({
+      reviewId: presentationReviews.id,
+      closedByRevisionId: presentationReviews.closedByRevisionId,
+    })
+    .from(presentationReviews)
+    .innerJoin(
+      presentationRevisions,
+      eq(presentationRevisions.id, presentationReviews.presentationRevisionId),
+    )
+    .innerJoin(presentations, eq(presentations.id, presentationRevisions.presentationId))
+    .innerJoin(workrooms, eq(workrooms.id, presentations.workroomId))
+    .innerJoin(workroomMembers, eq(workroomMembers.workroomId, workrooms.id))
+    .where(
+      and(
+        wanted,
+        eq(workrooms.publicId, workroomPublicId),
+        eq(workrooms.status, "published"),
+        isNull(workrooms.archivedAt),
+        eq(workroomMembers.contactId, contactId),
+        eq(workroomMembers.status, "active"),
+        eq(presentations.publicId, presentationPublicId),
+        eq(presentations.status, "published"),
+        isNull(presentations.archivedAt),
+      ),
+    )
+    .limit(1);
+
+  if (!row) return null;
+
+  return projected(row.reviewId, {
+    canWrite: true,
+    supersededByVersion: await supersededBy(row.closedByRevisionId),
+  });
+}
+
+/**
+ * The same round, for staff — **and the same projection**.
+ *
+ * Studio reads what the client reads, including a removed note staying removed.
+ * There is no staff path to a removed body and no second shape to drift from
+ * this one; internal controls compose around it.
+ *
+ * The scope differs by one thing and one thing only: staff reach a Presentation
+ * by its own Workroom rather than by a membership, and are not stopped by it
+ * being unpublished — looking at your own unpublished work is what Studio is
+ * for. That is the same shape as `revisionForStaff`, and for the same reason.
+ */
+export async function reviewForStaff(
+  workroomId: string,
+  presentationId: string,
+  revisionNumber?: number,
+): Promise<ClientReview | null> {
+  const wanted =
+    revisionNumber === undefined
+      ? eq(presentationRevisions.id, presentations.currentRevisionId)
+      : and(
+          eq(presentationRevisions.presentationId, presentations.id),
+          eq(presentationRevisions.revisionNumber, revisionNumber),
+        );
+
+  const [row] = await db()
+    .select({
+      reviewId: presentationReviews.id,
+      closedByRevisionId: presentationReviews.closedByRevisionId,
+    })
+    .from(presentationReviews)
+    .innerJoin(
+      presentationRevisions,
+      eq(presentationRevisions.id, presentationReviews.presentationRevisionId),
+    )
+    .innerJoin(presentations, eq(presentations.id, presentationRevisions.presentationId))
+    .where(
+      and(
+        wanted,
+        eq(presentations.id, presentationId),
+        eq(presentations.workroomId, workroomId),
+        isNull(presentations.archivedAt),
+      ),
+    )
+    .limit(1);
+
+  if (!row) return null;
+
+  return projected(row.reviewId, {
+    canWrite: true,
+    supersededByVersion: await supersededBy(row.closedByRevisionId),
+  });
+}
+
+/**
+ * The round's internal id, for an authorized caller that is about to write.
+ *
+ * Separate from the projection on purpose: a surface receives `ClientReview`
+ * and never an id, while an action needs one to call the domain. The
+ * authorization is the same query, so an action cannot reach a round its
+ * reader could not have shown.
+ */
+export async function reviewIdForViewer(
+  contactId: string,
+  workroomPublicId: string,
+  presentationPublicId: string,
+  revisionNumber?: number,
+): Promise<string | null> {
+  const wanted =
+    revisionNumber === undefined
+      ? eq(presentationRevisions.id, presentations.currentRevisionId)
+      : and(
+          eq(presentationRevisions.presentationId, presentations.id),
+          eq(presentationRevisions.revisionNumber, revisionNumber),
+        );
+
+  const [row] = await db()
+    .select({ id: presentationReviews.id })
+    .from(presentationReviews)
+    .innerJoin(
+      presentationRevisions,
+      eq(presentationRevisions.id, presentationReviews.presentationRevisionId),
+    )
+    .innerJoin(presentations, eq(presentations.id, presentationRevisions.presentationId))
+    .innerJoin(workrooms, eq(workrooms.id, presentations.workroomId))
+    .innerJoin(workroomMembers, eq(workroomMembers.workroomId, workrooms.id))
+    .where(
+      and(
+        wanted,
+        eq(workrooms.publicId, workroomPublicId),
+        eq(workrooms.status, "published"),
+        isNull(workrooms.archivedAt),
+        eq(workroomMembers.contactId, contactId),
+        eq(workroomMembers.status, "active"),
+        eq(presentations.publicId, presentationPublicId),
+        eq(presentations.status, "published"),
+        isNull(presentations.archivedAt),
+      ),
+    )
+    .limit(1);
+
+  return row?.id ?? null;
+}
+
+/** The same, for staff: the round on a Revision of a Presentation they own. */
+export async function reviewIdForStaff(
+  workroomId: string,
+  presentationId: string,
+  revisionNumber?: number,
+): Promise<string | null> {
+  const wanted =
+    revisionNumber === undefined
+      ? eq(presentationRevisions.id, presentations.currentRevisionId)
+      : and(
+          eq(presentationRevisions.presentationId, presentations.id),
+          eq(presentationRevisions.revisionNumber, revisionNumber),
+        );
+
+  const [row] = await db()
+    .select({ id: presentationReviews.id })
+    .from(presentationReviews)
+    .innerJoin(
+      presentationRevisions,
+      eq(presentationRevisions.id, presentationReviews.presentationRevisionId),
+    )
+    .innerJoin(presentations, eq(presentations.id, presentationRevisions.presentationId))
+    .where(
+      and(
+        wanted,
+        eq(presentations.id, presentationId),
+        eq(presentations.workroomId, workroomId),
+        isNull(presentations.archivedAt),
+      ),
+    )
+    .limit(1);
+
+  return row?.id ?? null;
+}
+
+/** The current Revision of a Presentation staff may act on. */
+export async function currentRevisionForStaff(
+  workroomId: string,
+  presentationId: string,
+): Promise<string | null> {
+  const [row] = await db()
+    .select({ id: presentations.currentRevisionId })
+    .from(presentations)
+    .where(
+      and(
+        eq(presentations.id, presentationId),
+        eq(presentations.workroomId, workroomId),
+        isNull(presentations.archivedAt),
+      ),
+    )
+    .limit(1);
+
+  return row?.id ?? null;
 }

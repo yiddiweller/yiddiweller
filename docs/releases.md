@@ -172,11 +172,12 @@ frozen Version 1 → unshare refused → archive refused.
   Workroom moved to 1 member / 0 waiting, Studio showed HAS ACCESS, and later
   returns went through the ordinary sign-in — the invitation stays single use.
 
-**Stage C — Reviews.** **Schema and domain. No surface, so not usable.**
-Migration `0006_reviews.sql` is applied and accepted on beta;
-`lib/db/reviews.ts` holds the round lifecycle, the notes, the anchors and the
-authorization. There is no client page, no Studio page, no projection and no
-notification.
+**Stage C — Reviews.** **Schema, domain, projection and authorization. No
+surface, so not usable.** Migration `0006_reviews.sql` is applied and accepted
+on beta; `lib/db/reviews.ts` holds the round lifecycle, the notes and the
+anchors; `lib/workrooms/review-view.ts` is the only producer of client-visible
+Review data; and both worlds have a guarded action layer. There is no client
+page, no Studio page and no notification, and nothing renders any of it.
 
 - **Every write goes through one module, and every mutation opens by locking
   the Review row** — the round's serialization point. The order is
@@ -195,6 +196,16 @@ notification.
   studio's, but a studio actor cast into the client's shape would have been
   stored as a client. The domain refuses the actor. Found by a test that
   expected the database to catch it and watched it not.
+- **One projection for both worlds, and no database identifier anywhere in
+  it.** A note is named by its ordinal, an item by its position; a removed
+  note's words leave for nobody, Studio included; a withdrawn round projects as
+  null; and a stored anchor outside the vocabulary fails closed. The leak tests
+  assert against the whole serialized result rather than named fields, and
+  prove the markers were really seeded before asserting they are gone.
+- **No `version` reaches a browser**, because the round's row lock already does
+  what an optimistic check from a form would have done.
+- **Every boundary refusal is the same null** — wrong Workroom, Presentation,
+  Revision, note, membership or a withdrawn round.
 
 - **A Revision holds one Review round, ever** — a full `UNIQUE`, not a partial
   index over open rows — and the row cannot be deleted or truncated, because a

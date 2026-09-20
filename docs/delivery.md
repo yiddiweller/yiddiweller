@@ -1021,10 +1021,12 @@ above: the sweep is unscheduled and there is no per-object backup strategy.
 
 ## Reviews
 
-**Schema and domain. No surface.** Migration `0006_reviews.sql` is applied on
-beta and `lib/db/reviews.ts` holds the rules; there is no client page, no Studio
-page, no projection and no notification. **Reviews are not usable**, and what
-follows is the model the schema and the domain hold between them.
+**Schema, domain, projection and authorization. No surface.** Migration
+`0006_reviews.sql` is applied and accepted on beta, `lib/db/reviews.ts` holds
+the rules, `lib/workrooms/review-view.ts` is the only producer of client-visible
+Review data, and both worlds have a guarded action layer. There is still no
+client page, no Studio page and no notification: **Reviews are not usable**, and
+nothing renders any of this.
 
 **A Review is one round of client feedback on one published Revision, at the
 studio's invitation.** Not a chat, not a ticket queue, not a second Presentation
@@ -1261,6 +1263,84 @@ feedback is copied forward, no round is created for the new Revision, and
 publishing is never blocked by an open one. A round staff already closed keeps
 that reason; a withdrawn one stays withdrawn. **Publishing is the studio's answer
 to feedback, not a rewrite of what was said.**
+
+### One projection, for both worlds
+
+`lib/workrooms/review-view.ts` produces `ClientReview`, and **Studio renders the
+same thing the client does.** There is no `StaffReview`, no
+`InternalReviewView` and no second copy of the shape — the Stage A
+`WorkroomOverview` drift and the Stage B route defect were both a second
+representation drifting from the first, and this is the third place that lesson
+applies. Internal controls compose *around* it; they never reach inside.
+
+```
+ClientReview       { status, requestedAt, canWrite, closedNote?, notes[] }
+ClientReviewNote   { n, author, at, body?, removed, edited,
+                     anchor?, resolved, resolvedBy?, replies[] }
+ClientReviewReply  { n, author, at, body?, removed, edited }
+ClientAuthor       { name, side }
+ClientAnchor       { item, kind?, x?, y?, w?, h?, t?, t2?, region? }
+```
+
+**No database identifier appears in any of those types.** A note is named by
+`n`, its ordinal within the round; an item by `item`, its position in the
+Revision. Both are small integers scoped to something the caller has already
+been authorized for, which is what makes them safe to hand out — and it means
+there is no path from a form back to an id, because there is no id to send.
+
+**A removed note's words leave for nobody.** Not the client, not the studio, not
+an Owner. The projection drops the body, the anchor, the resolution and the
+reply affordance together, and there is no second path that carries them. The
+row keeps the text so the record is not falsified; reaching it means an Owner
+querying the database deliberately.
+
+**A withdrawn round projects as null** — to both worlds. A retracted request is
+the studio's administration and should look exactly like one nobody asked for.
+Studio learns it was withdrawn from its own surrounding controls, not from this
+shape growing a fork.
+
+**A stored anchor that does not match the Stage C vocabulary fails closed.** The
+note keeps its subject, which is a position read from a join and therefore known
+good, and loses the precision nobody can vouch for. Nothing arbitrary crosses
+the boundary: every emitted field is named in the module.
+
+### Writeability is decided on the server
+
+`canWrite` is computed from the round's state and the caller's standing, and a
+surface never recomputes it. A page that decided for itself would be a second
+authorization system, and the wrong one would eventually win. A closed round is
+false for everybody, whichever world is asking, so a historical Revision is
+read-only because its round is closed rather than because of a separate rule
+about history.
+
+### The two boundaries, and what a refusal says
+
+| | Staff | Client |
+| --- | --- | --- |
+| Guard | `requireStaff` | `currentViewer` |
+| Reader | `reviewForStaff(workroomId, presentationId, revision?)` | `reviewForViewer(contactId, room, presentation, revision?)` |
+| Scope | the Presentation's own Workroom; unpublished included | membership active, Workroom and Presentation published and unarchived |
+| May | request, close, withdraw, reopen, reply, resolve, reopen a note | open a feedback item, reply, edit and remove their own, resolve and reopen their own |
+| May not | open a feedback item, edit or remove a client's words | anything about the round's lifecycle |
+
+Membership is **part of the query**, not a check after it, so a non-member's
+request never reads the round at all — the `workroomForViewer` discipline,
+restated rather than reinvented.
+
+**Every refusal at the boundary is the same null.** A wrong Workroom, a wrong
+Presentation, a wrong Revision, a Revision with no round, a withdrawn round and
+a Contact with no membership all produce it. Concealment over explanation: a
+surface that could tell them apart would be telling somebody outside the company
+about the studio's administration, or about a Workroom that is not theirs.
+
+**No version reaches a browser, and that is a decision.** Every Review mutation
+holds the round's row lock from its first read to its commit, so the version
+read under that lock is the version the update finds; an `expectedVersion` from
+a form would add nothing the lock does not already give, and would put a raw
+database counter on a page to get it. Two people pressing *Resolve* at once
+still each get one clean answer — the second is told it is already dealt with.
+`expectedVersion` stays available to a caller that holds one, which is how the
+tests drive conflicts deliberately.
 
 **Reviews block nothing.** A Revision can be approved with an open round, or
 reviewed and never approved. Two acts, two records.

@@ -40,11 +40,13 @@ Railway beta deployment**: draft → Preview → publish Revision 1 → client
 Revision 1 → edit the private draft → client stays on Revision 1 → publish
 Revision 2 → client Revision 2 → client Previous versions → Studio's frozen
 Version 1 → unshare refused → archive refused. The record is
-`docs/delivery.md`. **Stage C — Reviews — is schema and domain, with no
-surface**: migration `0006_reviews.sql` is applied and accepted on beta, and
-`lib/db/reviews.ts` holds the rules the database could not. There is no client
-page, no Studio page, no projection and no notification, so **Reviews are not
-usable**. Approvals has not begun. Build 005 is **not promoted**: production has no bucket, the sweep is
+`docs/delivery.md`. **Stage C — Reviews — is schema, domain, projection and
+authorization, with no surface**: migration `0006_reviews.sql` is applied and
+accepted on beta, `lib/db/reviews.ts` holds the rules the database could not,
+`lib/workrooms/review-view.ts` is the only producer of client-visible Review
+data, and both worlds have a guarded action layer. There is no client page, no
+Studio page and no notification, so **Reviews are not usable** and nothing
+renders any of it. Approvals has not begun. Build 005 is **not promoted**: production has no bucket, the sweep is
 unscheduled and there is no per-object backup strategy, so production remains
 Build 004.**
 These are facts about the running system, not proposals. Changing any of them is
@@ -193,6 +195,24 @@ a deliberate decision, not a cleanup.
   inside it.** No note is resolved, no feedback is copied forward, no round is
   created for the new Revision, and an open round never blocks a publish. A
   staff closure keeps its reason and a withdrawal stays withdrawn.
+- **`lib/workrooms/review-view.ts` is the only producer of client-visible
+  Review data, and Studio renders the same `ClientReview` the client does.**
+  No `StaffReview`, no second shape, no staff path to a removed body — a
+  removal the studio can still read is not a removal. A note is named by its
+  ordinal `n` and an item by its `position`; **no database identifier is in the
+  projection at all**, which is why there is no path from a form back to an id.
+  A withdrawn round projects as null to both worlds, and a stored anchor that
+  does not match the vocabulary fails closed to item-level.
+- **`canWrite` is decided on the server and never recomputed by a surface.** A
+  page deciding for itself would be a second authorization system, and the
+  wrong one would eventually win.
+- **No `version` reaches a browser.** Every Review mutation holds the round's
+  row lock from read to commit, so a version from a form would add nothing the
+  lock does not already give. Two simultaneous presses still each get one clean
+  answer.
+- **Every Review refusal at the boundary is the same null** — wrong Workroom,
+  wrong Presentation, wrong Revision, no round, withdrawn round, no membership.
+  Concealment over explanation.
 - **A type is not a guard.** The CHECK refuses a root that says
   `author_side = 'studio'`, but a studio actor cast into the client's shape
   would have been stored as a client with nobody behind it, so the domain

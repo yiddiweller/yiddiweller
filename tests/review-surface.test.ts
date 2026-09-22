@@ -620,7 +620,10 @@ test("a point says what part of the work it is about, in words", async () => {
   assert.ok((await createReviewNote(s.ana, { reviewId, body: "This one.", itemPosition: 1 })).ok);
 
   const panel = (await reviewPanelForViewer(viewerOf(s.ana), s.room, s.presentation))!;
-  assert.deepEqual(panel.review.notes[0]!.anchor, { item: 1 });
+  // The block it is about, on the note itself — and no anchor, because nothing
+  // captured a place inside it. That separation is what beta cost us.
+  assert.equal(panel.review.notes[0]!.subject, 1);
+  assert.equal(panel.review.notes[0]!.anchor, undefined);
 
   // The fixture's Revision 2 is: 0 a note headed "One", then four captioned files.
   const items = [

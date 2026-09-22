@@ -170,6 +170,28 @@ a deliberate decision, not a cleanup.
   not a rule, and the rows that look most disposable (withdrawn, closed empty,
   never answered) are exactly the lifecycle record. A closure by a newer
   Revision is terminal and cannot be relabelled, in one write or two.
+- **A published Revision's item positions are dense — 0, 1, 2 … — and they are
+  the only positions anything uses.** A *draft*'s `position` is an ordering key
+  with gaps in it: `removeItem` does not renumber and `nextPosition` is
+  `max + 1`. The frozen snapshot used to keep those gaps while
+  `presentation_revision_items` was written densely by array index, so one block
+  had two numbers and the Review path crossed between them twice — the client's
+  subject picker sent a snapshot position and `createReviewNote` resolved a
+  relational one. Measured on beta and reproduced against a real database:
+  picking the fourth block attached the note to the fifth, and picking the last
+  block was refused outright. `presentedItems` now numbers a Revision's blocks
+  by their place in its sequence, and `readSnapshot` renumbers on the way out so
+  Revisions frozen before the fix read correctly too — immutable rows are read
+  rather than rewritten, exactly as the legacy file paths in them are.
+- **A Review note names its block with `subject`, and `anchor` says only where
+  inside it.** Item-level feedback is a comment *about* a block and carries no
+  anchor at all, which is all this build can produce; a precise anchor is
+  additional and never implies the subject. They were one shape until beta
+  found what that costs. The Stage F vocabulary is unchanged — only the
+  redundant `item` field inside a projected anchor is gone, because the note
+  already carries it and two copies of one fact eventually disagree. A block
+  that cannot be named still gets named, as `Item N`, rather than rendering
+  nothing.
 - **A Review note's anchor belongs to the exact Revision reviewed, and
   PostgreSQL proves it.** The note carries `presentation_revision_id` as well
   as `presentation_review_id`, and two composite foreign keys pivot on it — so
@@ -197,6 +219,12 @@ a deliberate decision, not a cleanup.
   inside it.** No note is resolved, no feedback is copied forward, no round is
   created for the new Revision, and an open round never blocks a publish. A
   staff closure keeps its reason and a withdrawal stays withdrawn.
+- **An `RSC: 1` request is answered with a 307, so a leak test that reads it
+  manually inspects nothing.** Build 005's first flight-payload checks did
+  exactly that and passed on an empty body for a week. The flight fetch follows
+  its redirect and every helper asserts the payload is non-empty before
+  searching it: a test looking for something that must not be there proves
+  nothing against zero bytes.
 - **`lib/workrooms/review-view.ts` is the only producer of client-visible
   Review data, and Studio renders the same `ClientReview` the client does.**
   No `StaffReview`, no second shape, no staff path to a removed body — a

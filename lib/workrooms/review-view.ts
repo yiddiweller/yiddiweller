@@ -38,24 +38,27 @@ export type ClientAuthor = {
 };
 
 /**
- * Where a note points, in the media's own coordinates.
+ * Where **inside** a block a point was made — and nothing about which block.
  *
- * `item` is the Revision item's **position**, never its id. Fractions are of the
- * media's own intrinsic box and seconds are from its start, so a phone and a
- * desktop resolve to the same place.
+ * **Precision only.** Which block a note is about is `subject`, a position on
+ * the note itself; this says where inside it, and exists only when somebody
+ * captured that. The two were one shape until beta found what that costs: a
+ * comment *about* a block is not an annotation *on* a point in it, and folding
+ * them together made the block's identity something you had to reach through an
+ * anchor to find. A note can have a subject and no anchor — that is ordinary
+ * item-level feedback, and it is the common case.
+ *
+ * Fractions are of the media's own intrinsic box and seconds are from its
+ * start, so a phone and a desktop resolve to the same place. This is the Stage
+ * C vocabulary unchanged; only the redundant `item` field is gone, because the
+ * note already carries it and two copies of one fact eventually disagree.
  */
 export type ClientAnchor =
-  | { item: number }
-  | { item: number; kind: "point"; x: number; y: number }
-  | { item: number; kind: "region"; x: number; y: number; w: number; h: number }
-  | { item: number; kind: "time"; t: number }
-  | { item: number; kind: "time"; t: number; t2: number }
-  | {
-      item: number;
-      kind: "time";
-      t: number;
-      region: { x: number; y: number; w: number; h: number };
-    };
+  | { kind: "point"; x: number; y: number }
+  | { kind: "region"; x: number; y: number; w: number; h: number }
+  | { kind: "time"; t: number }
+  | { kind: "time"; t: number; t2: number }
+  | { kind: "time"; t: number; region: { x: number; y: number; w: number; h: number } };
 
 export type ClientReviewReply = {
   n: number;
@@ -68,7 +71,21 @@ export type ClientReviewReply = {
 };
 
 export type ClientReviewNote = ClientReviewReply & {
-  /** Absent when the note is general to the Revision, or when it was removed. */
+  /**
+   * Which block of the Revision this is about, by its **position** in the
+   * sequence — never its id. Absent when the point is general to the version,
+   * and absent once the note is removed.
+   *
+   * A Revision's positions are dense: 0, 1, 2 … with nothing missing, matching
+   * both the frozen snapshot and `presentation_revision_items`. Beta found them
+   * disagreeing, which is why that is written down here as well as there.
+   */
+  subject?: number;
+  /**
+   * Where inside that block, when somebody said. Absent for ordinary
+   * item-level feedback, which is most of it, and absent when removed.
+   * Never present without a `subject`.
+   */
   anchor?: ClientAnchor;
   resolved: boolean;
   /** Present only while resolved and not removed. */
@@ -106,57 +123,48 @@ function box(value: unknown): { x: number; y: number; w: number; h: number } | n
 }
 
 /**
- * The stored anchor, projected — **and it fails closed.**
+ * The stored anchor, projected — **and it fails closed to nothing.**
  *
  * `parseAnchor` in the domain is what stops a malformed anchor being stored, so
  * anything that reaches here and does not match the Stage C vocabulary exactly
  * got in some other way. It is not passed through and it is not repaired: the
- * note keeps its subject, which is a `position` read from a join and therefore
- * known good, and loses the precision nobody can vouch for.
+ * note keeps its `subject`, which is a position read from a join and therefore
+ * known good, and loses only the precision nobody can vouch for. Losing an
+ * anchor costs a note its pin; it never costs the note the block it is about.
  *
  * Nothing arbitrary crosses this boundary. Every field emitted is named here.
  */
-export function toClientAnchor(
-  itemPosition: number | null,
-  stored: unknown,
-): ClientAnchor | undefined {
-  if (itemPosition === null) return undefined;
-
-  const item: ClientAnchor = { item: itemPosition };
-  if (stored === null || stored === undefined) return item;
-  if (typeof stored !== "object" || Array.isArray(stored)) return item;
+export function toClientAnchor(stored: unknown): ClientAnchor | undefined {
+  if (stored === null || stored === undefined) return undefined;
+  if (typeof stored !== "object" || Array.isArray(stored)) return undefined;
 
   const raw = stored as Record<string, unknown>;
 
   if (raw.kind === "point") {
-    return FRACTION(raw.x) && FRACTION(raw.y)
-      ? { item: itemPosition, kind: "point", x: raw.x, y: raw.y }
-      : item;
+    return FRACTION(raw.x) && FRACTION(raw.y) ? { kind: "point", x: raw.x, y: raw.y } : undefined;
   }
 
   if (raw.kind === "region") {
     const region = box(raw);
-    return region ? { item: itemPosition, kind: "region", ...region } : item;
+    return region ? { kind: "region", ...region } : undefined;
   }
 
   if (raw.kind === "time") {
-    if (!SECONDS(raw.t)) return item;
+    if (!SECONDS(raw.t)) return undefined;
 
     if (raw.t2 !== undefined) {
-      return SECONDS(raw.t2) && raw.t2 > raw.t
-        ? { item: itemPosition, kind: "time", t: raw.t, t2: raw.t2 }
-        : item;
+      return SECONDS(raw.t2) && raw.t2 > raw.t ? { kind: "time", t: raw.t, t2: raw.t2 } : undefined;
     }
 
     if (raw.region !== undefined) {
       const region = box(raw.region);
-      return region ? { item: itemPosition, kind: "time", t: raw.t, region } : item;
+      return region ? { kind: "time", t: raw.t, region } : undefined;
     }
 
-    return { item: itemPosition, kind: "time", t: raw.t };
+    return { kind: "time", t: raw.t };
   }
 
-  return item;
+  return undefined;
 }
 
 /* -------------------------------------------------------------- the notes */
@@ -194,11 +202,17 @@ function toNote(row: ReviewNoteRow, replies: ReviewNoteRow[]): ClientReviewNote 
     return { ...base, resolved: false, replies: replies.map(toReply) };
   }
 
-  const anchor = toClientAnchor(row.itemPosition, row.anchor);
+  // The subject stands on its own. Precision is read separately and only where
+  // there is a subject to be precise about — "say which part of the work this
+  // is about" is the domain's rule, and this is the projection agreeing with it
+  // rather than inferring the subject back out of the anchor.
+  const subject = row.itemPosition;
+  const anchor = subject === null ? undefined : toClientAnchor(row.anchor);
   const resolved = row.resolvedAt !== null;
 
   return {
     ...base,
+    ...(subject === null ? {} : { subject }),
     ...(anchor ? { anchor } : {}),
     resolved,
     ...(resolved && row.resolvedByName && row.resolvedBySide

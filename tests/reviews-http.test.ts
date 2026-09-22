@@ -47,6 +47,10 @@ const skip = configured
 /** Seeded as the body of a note that was then taken back. */
 const REMOVED = "MARKER-REMOVED-BODY-HTTP";
 
+/** The block one seeded point is about, and the line that must say so. */
+const SUBJECT = "Primary identity direction";
+const LOCATOR = `On ${SUBJECT}`;
+
 /** Anything shaped like a database identifier is a leak on a client surface. */
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 
@@ -61,7 +65,12 @@ async function get(path: string, cookie?: string, rsc = false) {
       // body for the same route, and only one of the two has ever been read.
       ...(rsc ? { RSC: "1" } : {}),
     },
-    redirect: "manual",
+    // **Followed for the flight, and only for it.** An `RSC: 1` request is
+    // answered with a 307 to the same path plus `?_rsc`, so reading it
+    // manually gets a zero-byte body — which is a leak test that passes by
+    // inspecting nothing. The document's redirects are the subject of other
+    // tests here and stay manual.
+    redirect: rsc ? "follow" : "manual",
   });
   return {
     status: response.status,
@@ -70,9 +79,19 @@ async function get(path: string, cookie?: string, rsc = false) {
   };
 }
 
-/** Markup and flight payload together. One check, both bodies. */
+/**
+ * Markup and flight payload together. One check, both bodies.
+ *
+ * The flight body is asserted non-empty before it is searched: everything below
+ * looks for something that must **not** be there, and an empty string satisfies
+ * that without proving anything.
+ */
 async function whole(path: string, cookie?: string): Promise<string> {
   const [document, flight] = await Promise.all([get(path, cookie), get(path, cookie, true)]);
+  assert.ok(
+    flight.body.length > 500,
+    `the flight payload for ${path} came back empty, so nothing was inspected`,
+  );
   return `${document.body}\n${flight.body}`;
 }
 
@@ -135,6 +154,41 @@ test("a removed body is in neither world's response, markup or flight", { skip }
     assert.ok(!body.includes(REMOVED), `${world} can read a removed comment`);
     assert.match(body, /This was taken back/, `${world} does not show that one was removed`);
   }
+});
+
+test("a point about a block says which block, in both worlds", { skip }, async () => {
+  // The defect beta found. It survived every in-process test because both
+  // halves of it were the number 1 — so this reads the page, in both worlds,
+  // and looks for the words a person would look for.
+  for (const [world, path, cookie] of [
+    ["the client", clientPath, clientA],
+    ["Studio", studioPath, staff],
+  ] as const) {
+    const page = await get(path, cookie);
+    assert.equal(page.status, 200, `${world} could not open the page`);
+    assert.ok(page.body.includes(LOCATOR), `${world} does not say what the point is about`);
+
+    // And in the flight payload too, because that is where the projection
+    // travels as data rather than as text.
+    const flight = await get(path, cookie, true);
+    assert.ok(
+      flight.body.includes(SUBJECT),
+      `${world}'s RSC payload carries no subject for the point`,
+    );
+  }
+});
+
+test("a general point says nothing about a block", { skip }, async () => {
+  const body = await whole(clientPath, clientA);
+
+  // One locator on the page, for the one point that has a subject — not one
+  // per note, and not none.
+  const locators = body.match(new RegExp(`On ${SUBJECT}`, "g")) ?? [];
+  assert.ok(locators.length > 0, "the item-level point lost its locator");
+  assert.ok(
+    !body.includes("On undefined") && !body.includes("Item NaN"),
+    "a general point was given a locator anyway",
+  );
 });
 
 test("no database identifier reaches a client page", { skip }, async () => {

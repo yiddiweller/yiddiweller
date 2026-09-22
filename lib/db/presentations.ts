@@ -22,6 +22,7 @@ import {
 } from "./schema.ts";
 import {
   canonical,
+  presentedItems,
   toClientPresentationView,
   toPresentationContent,
   type ClientPresentation,
@@ -251,7 +252,20 @@ function readSnapshot(value: unknown): PresentationContent {
   return {
     title: typeof snapshot?.title === "string" ? snapshot.title : "",
     intro: typeof snapshot?.intro === "string" ? snapshot.intro : "",
-    items: items.map(readSnapshotItem).filter((item): item is PresentedItem => item !== null),
+    // **Renumbered on the way out, and that is a repair.** Revisions frozen
+    // before `presentedItems` existed carry the draft's own ordering key, which
+    // has gaps in it, while `presentation_revision_items` has always been
+    // written densely by index — so the same block had two different numbers
+    // depending on which table you asked, and a Review note named by one was
+    // resolved against the other. The rows are immutable and are read rather
+    // than rewritten, exactly as the frozen file paths above are. The order is
+    // untouched, so nothing about what the client was shown changes; only the
+    // label on each place in it does, and it now agrees with the relational
+    // items it has always been in step with.
+    items: items
+      .map(readSnapshotItem)
+      .filter((item): item is PresentedItem => item !== null)
+      .map((item, position) => ({ ...item, position })),
   };
 }
 
@@ -1069,7 +1083,16 @@ export async function publishPresentation(
         displayNameSnapshot: item.file?.id ? item.file.displayName : null,
       }));
 
-      const content = toPresentationContent(presentation, presentable);
+      // One list, both halves. `presentedItems` drops what cannot be projected
+      // and numbers what survives, so the snapshot's positions and the
+      // relational items' positions are the same numbers by construction
+      // rather than by two functions happening to agree.
+      const kept = presentedItems(presentable);
+      const content = {
+        title: presentation.title,
+        intro: presentation.intro,
+        items: kept.map((entry) => entry.presented),
+      };
       const hash = contentHash(content);
 
       const [highest] = await tx
@@ -1102,16 +1125,22 @@ export async function publishPresentation(
       });
 
       await tx.insert(presentationRevisionItems).values(
-        content.items.map((item, index) => ({
+        kept.map(({ source, presented }) => ({
           id: uuidv7(),
           workroomId: presentation.workroomId,
           presentationRevisionId: revisionId,
-          position: index,
-          kind: item.kind,
-          fileId: item.kind === "file" ? (presentable.find((p) => p.position === item.position)?.file?.id ?? null) : null,
-          displayNameSnapshot: item.kind === "file" ? item.file.name : null,
-          caption: item.caption,
-          body: item.kind === "note" ? item.body : null,
+          // The projected item's own number, which `presentedItems` already
+          // made its place in the sequence. Taking it from here rather than
+          // from a second `map` index is what keeps the two tables in step
+          // even if the projection ever drops something.
+          position: presented.position,
+          kind: presented.kind,
+          // The draft row this came from, carried alongside rather than looked
+          // up again by a number whose meaning has just changed.
+          fileId: presented.kind === "file" ? (source.file?.id ?? null) : null,
+          displayNameSnapshot: presented.kind === "file" ? presented.file.name : null,
+          caption: presented.caption,
+          body: presented.kind === "note" ? presented.body : null,
         })),
       );
 

@@ -311,17 +311,25 @@ test("every anchor the vocabulary allows survives the round trip, by position", 
   assert.ok((await createReviewNote(s.ana, { reviewId: id, body: "In general." })).ok);
 
   const review = await reviewForViewer(s.ana.contactId, s.room, s.presentation);
+
+  // The block is the note's own `subject`; the anchor says only where inside
+  // it. Item-level feedback with no precision carries a subject and no anchor,
+  // which is the common case and the one beta lost.
+  assert.deepEqual(
+    review!.notes.map((n) => n.subject),
+    [1, 1, 2, 2, 2, 3, 3, 4, undefined],
+  );
   assert.deepEqual(
     review!.notes.map((n) => n.anchor),
     [
-      { item: 1, kind: "point", x: 0.42, y: 0.18 },
-      { item: 1, kind: "region", x: 0.1, y: 0.2, w: 0.3, h: 0.4 },
-      { item: 2, kind: "time", t: 42.5 },
-      { item: 2, kind: "time", t: 10, t2: 20 },
-      { item: 2, kind: "time", t: 5, region: { x: 0.1, y: 0.1, w: 0.2, h: 0.2 } },
-      { item: 3, kind: "time", t: 3 },
-      { item: 3, kind: "time", t: 3, t2: 9 },
-      { item: 4 },
+      { kind: "point", x: 0.42, y: 0.18 },
+      { kind: "region", x: 0.1, y: 0.2, w: 0.3, h: 0.4 },
+      { kind: "time", t: 42.5 },
+      { kind: "time", t: 10, t2: 20 },
+      { kind: "time", t: 5, region: { x: 0.1, y: 0.1, w: 0.2, h: 0.2 } },
+      { kind: "time", t: 3 },
+      { kind: "time", t: 3, t2: 9 },
+      undefined,
       undefined,
     ],
   );
@@ -347,13 +355,18 @@ test("a stored anchor that should not exist fails closed rather than passing thr
     "point",
     42,
   ]) {
-    const projected = toClientAnchor(2, stored);
-    assert.deepEqual(projected, { item: 2 }, `passed through: ${JSON.stringify(stored)}`);
+    assert.equal(toClientAnchor(stored), undefined, `passed through: ${JSON.stringify(stored)}`);
   }
 
-  // And an unanchored note has no anchor at all rather than an empty one.
-  assert.equal(toClientAnchor(null, null), undefined);
-  assert.equal(toClientAnchor(null, { kind: "point", x: 0.1, y: 0.2 }), undefined);
+  // Losing an anchor costs a note its pin and never the block it is about:
+  // `subject` is read from a join rather than from this column, so it survives
+  // anything that happens here.
+  assert.equal(toClientAnchor(null), undefined);
+  assert.deepEqual(toClientAnchor({ kind: "point", x: 0.1, y: 0.2 }), {
+    kind: "point",
+    x: 0.1,
+    y: 0.2,
+  });
 });
 
 test("the projection orders a round for itself, whatever order the rows arrive in", () => {

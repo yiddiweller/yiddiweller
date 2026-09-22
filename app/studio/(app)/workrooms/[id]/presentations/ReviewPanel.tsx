@@ -199,8 +199,12 @@ export default async function ReviewPanel({
   const panel = await reviewPanelForStaff(staff, workroomId, presentationId, revision);
   const fields = { workroomId, presentationId, ...(revision === undefined ? {} : { revision }) };
 
-  const anchored = panel.review?.notes.some((note) => note.anchor !== undefined) ?? false;
-  const items = anchored ? await loadItems() : [];
+  // The subject, not the anchor: a point about a block is the ordinary case and
+  // usually carries no precise anchor at all. Gating the labels on an anchor
+  // would mean the blocks stayed nameless for exactly the feedback this build
+  // can produce.
+  const aboutABlock = panel.review?.notes.some((note) => note.subject !== undefined) ?? false;
+  const items = aboutABlock ? await loadItems() : [];
 
   return (
     /* Unnamed on purpose when the thread is here: `ReviewThread` is a labelled

@@ -147,6 +147,37 @@ function toPresented(item: PresentableItem): PresentedItem | null {
 }
 
 /**
+ * The items that survive projection, each still holding the draft row it came
+ * from.
+ *
+ * Publishing needs both halves: the projected item goes into the snapshot, and
+ * the draft row behind it carries the File id the relational item must point
+ * at. Pairing them here is what lets **one** filtered list feed both, so the
+ * snapshot and `presentation_revision_items` can never disagree about which
+ * blocks a Revision has or what order they are in.
+ */
+export function presentedItems(
+  items: PresentableItem[],
+): { source: PresentableItem; presented: PresentedItem }[] {
+  const kept: { source: PresentableItem; presented: PresentedItem }[] = [];
+
+  for (const source of items) {
+    const presented = toPresented(source);
+    // **Renumbered to its place in the sequence, deliberately.** A draft's
+    // `position` is an ordering key with gaps in it — `removeItem` does not
+    // renumber and `nextPosition` is max + 1 — while a Revision's items are
+    // written densely, by index. Carrying the draft's number into the frozen
+    // content left two different meanings for the word `position` in one
+    // system, and everything downstream had to guess which one it held. A
+    // published Revision is a finished sequence, so its positions are that
+    // sequence: 0, 1, 2 … with nothing missing.
+    if (presented) kept.push({ source, presented: { ...presented, position: kept.length } });
+  }
+
+  return kept;
+}
+
+/**
  * The frozen content of a Presentation — the thing that is hashed and stored.
  *
  * Items arrive already ordered by the caller's query; this preserves that order
@@ -157,17 +188,10 @@ export function toPresentationContent(
   presentation: { title: string; intro: string },
   items: PresentableItem[],
 ): PresentationContent {
-  const projected: PresentedItem[] = [];
-
-  for (const item of items) {
-    const safe = toPresented(item);
-    if (safe) projected.push(safe);
-  }
-
   return {
     title: presentation.title,
     intro: presentation.intro,
-    items: projected,
+    items: presentedItems(items).map((entry) => entry.presented),
   };
 }
 
@@ -252,8 +276,11 @@ export function canonical(value: unknown): string {
  * the opening of what it says.
  */
 export function itemLabel(item: ClientRevisionItem): string {
-  if (item.kind === "file") return item.caption ?? item.file.name;
-  if (item.caption) return item.caption;
+  // `caption?.trim() ||`, not `caption ??`: a stored empty string is not a
+  // caption, and `??` would hand back "" — which every caller treats as
+  // falsy and renders as nothing at all.
+  if (item.kind === "file") return item.caption?.trim() || item.file.name;
+  if (item.caption?.trim()) return item.caption.trim();
 
   const opening = item.body.trim().split(/\s*\n/, 1)[0] ?? "";
   return opening.length > 48 ? `${opening.slice(0, 47)}…` : opening || "A note in this version";

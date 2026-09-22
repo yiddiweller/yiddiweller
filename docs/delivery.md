@@ -1358,6 +1358,76 @@ their own Revision, items are keyed by position, and anchors are normalised
 against the media rather than the screen. It is not built because two tabs
 already work.
 
+### One number for a block, and the beta defect that needed it
+
+A **draft**'s `position` is an ordering key. `removeItem` does not renumber —
+"positions may hold gaps after a removal, and the only thing anything reads is
+their order" — and `nextPosition` is `max + 1`. So the first time somebody drops
+a block, a draft reads `0, 2, 3, 4`.
+
+A **Revision**'s items were written densely, by array index: `0, 1, 2, 3`. The
+frozen snapshot kept the draft's numbers. One block therefore had two numbers,
+and the Review path crossed between them twice:
+
+| Step | Which number |
+| --- | --- |
+| the client's subject picker | a snapshot position |
+| `createReviewNote`'s lookup | a `presentation_revision_items.position` |
+| the reader | a `presentation_revision_items.position` |
+| `labelAt` | a snapshot position |
+
+Reproduced against a real database, through the real form, before the fix:
+picking **Full identity presentation** attached the note to **Master artwork,
+for your archive**, and picking the last block was refused outright with *That
+part of the work is not in this version.* Neither is visible from inside the
+domain, and neither shows up on a draft nobody has edited — which is why every
+test passed and beta did not.
+
+**A published Revision is a finished sequence, so its positions are that
+sequence.** `presentedItems` numbers the blocks that survive projection by their
+place in it, and hands publish the source row beside each one so the snapshot
+and `presentation_revision_items` are filled from a single filtered list rather
+than by two functions happening to agree. `readSnapshot` renumbers on the way
+out, which repairs every Revision frozen before this: the rows are immutable and
+are **read** rather than rewritten, exactly as the legacy file paths inside them
+already are. The order is untouched, so nothing about what a client was shown
+changes — only the label on each place in it, and it now agrees with the
+relational items it has always been in step with.
+
+The stored `content_hash` is not recomputed from a read snapshot anywhere, so
+nothing that was published keeps a different answer to *is this the same work
+the client saw?*
+
+### Subject and anchor are two things
+
+`ClientReviewNote` carries them separately:
+
+```
+subject?: number      which block, by its position in the Revision
+anchor?:  ClientAnchor   where inside that block, when somebody said
+```
+
+**Item-level feedback is a comment about a block and carries no anchor at all**,
+which is the whole of what this build can produce. A precise anchor is
+additional, never implied, and never present without a subject — "say which part
+of the work this is about" is the domain's rule and this is the projection
+agreeing with it rather than inferring the subject back out of an anchor.
+
+They were one shape, where `{ item: 2 }` meant *item-level* and
+`{ item: 2, kind: "point", … }` meant *precise*. That works until somebody
+writes a guard on the anchor and silently takes the block's identity with it —
+and it made the common case look like a degenerate annotation rather than the
+ordinary thing it is. The Stage F vocabulary is unchanged; only the redundant
+`item` inside a projected anchor is gone, because the note already carries it.
+
+A malformed stored anchor still fails closed, and now fails closed to **nothing**
+rather than to an item: losing an anchor costs a note its pin and never the
+block it is about.
+
+A block that cannot be named — a position this Revision has nothing at — renders
+as `Item N` rather than as silence. Beta's defect was a locator that simply was
+not drawn, and a fallback is cheaper than finding that out twice.
+
 ### The surfaces — one thread, four routes
 
 `components/workrooms/ReviewThread.tsx` renders the round, and it is the only

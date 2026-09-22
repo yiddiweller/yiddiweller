@@ -102,7 +102,11 @@ export default function ReviewThread({
   fields: Record<string, string | number>;
   /** The parts of the work a new point may be about. Absent where none may be opened. */
   subjects?: ReviewSubject[];
-  /** What the item at this position is called, so a note says what it is about. */
+  /**
+   * What the block at this position is called, so a note says what it is
+   * about. Null when this Revision has nothing at that position, which the
+   * thread turns into `Item N` rather than into silence.
+   */
   itemLabel: (position: number) => string | null;
   /** The one sentence above the thread. The only copy either world supplies. */
   lead: string;
@@ -174,14 +178,27 @@ export default function ReviewThread({
 
   const Note = ({ note }: { note: ClientReviewNote }) => {
     const can = controlsFor(note.n);
-    const subject = note.anchor ? itemLabel(note.anchor.item) : null;
+
+    // **The subject alone decides whether there is a locator**, never the
+    // precise anchor beside it: item-level feedback is a comment about a block,
+    // and most of it will never carry a pin. And a block that cannot be named
+    // still gets named — falling back to its place in the sequence rather than
+    // silently dropping the one line that says what the point is about, which
+    // is exactly what beta caught.
+    const named = note.subject === undefined ? null : itemLabel(note.subject);
+    const subject =
+      note.subject === undefined ? null : (named ?? `Item ${note.subject + 1}`);
 
     return (
       <li className={styles.note}>
         <div className={styles.noteHead}>
           <Who author={note.author} />
           <Moment className={styles.meta} iso={note.at.toISOString()} />
-          {subject ? <span className={styles.subject}>On {subject}</span> : null}
+          {/* One text node, not `On {subject}`: React splits an interpolation
+              with its own comment marker, which leaves the sentence in two
+              pieces for anything reading the response — a test, a screen
+              reader announcing it, somebody copying the line. */}
+          {subject ? <span className={styles.subject}>{`On ${subject}`}</span> : null}
           {note.edited ? <span className={styles.meta}>Corrected</span> : null}
         </div>
 

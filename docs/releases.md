@@ -255,6 +255,24 @@ page, no Studio page and no notification, and nothing renders any of it.
 - **A pre-existing rendering defect was found by reviewing the rendered page**:
   `.roomMeta` was a `<span>` carrying a `margin-top`, so *Previous versions*
   read `Version 120 Sept, 13:49` at every width. One line of CSS.
+- **Manual beta acceptance found the item locator missing, and the cause was
+  two position spaces.** A draft's `position` is an ordering key with gaps in
+  it; a Revision's items were written densely by array index while the frozen
+  snapshot kept the draft's numbers. The client's subject picker sent one and
+  `createReviewNote` resolved the other. Reproduced through the real form
+  against a real database: picking the fourth block attached the note to the
+  fifth, and picking the last block was refused outright. A published Revision
+  now numbers its blocks by their place in its own sequence, and `readSnapshot`
+  renumbers on the way out so Revisions frozen before the fix read correctly —
+  immutable rows read rather than rewritten.
+- **A note's block and a note's precision are two fields now.** `subject` says
+  which block; `anchor` says where inside it and is absent for all of the
+  feedback this build can produce. A block that cannot be named renders as
+  `Item N` rather than as nothing.
+- **A second test defect fell out of it**: an `RSC: 1` request is answered with
+  a 307, so the flight half of the leak tests had been reading a zero-byte body.
+  It follows the redirect now and asserts the payload is non-empty before
+  searching it.
 - **Stage C is not manually accepted on beta, and there are no notifications.**
   Feedback is general or item-level; precise anchors are stored and projected
   but not yet drawn.

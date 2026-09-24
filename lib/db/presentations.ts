@@ -7,7 +7,7 @@ import { record as recordAudit, type AuditActor } from "./audit.ts";
 import { type WorkroomFileRow } from "./files.ts";
 import { db, type Tx } from "./index.ts";
 import { uuidv7 } from "./id.ts";
-import { ok, refuse, expectUnchanged, type Outcome } from "./outcome.ts";
+import { CONFLICT_MESSAGE, ok, refuse, expectUnchanged, type Outcome } from "./outcome.ts";
 import { supersedeReviewOnPublish } from "./reviews.ts";
 import {
   presentationItems,
@@ -784,7 +784,14 @@ export async function updateItem(
  * Move one block up or down.
  *
  * A swap with the neighbour rather than a renumbering pass: positions may hold
- * gaps after a removal, and the only thing anything reads is their order.
+ * gaps after a removal, and the only thing anything reads is their order. The
+ * neighbour is the next block **that exists** — at 2 or at 5, never assumed to
+ * be `±1` — and the two rows exchange the positions they already hold, so the
+ * set of positions in the draft is the same afterwards and no value is ever
+ * written that was not read.
+ *
+ * An edge move — the first block up, the last down — is a quiet success that
+ * writes nothing, because the page offers both controls on every block.
  */
 export async function moveItem(
   actor: AuditActor,
@@ -804,24 +811,37 @@ export async function moveItem(
   const neighbour = direction === "up" ? rows[index - 1] : rows[index + 1];
   if (!neighbour) return ok(undefined);
 
-  const mine = rows[index];
-
   return settle(
     db().transaction(async (tx) => {
       await claimDraft(tx, actor, presentationId, expectedVersion);
 
-      // Park one out of the way first. The index on (presentation_id, position)
-      // is not unique, so this is belt and braces rather than a requirement —
-      // and it costs one statement.
-      await tx.update(presentationItems).set({ position: -1 }).where(eq(presentationItems.id, mine.id));
+      // Decide again under the claim. Every draft write takes the same row
+      // lock first and advances the version, so a matching version means the
+      // draft is what was read above — but the swap is computed from what it
+      // is now, rather than trusting that.
+      const current = await tx
+        .select({ id: presentationItems.id, position: presentationItems.position })
+        .from(presentationItems)
+        .where(eq(presentationItems.presentationId, presentationId))
+        .orderBy(asc(presentationItems.position));
+      const at = current.findIndex((row) => row.id === itemId);
+      const mine = current[at];
+      const other = direction === "up" ? current[at - 1] : current[at + 1];
+      if (!mine || !other) refused("conflict", CONFLICT_MESSAGE);
+
+      // Exchanged in place. There is no parking step: the index on
+      // (presentation_id, position) is not unique, so the moment between these
+      // two statements needs no spare value — and the one this used to borrow,
+      // `-1`, is exactly what `presentation_items_position_check` refuses. It
+      // made every move throw.
+      await tx
+        .update(presentationItems)
+        .set({ position: other.position })
+        .where(eq(presentationItems.id, mine.id));
       await tx
         .update(presentationItems)
         .set({ position: mine.position })
-        .where(eq(presentationItems.id, neighbour.id));
-      await tx
-        .update(presentationItems)
-        .set({ position: neighbour.position })
-        .where(eq(presentationItems.id, mine.id));
+        .where(eq(presentationItems.id, other.id));
 
       await recordAudit(tx, actor, {
         action: "presentation.updated",

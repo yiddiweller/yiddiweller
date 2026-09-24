@@ -307,6 +307,13 @@ recorded in [`delivery.md`](./delivery.md) under *Reviews are verified on beta*.
   with none. The three defects above were each found by that walk and each
   retested there after its fix. The one note attached to the wrong block during
   defect A was left as it is rather than rewritten.
+- **Move up and Move down never worked.** `moveItem` parked the moving block
+  at position `-1` before swapping, and `presentation_items_position_check`
+  refused it, so every press threw. The one test of it was refused for a stale
+  version first and never reached the write; Stage F1's tests reached it. The
+  two blocks now exchange the positions they already hold — the neighbour that
+  exists, gaps and all — with no parking step and nothing renumbered. Published
+  Revisions are untouched. Awaiting manual retest on beta.
 - **Still not built:** Stage F, drawing precise anchors — they are stored and
   projected, and nothing draws them — and Stage G, notifications.
 

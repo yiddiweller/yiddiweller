@@ -872,6 +872,21 @@ rewording a note and reordering it all pass the Presentation's `version` and all
 refuse a stale writer. Per-item versions would let two people reorder the same
 list at once and both appear to win.
 
+**Reordering exchanges two keys that already exist.** A draft's `position` is
+an ordering key with gaps in it, so *Move up* finds the block above **that
+exists** — at 2 when the draft reads `0, 2, 5`, never an assumed `4` — and the
+two rows swap the positions they already hold. Nothing is renumbered, no value
+is written that was not read, and the set of positions is identical afterwards.
+The swap is two updates under the draft's claim, with no parking step: the
+index on `(presentation_id, position)` is not unique, so the instant between
+them needs no spare value. The first version borrowed `-1` for that instant,
+`presentation_items_position_check` refused it, and every move threw — found by
+Stage F1's tests, because the only existing test was refused for a stale version
+before it reached the write. The neighbour is decided again under the claim, an
+edge move is a quiet success that writes nothing, two moves from one page give
+one winner and one `conflict`, and a Revision already published is never
+touched: a reorder reaches a client only as the next Revision.
+
 ---
 
 ## Revisions — immutable
@@ -1885,11 +1900,12 @@ day. Both are pure: no DOM, no clock.
 coordinator, any `FileViewer` change, any visible anchor, and Stage G. Stage F
 is not usable by anybody yet.
 
-**Found while testing, not fixed here.** Studio's *Move up* / *Move down*
-cannot succeed: `moveItem` parks a row at position `-1` and
-`presentation_items_position_check` (`position >= 0`) refuses it, so the
-action throws. The only test of it used a stale version and was refused before
-reaching the write. It is Stage B, outside F1, and awaits a decision.
+**Found while testing, and fixed on its own afterwards.** Studio's *Move up* /
+*Move down* could not succeed: `moveItem` parked a row at position `-1` and
+`presentation_items_position_check` (`position >= 0`) refused it, so the action
+threw. The only test of it used a stale version and was refused before reaching
+the write. Fixed as a separate Stage B patch before F2 — see *Reordering* under
+the draft's version, above.
 
 ## Reviews are verified on beta
 

@@ -17,19 +17,21 @@ tooling, nothing to keep in sync.
 | Environment | Build | Last commit that changed the running system |
 | --- | --- | --- |
 | Production | **Build 004** | `6b4ca20` |
-| Beta | **Build 005** | `04d5c89` |
+| Beta | **Build 005** | `4af8c0c` |
 
 **Beta is ahead, which is the normal state during testing.** Build 004 was
 promoted on 2026-09-16 by fast-forward and is what production runs. Build 005 —
-Delivery, Stages A and B — is on beta, has passed manual acceptance there, and
-is **not promoted**: the gates below have to close first.
+Delivery: Stages A and B, and Stage C's visible Review surfaces (Implementation
+D/E) — is on beta, has passed manual acceptance there, and is **not promoted**:
+the gates below have to close first, and Stage C itself is not complete.
 
 **The commits above are the last ones that changed anything**, which is not
 always where the branch now points. A documentation commit changes nothing about
 the running system, so it claims no number and does not move the build —
 Build 003's own commit was `1e4af21`, and production ran `8d0fd80` on top of it
-until this promotion. Beta likewise carries documentation on top of `04d5c89`,
-including the commit that recorded Stage B's acceptance.
+until this promotion. Beta likewise carries documentation on top of `4af8c0c`,
+the last of the three fixes Stage C's manual acceptance produced, including the
+commit that recorded that acceptance.
 
 ---
 
@@ -172,12 +174,16 @@ frozen Version 1 → unshare refused → archive refused.
   Workroom moved to 1 member / 0 waiting, Studio showed HAS ACCESS, and later
   returns went through the ordinary sign-in — the invitation stays single use.
 
-**Stage C — Reviews.** **Schema, domain, projection and authorization. No
-surface, so not usable.** Migration `0006_reviews.sql` is applied and accepted
-on beta; `lib/db/reviews.ts` holds the round lifecycle, the notes and the
-anchors; `lib/workrooms/review-view.ts` is the only producer of client-visible
-Review data; and both worlds have a guarded action layer. There is no client
-page, no Studio page and no notification, and nothing renders any of it.
+**Stage C — Reviews.** **The basic threaded workflow is built and manually
+accepted on real beta; Stage C is not complete.** Migration `0006_reviews.sql` is
+applied and accepted on beta; `lib/db/reviews.ts` holds the round lifecycle, the
+notes and the anchors; `lib/workrooms/review-view.ts` is the only producer of
+client-visible Review data; both worlds have a guarded action layer; and
+`ReviewThread` renders the round for the client and for Studio. Implementations
+A (schema), B (domain and concurrency), C (authorization and projection) and D/E
+(the surfaces) are accepted. **Stage F**, drawing precise anchors, and **Stage
+G**, notifications, are not built. The journey and its three defects are
+recorded in [`delivery.md`](./delivery.md) under *Reviews are verified on beta*.
 
 - **Every write goes through one module, and every mutation opens by locking
   the Review row** — the round's serialization point. The order is
@@ -294,9 +300,15 @@ page, no Studio page and no notification, and nothing renders any of it.
   Version 2 will close and remain available as read-only history.* No round, a
   staff-closed round and a withdrawn round say nothing about feedback, because
   publishing changes none of them. Publish semantics are untouched.
-- **Stage C is not manually accepted on beta, and there are no notifications.**
-  Feedback is general or item-level; precise anchors are stored and projected
-  but not yet drawn.
+- **Implementation D/E is manually accepted on real beta.** Request, general
+  and item-level feedback, a studio reply, resolve and reopen, correct, take
+  back, close and reopen the round, and publishing over it — the old round
+  superseded and readable as history in both worlds, the new version starting
+  with none. The three defects above were each found by that walk and each
+  retested there after its fix. The one note attached to the wrong block during
+  defect A was left as it is rather than rewritten.
+- **Still not built:** Stage F, drawing precise anchors — they are stored and
+  projected, and nothing draws them — and Stage G, notifications.
 
 **Stage A beta acceptance.** Migration `0004` deployed and applied. `npm run
 storage:verify` was run **inside the real beta app container against the real
@@ -325,14 +337,15 @@ These are the gates between beta and production:
 - **`npm run env:check` has not been run against production for Build 005's
   variables.** Beta had `CLIENT_AUTH_SECRE` for a whole round of investigation;
   one command would have found it, and one command is the gate.
-- **Stage C Reviews has not been walked by hand on beta.** Everything it claims
-  is proved by the automated suites and by a browser driving the real forms
-  against a local build; neither is a substitute for the journey. Approvals has
-  not begun and is read or written by no code.
 
-The viewer and Stage B were both on this list and are no longer: the viewer was
-accepted on beta by hand — image, PDF, MP4 and video seeking — and Stage B's
-acceptance is recorded above.
+Separately from those gates, and not claimed either way as a gate: **Stage C is
+not complete** — Stage F and Stage G are not built — and **Approvals has not
+begun**, and is read or written by no code.
+
+The viewer, Stage B and Stage C's Review surfaces were all on this list and are
+no longer: the viewer was accepted on beta by hand — image, PDF, MP4 and video
+seeking — Stage B's acceptance is recorded above, and Implementation D/E's is
+recorded in [`delivery.md`](./delivery.md).
 
 ---
 

@@ -40,15 +40,18 @@ Railway beta deployment**: draft → Preview → publish Revision 1 → client
 Revision 1 → edit the private draft → client stays on Revision 1 → publish
 Revision 2 → client Revision 2 → client Previous versions → Studio's frozen
 Version 1 → unshare refused → archive refused. The record is
-`docs/delivery.md`. **Stage C — Reviews — now has both surfaces, and is not
-manually accepted on beta**: migration `0006_reviews.sql` is applied and
-accepted on beta, `lib/db/reviews.ts` holds the rules the database could not,
-`lib/workrooms/review-view.ts` is the only producer of client-visible Review
-data, both worlds have a guarded action layer, and
-`components/workrooms/ReviewThread.tsx` renders the round on all four routes.
-General and item-level feedback only — precise anchors are stored and projected
-but not yet drawn — and there are **no notifications**. Approvals has not
-begun. Build 005 is **not promoted**: production has no bucket, the sweep is
+`docs/delivery.md`. **Stage C — Reviews — has its basic threaded workflow
+manually accepted on the real Railway beta deployment** (Implementation D/E, on
+top of A schema, B domain and C authorization, all accepted): request → client
+general and item-level feedback → studio reply → resolve and client reopen →
+correct → take back to a clean *Comment removed* → close and reopen → publish
+over an open round, superseding it into read-only history in both worlds → a new
+current version with no round. The walk found three defects — the item locator,
+the tombstone and the publish consequence — each fixed at its cause and retested
+on beta; the record is *Reviews are verified on beta* in `docs/delivery.md`.
+**Stage C is not complete**: Stage F, drawing precise anchors (stored and
+projected, drawn by nothing), and Stage G, notifications, are not built.
+Approvals has not begun. Build 005 is **not promoted**: production has no bucket, the sweep is
 unscheduled and there is no per-object backup strategy, so production remains
 Build 004.**
 These are facts about the running system, not proposals. Changing any of them is

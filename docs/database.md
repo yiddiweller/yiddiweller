@@ -313,10 +313,10 @@ migration `0004_delivery.sql`: `workroom_files`, `presentations`,
 
 Stage A reads and writes `workroom_files`. Stage B reads and writes
 `presentations`, `presentation_items`, `presentation_revisions` and
-`presentation_revision_items`. **`presentation_reviews`,
-`presentation_review_notes` and `presentation_approvals` are read and written by
-nothing**: Stage C exists at the schema level and its domain and surfaces are
-not built.
+`presentation_revision_items`. Stage C reads and writes `presentation_reviews`
+and `presentation_review_notes`, **only ever through `lib/db/reviews.ts`**, and
+its surfaces are manually accepted on beta. **`presentation_approvals` is read
+and written by nothing**: Approvals has not begun.
 
 Three conventions they introduce, recorded here because they are new to this
 schema and the next table that needs one should copy rather than reinvent:

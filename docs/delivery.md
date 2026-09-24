@@ -1030,9 +1030,11 @@ General and item-level feedback only: **precise anchor capture is stored,
 projected and not yet drawn**, and there are no notifications — telling somebody
 a round is open is still a separate decision, made by a person.
 
-**Not manually accepted on beta.** Everything below is proved by the automated
-suites and by a browser driving the real forms against a local build. The beta
-journey is the studio's to walk.
+**Manually accepted on the real Railway beta deployment** — Implementation D/E,
+the visible surfaces, end to end. Three defects were found by that walk, fixed at
+their cause and retested there; the record is *Reviews are verified on beta*,
+below. Stage F (precise annotation interaction) and Stage G (notifications) are
+not built, so Stage C as a whole is not complete.
 
 **A Review is one round of client feedback on one published Revision, at the
 studio's invitation.** Not a chat, not a ticket queue, not a second Presentation
@@ -1631,6 +1633,74 @@ client world: 32px padding, a 1px rule at `rgba(255,255,255,.18)`, black ground,
 a 38px button, Cancel holding the focus, and Escape mutating nothing.
 
 ---
+
+## Reviews are verified on beta
+
+Implementation D/E, exercised by hand on the real Railway beta deployment:
+Studio on a desktop, the client signed in through the ordinary Workroom sign-in
+on a real phone. Not Preview standing in for a client, and not a test harness
+standing in for either. The Presentation was **Brand Direction**.
+
+| | |
+| --- | --- |
+| **Request.** Studio showed *Nobody has been asked about this version yet.*; *Ask for feedback* opened the in-app `ConfirmDialog`, which said the client may write and no email is sent; confirming opened the round, *Close feedback* appeared, and *Take the request back* appeared while the round was empty | **passed** |
+| **Client, open round.** The Feedback surface appeared only once asked for; *The studio asked for your thoughts on this version.* and the composer were shown; no Studio control was | **passed** |
+| **General feedback.** Appeared at once for the client and in Studio with its author and time; Studio offered *Mark as dealt with* and *Reply*; *Take the request back* disappeared once feedback existed; the point count moved | **passed** |
+| **Item-level feedback.** The client picked *Primary identity direction*; both surfaces read *On Primary identity direction* | **passed after fix A** |
+| **Studio reply.** Nested one level, the studio's author snapshot and *Studio* marker and time; the client saw it after refreshing, and the root was untouched | **passed** |
+| **Resolve and reopen.** *Mark as dealt with* confirmed in the centred dialog, saying the conversation stays visible; root and reply stayed in place under *Dealt with — Yiddi Weller*; the client saw it, reopened their own point, and the round was writable again with the conversation intact | **passed** |
+| **Correct.** A fresh point — the earlier ones were outside the window — offered *Correct* and *Take back*; the inline editor loaded the original words with Save, Cancel and the helper text about the window and replies; *Could the spacing feel a little tighter?* became *…tighter overall?*; *Corrected* appeared and stayed after a refresh, while the momentary success line did not | **passed** |
+| **Take back.** The dialog said the words would go, the studio could not read them either, that something was written stays on the record, and it cannot be undone; afterwards both worlds showed only *Comment removed* | **passed after fix B** |
+| **Close.** The dialog said the conversation stays and the client can no longer add to it, reopenable while this is the current version. Studio: *Closed by the studio*, *Reopen feedback*, the whole thread, no per-note controls. Client: the whole thread, the closed line, and no composer, *Reply*, *Correct*, *Take back*, *Mark as dealt with* or *Not dealt with* | **passed** |
+| **Reopen.** Studio: open again, *Close feedback* back, per-note controls back, thread intact. Client after refresh: the open-round line, the composer and the right actions back, the conversation and the tombstone intact | **passed** |
+| **Publish over an open round.** The dialog now names the consequence before the press | **passed after fix C** |
+| **Supersession.** Version 2's round, reopened, was ended by publishing Version 3. Studio's Version 2: frozen, *Closed when version 3 was published*, terminal, the whole thread — studio replies, the resolution, *Comment removed* — and no controls. The client's *Previous versions → Version 2*: the same thread, *Feedback on this version closed when version 3 was published.*, no composer and no actions | **passed** |
+| **The new current version.** Beta has since moved on to Version 4, which the client is reading; Studio shows *Nobody has been asked about this version yet.* and offers *Ask for feedback* — a new Revision does not inherit the round before it | **passed** |
+
+### Three defects the walk found
+
+Each was invisible to every automated suite, each was fixed at its cause rather
+than at the symptom, and each was retested on beta before this record was
+written.
+
+**A — the item locator.** Picking *Primary identity direction* did not produce
+*On Primary identity direction* in Studio. A draft's positions are an ordering
+key with gaps after a removal; a Revision's items were written densely by index
+while its snapshot kept the draft's numbers, so one block had two numbers and the
+Review path crossed between them. Fixed in `37a43ef`: one Revision position model,
+dense, used by the snapshot and `presentation_revision_items` alike, with
+Revisions frozen earlier renumbered on read rather than rewritten — see *One
+number for a block*. Retested on beta with **new** item-level feedback: *On
+Primary identity direction* on both surfaces, matching.
+
+**The note already written during the failure was not rewritten.** Its stored
+`revision_item_id` is what it is, and correcting beta test data by hand would
+have been a rewrite of a Review record to make a defect look as if it never
+happened. It stays as history of the defect.
+
+**B — the tombstone.** A removed comment read *Yehuda Weller · 23 Sept, 20:44 ·
+This was taken back.* `ReviewThread` drew the note's header before checking
+`removed`, in both the root and the reply branch, and the projection kept an
+author and a time on a removed note for it to draw. Fixed in `1f9c330`: a removed
+note is structurally `{ n, removed: true }`, reading an author off one does not
+compile, and it renders as `Comment removed` and nothing else. Retested on beta:
+exactly *Comment removed* for the client and for Studio, with no author, time,
+locator, resolution, edit state or control.
+
+**C — the publish consequence.** About to publish over Version 2's open round,
+the dialog said only *The client will see this instead of the current version.*
+It never looked at the round. Fixed in `4af8c0c`: it names the version and, for
+an open round and only an open round, adds *Feedback on Version 2 will close and
+remain available as read-only history.* No round, a staff-closed round and a
+withdrawn round say nothing about feedback, because publishing changes none of
+them. The publish transaction was not changed.
+
+### What this acceptance does not cover
+
+Precise anchors — points, regions, time ranges — are stored, validated and
+projected but not drawn by anything; that interaction is **Stage F**. Nobody is
+told by email or otherwise that a round was opened or answered; that is **Stage
+G**. Approvals has not begun. None of the three is implied by the table above.
 
 ## Approvals
 

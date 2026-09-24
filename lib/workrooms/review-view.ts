@@ -60,38 +60,64 @@ export type ClientAnchor =
   | { kind: "time"; t: number; t2: number }
   | { kind: "time"; t: number; region: { x: number; y: number; w: number; h: number } };
 
-export type ClientReviewReply = {
+/**
+ * A note that was taken back.
+ *
+ * **Its ordinal, and the fact that it happened. That is the whole type.** No
+ * author, no time, no block, no anchor, no resolution, no edit history — not
+ * because a surface is trusted to hide them, but because they are not here to
+ * hide. Beta found the header still being drawn around a tombstone, and the
+ * lesson of that is not "remember to check `removed` first": it is that a
+ * shape which *can* carry an author on a removed note will eventually be read
+ * that way by somebody, and will meanwhile carry it in the flight payload
+ * whatever the markup does.
+ *
+ * So the two states are two types. Reading an author off a tombstone is not a
+ * bug a reviewer has to catch; it does not compile, and there is nothing in the
+ * serialized response to find.
+ *
+ * The ordinal stays because it is the note's handle and its place in the
+ * order — it names nobody and says nothing.
+ */
+export type ClientRemovedNote = { n: number; removed: true };
+
+/** A note somebody can still read. */
+export type ClientLiveNote = {
   n: number;
   author: ClientAuthor;
   at: Date;
-  /** Absent when removed. There is no other reason for it to be absent. */
-  body?: string;
-  removed: boolean;
+  body: string;
+  removed: false;
   edited: boolean;
 };
 
-export type ClientReviewNote = ClientReviewReply & {
-  /**
-   * Which block of the Revision this is about, by its **position** in the
-   * sequence — never its id. Absent when the point is general to the version,
-   * and absent once the note is removed.
-   *
-   * A Revision's positions are dense: 0, 1, 2 … with nothing missing, matching
-   * both the frozen snapshot and `presentation_revision_items`. Beta found them
-   * disagreeing, which is why that is written down here as well as there.
-   */
-  subject?: number;
-  /**
-   * Where inside that block, when somebody said. Absent for ordinary
-   * item-level feedback, which is most of it, and absent when removed.
-   * Never present without a `subject`.
-   */
-  anchor?: ClientAnchor;
-  resolved: boolean;
-  /** Present only while resolved and not removed. */
-  resolvedBy?: ClientAuthor;
-  replies: ClientReviewReply[];
-};
+export type ClientReviewReply = ClientRemovedNote | ClientLiveNote;
+
+export type ClientReviewNote =
+  | ClientRemovedNote
+  | (ClientLiveNote & {
+      /**
+       * Which block of the Revision this is about, by its **position** in the
+       * sequence — never its id. Absent when the point is general to the
+       * version.
+       *
+       * A Revision's positions are dense: 0, 1, 2 … with nothing missing,
+       * matching both the frozen snapshot and `presentation_revision_items`.
+       * Beta found them disagreeing, which is why that is written down here as
+       * well as there.
+       */
+      subject?: number;
+      /**
+       * Where inside that block, when somebody said. Absent for ordinary
+       * item-level feedback, which is most of it. Never present without a
+       * `subject`.
+       */
+      anchor?: ClientAnchor;
+      resolved: boolean;
+      /** Present only while resolved. */
+      resolvedBy?: ClientAuthor;
+      replies: ClientReviewReply[];
+    });
 
 /** Why a round is no longer open, in terms somebody outside can act on. */
 export type ClientReviewClosure =
@@ -176,31 +202,34 @@ function author(row: ReviewNoteRow): ClientAuthor {
 }
 
 function toReply(row: ReviewNoteRow): ClientReviewReply {
-  const removed = row.removedAt !== null;
-
   // Built by naming every field, so a removal is an absence rather than a
-  // value somebody has to remember to strip.
-  return removed
-    ? { n: row.number, author: author(row), at: row.createdAt, removed: true, edited: false }
-    : {
-        n: row.number,
-        author: author(row),
-        at: row.createdAt,
-        body: row.body,
-        removed: false,
-        edited: row.editedAt !== null,
-      };
+  // value somebody has to remember to strip — and the tombstone names two.
+  if (row.removedAt !== null) return { n: row.number, removed: true };
+
+  return {
+    n: row.number,
+    author: author(row),
+    at: row.createdAt,
+    body: row.body,
+    removed: false,
+    edited: row.editedAt !== null,
+  };
 }
 
 function toNote(row: ReviewNoteRow, replies: ReviewNoteRow[]): ClientReviewNote {
-  const base = toReply(row);
+  // A tombstone carries no words, no author, no time, no place and no
+  // decision. Whether it was resolved before it was removed is not the
+  // client's business and not the studio's either: the point is gone, so the
+  // state of it means nothing — and nor does who made it or when.
+  //
+  // It carries no replies either, and that is the domain's guarantee rather
+  // than this function's opinion: `claimOwnNote` refuses a removal once
+  // anything has answered, and `replyToReviewNote` refuses a removed parent,
+  // so a removed root has none and can never gain one.
+  if (row.removedAt !== null) return { n: row.number, removed: true };
 
-  if (row.removedAt !== null) {
-    // A tombstone carries no words, no place and no decision. Whether it was
-    // resolved before it was removed is not the client's business and not the
-    // studio's either: the point is gone, so the state of it means nothing.
-    return { ...base, resolved: false, replies: replies.map(toReply) };
-  }
+  const base = toReply(row);
+  if (base.removed) return base;
 
   // The subject stands on its own. Precision is read separately and only where
   // there is a subject to be precise about — "say which part of the work this

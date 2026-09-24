@@ -34,12 +34,15 @@ import { clients, user, workroomMembers } from "../lib/db/schema.ts";
 import { toClientAnchor, toClientReview } from "../lib/workrooms/review-view.ts";
 import {
   clearOwner,
+  live,
+  liveReply,
   owner,
   person,
   round,
   seedOwner,
   stage,
   staff,
+  tombstone,
   wipe,
   MARKERS,
   UUID,
@@ -94,15 +97,15 @@ test("an open round projects its notes in the order they were written", async ()
   assert.equal(review.closedNote, undefined);
 
   assert.deepEqual(
-    review.notes.map((n) => [n.n, n.author.side, n.replies.map((r) => r.n)]),
+    review.notes.map((n) => [n.n, live(n).author.side, live(n).replies.map((r) => r.n)]),
     [
       [1, "client", [3, 4]],
       [2, "client", []],
     ],
   );
-  assert.equal(review.notes[0]!.body, "First point.");
-  assert.equal(review.notes[0]!.replies[0]!.author.name, owner.name);
-  assert.equal(review.notes[0]!.replies[0]!.author.side, "studio");
+  assert.equal(live(review.notes[0]).body, "First point.");
+  assert.equal(liveReply(live(review.notes[0]).replies[0]).author.name, owner.name);
+  assert.equal(liveReply(live(review.notes[0]).replies[0]).author.side, "studio");
 });
 
 test("an edited note says so; an untouched one does not", async () => {
@@ -114,9 +117,9 @@ test("an edited note says so; an untouched one does not", async () => {
   assert.ok((await editReviewNote(s.ana, { reviewId: id, number: 1, body: "The colour." })).ok);
 
   const review = await reviewForViewer(s.ana.contactId, s.room, s.presentation);
-  assert.equal(review!.notes[0]!.edited, true);
-  assert.equal(review!.notes[0]!.body, "The colour.");
-  assert.equal(review!.notes[1]!.edited, false);
+  assert.equal(live(review!.notes[0]).edited, true);
+  assert.equal(live(review!.notes[0]).body, "The colour.");
+  assert.equal(live(review!.notes[1]).edited, false);
 });
 
 test("a resolved point names who decided it, on either side", async () => {
@@ -129,9 +132,9 @@ test("a resolved point names who decided it, on either side", async () => {
   assert.ok((await resolveReviewNote(s.ben, { reviewId: id, number: 2 })).ok);
 
   const review = await reviewForViewer(s.ana.contactId, s.room, s.presentation);
-  assert.deepEqual(review!.notes[0]!.resolvedBy, { name: owner.name, side: "studio" });
-  assert.deepEqual(review!.notes[1]!.resolvedBy, { name: s.ben.name, side: "client" });
-  assert.equal(review!.notes[0]!.resolved, true);
+  assert.deepEqual(live(review!.notes[0]).resolvedBy, { name: owner.name, side: "studio" });
+  assert.deepEqual(live(review!.notes[1]).resolvedBy, { name: s.ben.name, side: "client" });
+  assert.equal(live(review!.notes[0]).resolved, true);
 });
 
 test("a removed note carries nothing but the fact that somebody wrote one", async () => {
@@ -140,9 +143,12 @@ test("a removed note carries nothing but the fact that somebody wrote one", asyn
   const id = await round(s);
 
   // Anchored and resolved before it is removed, so the projection has every
-  // reason to still be carrying something.
+  // reason to still be carrying something — and written by **Ben**, who writes
+  // nothing else in this round, so asserting his name is absent afterwards
+  // means something. Using Ana here would pass for the wrong reason: she
+  // authors the live note below.
   assert.ok(
-    (await createReviewNote(s.ana, {
+    (await createReviewNote(s.ben, {
       reviewId: id,
       body: MARKERS.removedRoot,
       itemPosition: 1,
@@ -150,7 +156,7 @@ test("a removed note carries nothing but the fact that somebody wrote one", asyn
     })).ok,
   );
   assert.ok((await resolveReviewNote(staff, { reviewId: id, number: 1 })).ok);
-  assert.ok((await removeReviewNote(s.ana, { reviewId: id, number: 1 })).ok);
+  assert.ok((await removeReviewNote(s.ben, { reviewId: id, number: 1 })).ok);
 
   assert.ok((await createReviewNote(s.ana, { reviewId: id, body: "A live point." })).ok);
   assert.ok(
@@ -163,22 +169,30 @@ test("a removed note carries nothing but the fact that somebody wrote one", asyn
     ["studio", await reviewForStaff(s.workroomId, s.presentationId)],
   ] as const) {
     assert.ok(review, who);
-    const [tombstone, live] = review.notes;
+    const [gone, kept] = review.notes;
 
-    assert.equal(tombstone!.removed, true, who);
-    assert.equal(tombstone!.body, undefined, `${who} carried a removed body`);
-    assert.equal(tombstone!.anchor, undefined, `${who} carried a removed anchor`);
-    assert.equal(tombstone!.resolved, false, `${who} carried a removed resolution`);
-    assert.equal(tombstone!.resolvedBy, undefined, who);
-    assert.equal(tombstone!.edited, false, who);
-    // What remains is the shape of the conversation: somebody said something
-    // here, at this point in it, and took it back.
-    assert.equal(tombstone!.n, 1, who);
-    assert.equal(tombstone!.author.name, s.ana.name, who);
+    // **Two keys, and that is the whole of a tombstone.** Not a note with its
+    // words hidden — a note reduced to the fact that it existed and where in
+    // the order it was. The author, the time, the block, the resolution and
+    // the edit history are not withheld by a renderer; they are not in the
+    // value, so nothing downstream can put them back and nothing upstream
+    // serializes them.
+    tombstone(gone, `${who}'s removed root`);
+    assert.equal(gone!.n, 1, who);
 
-    const removedReply = live!.replies[0]!;
-    assert.equal(removedReply.removed, true, who);
-    assert.equal(removedReply.body, undefined, `${who} carried a removed reply`);
+    tombstone(live(kept).replies[0], `${who}'s removed reply`);
+
+    // And nothing either of them held appears anywhere in the whole response.
+    // Ben wrote only the removed root and the studio only the removed reply,
+    // so both names are absent for the reason this test is about — while Ana,
+    // who wrote the live note, is still there, which is what stops the three
+    // assertions above from passing against an empty round.
+    const serialized = JSON.stringify(review);
+    assert.ok(!serialized.includes(MARKERS.removedRoot), `${who} carried a removed body`);
+    assert.ok(!serialized.includes(MARKERS.removedReply), `${who} carried a removed reply`);
+    assert.ok(!serialized.includes(s.ben.name), `${who} carried a removed root's author`);
+    assert.ok(!serialized.includes(owner.name), `${who} carried a removed reply's author`);
+    assert.ok(serialized.includes(s.ana.name), `${who} lost the live note's author`);
   }
 });
 
@@ -244,11 +258,11 @@ test("a historical revision reads its own round and never the current one", asyn
   assert.ok((await createReviewNote(s.ana, { reviewId: third, body: "About version three." })).ok);
 
   const historical = await reviewForViewer(s.ana.contactId, s.room, s.presentation, 2);
-  assert.equal(historical!.notes[0]!.body, "About version two.");
+  assert.equal(live(historical!.notes[0]).body, "About version two.");
   assert.equal(historical!.canWrite, false);
 
   const current = await reviewForViewer(s.ana.contactId, s.room, s.presentation);
-  assert.equal(current!.notes[0]!.body, "About version three.");
+  assert.equal(live(current!.notes[0]).body, "About version three.");
   assert.equal(current!.canWrite, true);
 
   // Version 1 never had one, and says so the same way a wrong version does.
@@ -275,8 +289,8 @@ test("an author still reads correctly after the person is gone", async () => {
   await db().execute(sql`DELETE FROM "user" WHERE id = ${leaver}`);
 
   const review = await reviewForViewer(s.ana.contactId, s.room, s.presentation);
-  assert.deepEqual(review!.notes[0]!.replies[0]!.author, { name: "Leaver", side: "studio" });
-  assert.deepEqual(review!.notes[0]!.resolvedBy, { name: "Leaver", side: "studio" });
+  assert.deepEqual(liveReply(live(review!.notes[0]).replies[0]).author, { name: "Leaver", side: "studio" });
+  assert.deepEqual(live(review!.notes[0]).resolvedBy, { name: "Leaver", side: "studio" });
 });
 
 /* ---------------------------------------------------------------- anchors */
@@ -316,11 +330,11 @@ test("every anchor the vocabulary allows survives the round trip, by position", 
   // it. Item-level feedback with no precision carries a subject and no anchor,
   // which is the common case and the one beta lost.
   assert.deepEqual(
-    review!.notes.map((n) => n.subject),
+    review!.notes.map((n) => live(n).subject),
     [1, 1, 2, 2, 2, 3, 3, 4, undefined],
   );
   assert.deepEqual(
-    review!.notes.map((n) => n.anchor),
+    review!.notes.map((n) => live(n).anchor),
     [
       { kind: "point", x: 0.42, y: 0.18 },
       { kind: "region", x: 0.1, y: 0.2, w: 0.3, h: 0.4 },
@@ -407,7 +421,7 @@ test("the projection orders a round for itself, whatever order the rows arrive i
 
   assert.ok(review);
   assert.deepEqual(
-    review.notes.map((n) => [n.n, n.replies.map((r) => r.n)]),
+    review.notes.map((n) => [n.n, live(n).replies.map((r) => r.n)]),
     [
       [1, [3]],
       [2, [4]],
@@ -580,7 +594,7 @@ test("an unpublished presentation disappears for the client and stays for the st
   // Looking at your own withdrawn work is what Studio is for.
   const studio = await reviewForStaff(s.workroomId, s.presentationId);
   assert.ok(studio);
-  assert.equal(studio.notes[0]!.body, "A point.");
+  assert.equal(live(studio.notes[0]).body, "A point.");
 });
 
 test("staff cannot reach a presentation through another workroom", async () => {

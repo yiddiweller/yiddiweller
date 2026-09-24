@@ -44,12 +44,59 @@ const skip = configured
   ? false
   : "set WORKROOM_BASE_URL, WORKROOM_A_COOKIE, WORKROOM_B_COOKIE, WORKROOM_A_ID, STUDIO_OWNER_COOKIE, PRESENTATION_A, STUDIO_WORKROOM_A_ID and PRESENTATION_A_ID";
 
-/** Seeded as the body of a note that was then taken back. */
-const REMOVED = "MARKER-REMOVED-BODY-HTTP";
-
-/** The block one seeded point is about, and the line that must say so. */
-const SUBJECT = "Primary identity direction";
+/** The block a **live** point is about, and the line that must say so. */
+const SUBJECT = "How the motion system feels";
 const LOCATOR = `On ${SUBJECT}`;
+
+/**
+ * Everything a removed note would have carried, seeded where nothing else can
+ * produce it.
+ *
+ * The fixture is built against false positives, which is most of the work in a
+ * test like this. The two removed notes are written by a member who writes
+ * **nothing else**, so their display name has no legitimate reason to be on
+ * the page; the **only** item-level point is the one that gets removed, so no
+ * locator may render at all; and the **only** resolution is on that same note,
+ * so `Dealt with` may not appear either. Asserting the absence of a name that
+ * is also on a note somebody can still read would pass for the wrong reason
+ * for ever.
+ */
+const REMOVED = {
+  author: "MARKER-REMOVED-AUTHOR",
+  rootBody: "MARKER-REMOVED-BODY-HTTP",
+  replyBody: "MARKER-REMOVED-REPLY-HTTP",
+  /**
+   * The block the *removed* point was about — a different one from the live
+   * point's, so this string can only come from a tombstone's locator.
+   */
+  locator: "On Primary identity direction",
+  /** Only a rendered resolution produces this — "Mark as dealt with" is lower case. */
+  resolution: "Dealt with",
+};
+
+/** What a removed note renders as, in both worlds, and the whole of it. */
+const TOMBSTONE = "Comment removed";
+
+/** Every `<li>` holding a tombstone, with its markup. */
+function tombstones(body: string): string[] {
+  const found: string[] = [];
+  let from = 0;
+
+  for (;;) {
+    const at = body.indexOf(TOMBSTONE, from);
+    if (at === -1) break;
+    from = at + TOMBSTONE.length;
+
+    const opens = body.lastIndexOf("<li", at);
+    const closes = body.indexOf("</li>", at);
+    // The flight payload carries the same words without any markup around
+    // them; only the document has list items to measure.
+    if (opens === -1 || closes === -1) continue;
+    found.push(body.slice(opens, closes + 5));
+  }
+
+  return found;
+}
 
 /** Anything shaped like a database identifier is a leak on a client surface. */
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
@@ -151,8 +198,9 @@ test("a removed body is in neither world's response, markup or flight", { skip }
   ] as const) {
     const body = await whole(path, cookie);
     assert.ok(body.length > 1000, `${world} returned nothing to inspect`);
-    assert.ok(!body.includes(REMOVED), `${world} can read a removed comment`);
-    assert.match(body, /This was taken back/, `${world} does not show that one was removed`);
+    assert.ok(!body.includes(REMOVED.rootBody), `${world} can read a removed comment`);
+    assert.ok(!body.includes(REMOVED.replyBody), `${world} can read a removed reply`);
+    assert.ok(body.includes(TOMBSTONE), `${world} does not show that one was removed`);
   }
 });
 
@@ -189,6 +237,66 @@ test("a general point says nothing about a block", { skip }, async () => {
     !body.includes("On undefined") && !body.includes("Item NaN"),
     "a general point was given a locator anyway",
   );
+});
+
+/* -------------------------------------------------------------- tombstones */
+
+test("a removed comment renders as one line, and only that line", { skip }, async () => {
+  // The defect beta found: the note's header was drawn around the tombstone,
+  // so a removal narrated who took something back and when. The structure is
+  // asserted rather than the text, because "no author" is a fact about what is
+  // in the element, not about what a reader happens to notice.
+  for (const [world, path, cookie] of [
+    ["the client", clientPath, clientA],
+    ["Studio", studioPath, staff],
+  ] as const) {
+    const page = await get(path, cookie);
+    assert.equal(page.status, 200, `${world} could not open the page`);
+
+    const found = tombstones(page.body);
+    assert.equal(found.length, 2, `${world} rendered ${found.length} tombstones, expected 2`);
+
+    for (const item of found) {
+      // Exactly one paragraph, holding exactly the tombstone's words.
+      const stripped = item.replace(/<[^>]+>/g, "").trim();
+      assert.equal(stripped, TOMBSTONE, `${world}: a tombstone carries "${stripped}"`);
+
+      for (const [what, pattern] of [
+        ["a timestamp", /<time/],
+        ["a control", /<button|<form/],
+        ["a nested thread", /<ul/],
+        ["an input", /<input|<textarea|<select/],
+      ] as const) {
+        assert.ok(!pattern.test(item), `${world}: a tombstone still renders ${what}`);
+      }
+
+      // One element inside the item, and it is the tombstone's own paragraph.
+      const elements = item.match(/<(?!\/)[a-z]+/g) ?? [];
+      assert.deepEqual(elements, ["<li", "<p"], `${world}: a tombstone has extra elements`);
+    }
+  }
+});
+
+test("a removed comment carries nothing of itself into the response", { skip }, async () => {
+  for (const [world, path, cookie] of [
+    ["the client", clientPath, clientA],
+    ["Studio", studioPath, staff],
+  ] as const) {
+    const body = await whole(path, cookie);
+    assert.ok(body.includes(TOMBSTONE), `${world} does not show that a comment was removed`);
+
+    for (const [what, marker] of Object.entries(REMOVED)) {
+      assert.ok(!body.includes(marker), `${world}: a removed note still carries its ${what}`);
+    }
+
+    // And the fixture is doing its job: the live half of the conversation is
+    // there, so these absences mean something.
+    assert.ok(body.includes("Ana Alder"), `${world} lost the live notes entirely`);
+    assert.ok(
+      body.includes("touch heavy at small sizes"),
+      `${world} lost the live words entirely`,
+    );
+  }
 });
 
 test("no database identifier reaches a client page", { skip }, async () => {

@@ -5,6 +5,7 @@ import { type ActionResult } from "@/lib/studio-result";
 import { type ReviewCapabilities } from "@/lib/workrooms/review-capabilities";
 import {
   type ClientAuthor,
+  type ClientLiveNote,
   type ClientReview,
   type ClientReviewNote,
   type ClientReviewReply,
@@ -75,15 +76,24 @@ function Who({ author }: { author: ClientAuthor }) {
   );
 }
 
-function Body({ note }: { note: ClientReviewReply }) {
-  // A tombstone carries no words, for anybody. There is one projection and it
-  // does not produce a removed body, so there is nothing here to conditionally
-  // show — the field is simply absent.
-  return note.removed ? (
-    <p className={styles.gone}>This was taken back.</p>
-  ) : (
-    <p className={styles.body}>{note.body}</p>
-  );
+/**
+ * A note that was taken back — **one line, and nothing around it.**
+ *
+ * Not a note rendered with its words hidden: a note rendered as the fact that
+ * it is gone. No author, no time, no block, no state, no controls. Beta found
+ * the header still being drawn around a tombstone, which narrated who took
+ * something back and when, and *Yehuda Weller · 23 Sept, 20:44* is exactly the
+ * record a removal is supposed to stop leaving.
+ *
+ * Neutral on purpose. *Comment removed* says what happened to the thread and
+ * nothing about the person; the thread's own order is what keeps the point's
+ * place in the conversation, so nothing else has to.
+ *
+ * It cannot accidentally grow the header back, because the value it is handed
+ * has no author on it to grow one from — see `ClientRemovedNote`.
+ */
+function Tombstone() {
+  return <p className={styles.gone}>Comment removed</p>;
 }
 
 export default function ReviewThread({
@@ -113,7 +123,7 @@ export default function ReviewThread({
 }) {
   const controlsFor = (n: number) => capabilities.notes[n] ?? NO_CONTROLS;
 
-  const correction = (note: ClientReviewReply) => {
+  const correction = (note: ClientLiveNote) => {
     const can = controlsFor(note.n);
     if (!can.edit || !actions.edit) return null;
 
@@ -131,7 +141,7 @@ export default function ReviewThread({
     );
   };
 
-  const takeBack = (note: ClientReviewReply) => {
+  const takeBack = (note: ClientLiveNote) => {
     const can = controlsFor(note.n);
     if (!can.remove || !actions.remove) return null;
 
@@ -153,6 +163,16 @@ export default function ReviewThread({
   };
 
   const Reply = ({ reply }: { reply: ClientReviewReply }) => {
+    // Before anything else, and before anything is read off it. A tombstone is
+    // its own shape, so there is no header here to forget to skip.
+    if (reply.removed) {
+      return (
+        <li className={styles.note}>
+          <Tombstone />
+        </li>
+      );
+    }
+
     const can = controlsFor(reply.n);
     const own = (can.edit && actions.edit) || (can.remove && actions.remove);
 
@@ -164,7 +184,7 @@ export default function ReviewThread({
           {reply.edited ? <span className={styles.meta}>Corrected</span> : null}
         </div>
 
-        <Body note={reply} />
+        <p className={styles.body}>{reply.body}</p>
 
         {own ? (
           <div className={styles.controls}>
@@ -177,6 +197,17 @@ export default function ReviewThread({
   };
 
   const Note = ({ note }: { note: ClientReviewNote }) => {
+    // The same short-circuit, and the same reason. A removed root has no
+    // replies to render either — the domain refuses a removal once anything
+    // has answered, and refuses an answer to something already removed.
+    if (note.removed) {
+      return (
+        <li className={styles.note}>
+          <Tombstone />
+        </li>
+      );
+    }
+
     const can = controlsFor(note.n);
 
     // **The subject alone decides whether there is a locator**, never the
@@ -202,7 +233,7 @@ export default function ReviewThread({
           {note.edited ? <span className={styles.meta}>Corrected</span> : null}
         </div>
 
-        <Body note={note} />
+        <p className={styles.body}>{note.body}</p>
 
         {note.resolved ? (
           <p className={styles.flags}>

@@ -1182,9 +1182,46 @@ only once.
 
 **It is a tombstone, not a delete.** `removed_at` is written **beside** the body
 rather than over it, so the immutability rule needs no exception and the record
-is not falsified. The row keeps its ordinal, its authorship, its timestamps and
-its Audit trail; the projection returns *Comment removed* and no body, no
-anchor, no location.
+is not falsified. The **row** keeps its ordinal, its authorship, its timestamps
+and its Audit trail. The **projection** keeps two fields:
+
+```
+{ n: 1, removed: true }
+```
+
+and that is the whole of `ClientRemovedNote`. Not a note with its words hidden —
+its own type, so there is no author, no time, no `subject`, no anchor, no
+resolution and no `edited` on it to read, to render, or to serialize into a
+flight payload. It renders as one line, in both worlds:
+
+```
+Comment removed
+```
+
+**Beta found this one implemented as a header with the words removed.** The
+tombstone read *Yehuda Weller · 23 Sept, 20:44 · This was taken back.* — the
+body was gone and everything around it was still there, which narrates who took
+something back and when. That is the record a removal exists to stop leaving,
+and the copy was a second drift from the same lock, which had said *Comment
+removed* from the start.
+
+The correction is not a check in the renderer. `ReviewThread` does short-circuit
+before the header, in both positions a note can sit — but the guarantee is the
+type: reading an author off a tombstone does not compile, and there is nothing
+in the response to find whatever the markup does. **Adding a field to
+`ClientRemovedNote` costs the same thing twice**, once in the markup and once
+on the wire.
+
+*Comment removed* is deliberately neutral. It says what happened to the thread
+and nothing about the person, and the thread's own order is what keeps the
+point's place in the conversation, so nothing else has to. The **action** is
+still called *Take back*, because that is what the author is doing; the
+permanent state it leaves is not narrated back at them.
+
+A removed root carries no replies either, and that is the domain's guarantee
+rather than the projection's opinion: `claimOwnNote` refuses a removal once
+anything has answered, and `replyToReviewNote` refuses a removed parent, so a
+tombstone has none and can never gain one.
 
 **And no projection returns the body to either surface — staff included.** There
 is one projection for both worlds, so a staff-only body would mean a second one,

@@ -16,6 +16,10 @@ import {
 } from "../../lib/db/presentations.ts";
 import { createProject } from "../../lib/db/projects.ts";
 import { requestReview, type ClientActor, type StaffActor } from "../../lib/db/reviews.ts";
+import {
+  type ClientReviewNote,
+  type ClientReviewReply,
+} from "../../lib/workrooms/review-view.ts";
 import { createWorkroom, publishWorkroom } from "../../lib/db/workrooms.ts";
 import {
   clientContacts,
@@ -287,3 +291,46 @@ export async function round(s: Stage): Promise<string> {
   return made.value;
 }
 
+
+/* ------------------------------------------------------- narrowing helpers */
+
+/**
+ * The note, asserted to still be readable.
+ *
+ * A removed note is a different type carrying nothing but its ordinal, so a
+ * test that wants an author or a body has to say so — which is the point.
+ * These exist so that saying so stays one word rather than five lines of
+ * narrowing in every assertion.
+ */
+export function live(
+  note: ClientReviewNote | undefined,
+  what = "note",
+): Extract<ClientReviewNote, { removed: false }> {
+  assert.ok(note, `${what} is not there at all`);
+  assert.equal(note.removed, false, `${what} is a tombstone`);
+  return note as Extract<ClientReviewNote, { removed: false }>;
+}
+
+/** The same, for a reply. */
+export function liveReply(
+  reply: ClientReviewReply | undefined,
+  what = "reply",
+): Extract<ClientReviewReply, { removed: false }> {
+  assert.ok(reply, `${what} is not there at all`);
+  assert.equal(reply.removed, false, `${what} is a tombstone`);
+  return reply as Extract<ClientReviewReply, { removed: false }>;
+}
+
+/** A tombstone, asserted to carry nothing but its ordinal. */
+export function tombstone(
+  note: ClientReviewNote | ClientReviewReply | undefined,
+  what = "note",
+): void {
+  assert.ok(note, `${what} is not there at all`);
+  assert.equal(note.removed, true, `${what} is not a tombstone`);
+  assert.deepEqual(
+    Object.keys(note).sort(),
+    ["n", "removed"],
+    `${what} carries more than the fact that it happened`,
+  );
+}

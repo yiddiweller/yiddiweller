@@ -206,6 +206,17 @@ a deliberate decision, not a cleanup.
   replies, and it can never be undone. A staff-readable "removed" comment is
   not a removal, and a second projection to make one possible is the drift
   Stage A and Stage B were both caught by.
+- **A tombstone is `{ n, removed: true }` and renders as `Comment removed`.**
+  Its own type — not a note with fields left empty — so there is no author, no
+  time, no block, no anchor, no resolution and no edit state on it to read, to
+  render or to serialize. Beta found the note's header still drawn around the
+  tombstone (*Yehuda Weller · 23 Sept, 20:44*), which narrates who took
+  something back and when: precisely the record a removal exists to stop
+  leaving. The renderer short-circuits before the header in both positions,
+  root and reply, but the guarantee is the type — reading an author off a
+  tombstone does not compile. **Do not add a field to `ClientRemovedNote`**;
+  every one costs the same thing twice, once in the markup and once in the
+  flight payload.
 - **Every write to `presentation_reviews` and `presentation_review_notes` goes
   through `lib/db/reviews.ts`, and every mutation there opens by locking the
   Review row.** That row is the round's serialization point, so there is

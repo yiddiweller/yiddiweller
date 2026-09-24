@@ -273,6 +273,20 @@ page, no Studio page and no notification, and nothing renders any of it.
   a 307, so the flight half of the leak tests had been reading a zero-byte body.
   It follows the redirect now and asserts the payload is non-empty before
   searching it.
+- **Manual beta acceptance then found the tombstone still wearing the note's
+  header.** A removed comment read *Yehuda Weller · 23 Sept, 20:44 · This was
+  taken back.* — the words were gone and everything around them was not, which
+  narrates who took something back and when. A removed note is now its own type
+  carrying `{ n, removed: true }` and nothing else, so there is no author, time,
+  block, anchor, resolution or edit state on it to render **or to serialize**;
+  reading one does not compile. It renders as `Comment removed`, in both worlds,
+  for a removed root and a removed reply alike — the copy the Stage C lock had
+  specified from the start.
+- **A third test defect fell out of that one.** The projection's own
+  removed-note test asserted the author's name was absent from the response
+  while the same person also wrote the live note beside it, so it would have
+  passed however badly the tombstone leaked. Every tombstone fixture is now
+  built so the removed note's author, block and resolver appear nowhere else.
 - **Stage C is not manually accepted on beta, and there are no notifications.**
   Feedback is general or item-level; precise anchors are stored and projected
   but not yet drawn.

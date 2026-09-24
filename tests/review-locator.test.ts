@@ -29,7 +29,7 @@ import {
 } from "../lib/db/schema.ts";
 import { uuidv7 } from "../lib/db/id.ts";
 import { itemLabel, itemSubjects, labelAt } from "../lib/workrooms/presentation-view.ts";
-import { clearOwner, owner, seedOwner, stage, staff, wipe } from "./support/review-stage.ts";
+import { clearOwner, live, owner, seedOwner, stage, staff, wipe } from "./support/review-stage.ts";
 
 /**
  * Which part of the work a point is about — the defect beta found, and the two
@@ -198,7 +198,7 @@ test("every subject the client can pick resolves to the block they picked", asyn
       s.room,
       s.presentation,
     ))!;
-    const note = panel.review.notes.find((n) => n.n === made.value)!;
+    const note = live(panel.review.notes.find((n) => n.n === made.value));
 
     assert.equal(note.subject, Number(option.value), `"${option.label}" lost its subject`);
     assert.equal(
@@ -244,22 +244,23 @@ test("a point about a block carries its subject; a general point carries none", 
     ["client", asClient.review],
     ["studio", asStudio.review!],
   ] as const) {
-    const [one, two] = review.notes;
+    const one = live(review.notes[0], `${world} first note`);
+    const two = live(review.notes[1], `${world} second note`);
 
-    assert.equal(one!.subject, undefined, `${world}: a general point grew a subject`);
-    assert.equal(one!.anchor, undefined, `${world}: a general point grew an anchor`);
+    assert.equal(one.subject, undefined, `${world}: a general point grew a subject`);
+    assert.equal(one.anchor, undefined, `${world}: a general point grew an anchor`);
 
-    assert.equal(two!.subject, Number(identity.value), `${world}: the subject was lost`);
+    assert.equal(two.subject, Number(identity.value), `${world}: the subject was lost`);
     assert.equal(
-      two!.anchor,
+      two.anchor,
       undefined,
       `${world}: item-level feedback was projected as a precise annotation`,
     );
   }
 
   // And both worlds turn that subject into the same words, from the same helper.
-  assert.equal(labelAt(client.items, asClient.review.notes[1]!.subject!), "Primary identity direction");
-  assert.equal(labelAt(studio.items, asStudio.review!.notes[1]!.subject!), "Primary identity direction");
+  assert.equal(labelAt(client.items, live(asClient.review.notes[1]).subject!), "Primary identity direction");
+  assert.equal(labelAt(studio.items, live(asStudio.review!.notes[1]).subject!), "Primary identity direction");
 
   // The whole projection is identical, subject included.
   assert.deepEqual(asStudio.review, asClient.review, "the two worlds read different rounds");
@@ -319,15 +320,15 @@ test("the subject survives closing, superseding and being read as history", asyn
   };
 
   const open = await reads();
-  assert.equal(open.asClient!.review.notes[0]!.subject, Number(identity.value), "open: no subject");
-  assert.equal(open.asStudio.review!.notes[0]!.subject, Number(identity.value));
+  assert.equal(live(open.asClient!.review.notes[0]).subject, Number(identity.value), "open: no subject");
+  assert.equal(live(open.asStudio.review!.notes[0]).subject, Number(identity.value));
 
   // Closed by the studio: read-only, and still says what the point is about.
   assert.ok((await closeReview(staff, reviewId.value)).ok);
   const closed = await reads();
   assert.equal(closed.asClient!.review.status, "closed");
-  assert.equal(closed.asClient!.review.notes[0]!.subject, Number(identity.value), "closed: no subject");
-  assert.equal(closed.asStudio.review!.notes[0]!.subject, Number(identity.value));
+  assert.equal(live(closed.asClient!.review.notes[0]).subject, Number(identity.value), "closed: no subject");
+  assert.equal(live(closed.asStudio.review!.notes[0]).subject, Number(identity.value));
 
   // Reopened first, because a staff closure keeps its reason: publishing ends
   // the round on the version it replaces and never relabels one somebody
@@ -343,16 +344,16 @@ test("the subject survives closing, superseding and being read as history", asyn
   const history = await reads(3);
   assert.deepEqual(history.asClient!.review.closedNote, { reason: "superseded", version: 4 });
   assert.equal(
-    history.asClient!.review.notes[0]!.subject,
+    live(history.asClient!.review.notes[0]).subject,
     Number(identity.value),
     "history: no subject",
   );
-  assert.equal(history.asStudio.review!.notes[0]!.subject, Number(identity.value));
+  assert.equal(live(history.asStudio.review!.notes[0]).subject, Number(identity.value));
 
   // And the label is still resolvable from that Revision's own blocks.
   const frozen = (await revisionForStaff((await findPresentation(s.presentationId))!, 3))!;
   assert.equal(
-    labelAt(frozen.items, history.asStudio.review!.notes[0]!.subject!),
+    labelAt(frozen.items, live(history.asStudio.review!.notes[0]).subject!),
     "Primary identity direction",
     "the block a historical point is about lost its name",
   );

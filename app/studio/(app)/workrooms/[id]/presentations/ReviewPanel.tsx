@@ -203,7 +203,8 @@ export default async function ReviewPanel({
   // usually carries no precise anchor at all. Gating the labels on an anchor
   // would mean the blocks stayed nameless for exactly the feedback this build
   // can produce.
-  const aboutABlock = panel.review?.notes.some((note) => note.subject !== undefined) ?? false;
+  const aboutABlock =
+    panel.review?.notes.some((note) => !note.removed && note.subject !== undefined) ?? false;
   const items = aboutABlock ? await loadItems() : [];
 
   return (

@@ -281,15 +281,66 @@ A `date` column is simpler: `starts_on` and `target_on` name a day, not an
 instant, so there is no zone to resolve. `formatDate` writes it in the same
 house style — *1 Sep 2026*.
 
-**A known defect, found while adopting this and not fixed by it.** A Lead's
-follow-up is entered in a `datetime-local` field, which carries no zone, and
-`optionalMoment` in `lib/business.ts` reads it with `new Date(raw)` — in the
-*server's* zone, which on Railway is UTC. The field is prefilled with New York
-wall-clock time (and before this change, with the reader's own zone), so a
-follow-up entered or re-saved in New York is stored four or five hours off.
-This predates the convention and is a write path, so it is recorded rather than
-changed here: the fix is to read the field as New York wall-clock time, and it
-wants its own decision because it changes how new follow-ups are stored.
+### Three things, kept apart
+
+| | Rule |
+| --- | --- |
+| **Display** | `America/New_York`, 12-hour, `AM`/`PM` — `formatMoment`, through `<Moment>` |
+| **`datetime-local` input** | Interpreted as **New York wall-clock time** — `readWallTime` |
+| **Storage** | A canonical instant in `timestamptz`, UTC. Never a naive wall-clock string |
+
+**A `datetime-local` value carries no zone, so the product supplies one.**
+`2026-09-24T14:30` means *24 Sep 2026 · 2:30 PM in New York*, stored as
+`2026-09-24T18:30:00Z`, and prefilled back into the field as `2026-09-24T14:30`
+by `momentInputValue` — the same rule both ways, so saving a form without
+touching the field stores the same instant. `readWallTime` in
+`lib/studio-format.ts` does it without writing down an offset: it takes the
+offsets New York actually uses either side of the typed time from the zone's
+own rules, and keeps the candidate instants that read back as exactly that wall
+clock. It never calls `new Date(raw)`, and it gives the same answer in any
+process zone and any browser.
+
+It **refuses**, as an ordinary form error, rather than guessing:
+
+- a malformed value or an impossible date or time — *31 Feb*, month 13, *25:00*
+  — *That is not a date and time. Choose one from the calendar.*;
+- a time in the hour New York skips when the clocks go forward —
+  *That time does not happen in New York — the clocks go forward then. Choose
+  another time.*;
+- a time in the hour New York lives twice when the clocks go back — *That time
+  happens twice in New York — the clocks go back then. Choose a different
+  time.* There is no control for choosing which of the two is meant, so neither
+  is chosen silently.
+
+An empty field is no time at all. `optionalMoment` in `lib/business.ts` turns a
+refusal into its sentence; the Lead actions return it before anything is
+written. The Lead follow-up is the only `datetime-local` in the product, and a
+test fails if another appears without going through the same parser.
+
+**The defect this replaced.** `optionalMoment` used to be `new Date(raw)`, which
+reads a zoneless string in the *server process's* zone — UTC on Railway. The
+field was prefilled in the reader's own zone (New York, in practice), so a
+follow-up typed as 2:30 PM was stored as 2:30 PM UTC — shown as 10:30 AM in New
+York — and **every later save of the lead moved it again**, because the
+untouched field went back up four or five hours earlier each time. Fixed in the
+write path, with no migration.
+
+**Historical follow-ups were not changed**, and cannot be corrected
+automatically: a stored value may have been typed through the old path once,
+re-saved several times, set some other way, or already be right, and nothing
+recorded says which. For a value last saved through the Studio form on a UTC
+server, its **UTC** wall clock is what was in the field at that save; a person
+who knows what was meant can compare the two and re-enter it:
+
+```sql
+SELECT id, title,
+       follow_up_at AT TIME ZONE 'America/New_York' AS shown_in_new_york,
+       follow_up_at AT TIME ZONE 'UTC'              AS last_typed_if_affected,
+       updated_at
+FROM leads
+WHERE follow_up_at IS NOT NULL AND archived_at IS NULL
+ORDER BY follow_up_at;
+```
 
 ---
 

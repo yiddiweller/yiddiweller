@@ -166,7 +166,7 @@ export default function LeadFields({
           name="followUpAt"
           iso={defaults?.followUpAt ? defaults.followUpAt.toISOString() : null}
         />
-        <p className={styles.hint}>Your own time, stored as an instant.</p>
+        <p className={styles.hint}>New York time.</p>
       </div>
 
       <div className={styles.field}>

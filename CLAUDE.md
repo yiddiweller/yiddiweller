@@ -474,8 +474,11 @@ broken by accident:
   in Studio and the client world alike, is presented in `America/New_York` with
   `AM`/`PM` — *24 Sep 2026 · 12:05 AM* — through the one formatter,
   `lib/studio-format.ts`, and the one component, `<Moment>`. Never an offset or
-  `EST`/`EDT`, and never the runtime's zone. Stored timestamps stay UTC; this is
-  presentation only. See `docs/studio.md`.
+  `EST`/`EDT`, and never the runtime's zone. **A `datetime-local` value is read
+  as New York wall-clock time** by `readWallTime` — never `new Date(raw)`,
+  which reads it in the server's zone — and a time New York skips or lives
+  twice is refused rather than guessed. Storage stays a canonical UTC instant;
+  historical follow-ups were not rewritten. See `docs/studio.md`.
 
 ## Before every push
 

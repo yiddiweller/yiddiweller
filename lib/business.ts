@@ -21,6 +21,7 @@ import {
   type LeadStage,
   type ProjectStatus,
 } from "./db/schema.ts";
+import { readWallTime, type WallTimeRefusal } from "./studio-format.ts";
 
 /* ------------------------------------------------------------------ limits */
 
@@ -108,13 +109,30 @@ export function optionalDate(value: FormDataEntryValue | null | undefined): stri
   return /^\d{4}-\d{2}-\d{2}$/.test(raw) && !Number.isNaN(Date.parse(raw)) ? raw : null;
 }
 
-/** A `datetime-local` value, read as the viewer's own time. */
-export function optionalMoment(value: FormDataEntryValue | null | undefined): Date | null {
-  const raw = String(value ?? "").trim();
-  if (!raw) return null;
-  const parsed = new Date(raw);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
+/**
+ * A `datetime-local` value, read as **New York wall-clock time** — the instant
+ * to store, null for an empty field, or the sentence a person reads when the
+ * time cannot be one.
+ *
+ * It used to be `new Date(raw)`, which reads a zoneless string in the server
+ * process's zone — UTC on Railway — so a follow-up typed in New York was stored
+ * four or five hours early, and moved again every time the form was saved.
+ * The rule now lives in `readWallTime`, independent of any process or browser.
+ */
+export function optionalMoment(
+  value: FormDataEntryValue | null | undefined,
+): { ok: true; value: Date | null } | { ok: false; message: string } {
+  const read = readWallTime(typeof value === "string" ? value : "");
+  if (read.ok) return read;
+  return { ok: false, message: WALL_TIME_MESSAGES[read.reason] };
 }
+
+/** Why a typed time cannot be kept — in words, never in zones or offsets. */
+const WALL_TIME_MESSAGES: Record<WallTimeRefusal, string> = {
+  malformed: "That is not a date and time. Choose one from the calendar.",
+  nonexistent: "That time does not happen in New York — the clocks go forward then. Choose another time.",
+  ambiguous: "That time happens twice in New York — the clocks go back then. Choose a different time.",
+};
 
 /* --------------------------------------------------------------- vocabulary */
 

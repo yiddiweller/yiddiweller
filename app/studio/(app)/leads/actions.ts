@@ -33,17 +33,30 @@ import { failed, fromOutcome, type ActionResult } from "@/lib/studio-result";
 
 /** Everything a person can do to a lead, including the two flows that matter. */
 
-function readLead(form: FormData): LeadInput {
+/**
+ * The lead as the form describes it — or the one sentence saying why not.
+ *
+ * Only the follow-up can fail here: every other field normalises to something
+ * the domain then judges. A follow-up that is not a real New York time is
+ * refused before anything is written, rather than stored as a guess.
+ */
+function readLead(form: FormData): { ok: true; input: LeadInput } | { ok: false; message: string } {
+  const followUp = optionalMoment(form.get("followUpAt"));
+  if (!followUp.ok) return followUp;
+
   return {
-    title: text(form.get("title"), LIMITS.name),
-    source: readLeadSource(form.get("source")),
-    contactId: optionalId(form.get("contactId")),
-    clientId: optionalId(form.get("clientId")),
-    prospectName: optional(text(form.get("prospectName"), LIMITS.name)),
-    summary: multiline(form.get("summary"), LIMITS.summary),
-    nextStep: multiline(form.get("nextStep"), LIMITS.nextStep),
-    followUpAt: optionalMoment(form.get("followUpAt")),
-    ownerId: optionalId(form.get("ownerId")),
+    ok: true,
+    input: {
+      title: text(form.get("title"), LIMITS.name),
+      source: readLeadSource(form.get("source")),
+      contactId: optionalId(form.get("contactId")),
+      clientId: optionalId(form.get("clientId")),
+      prospectName: optional(text(form.get("prospectName"), LIMITS.name)),
+      summary: multiline(form.get("summary"), LIMITS.summary),
+      nextStep: multiline(form.get("nextStep"), LIMITS.nextStep),
+      followUpAt: followUp.value,
+      ownerId: optionalId(form.get("ownerId")),
+    },
   };
 }
 
@@ -53,7 +66,9 @@ export async function createLeadAction(
 ): Promise<ActionResult> {
   const staff = await requireStaff();
 
-  const input = readLead(form);
+  const read = readLead(form);
+  if (!read.ok) return failed(read.message);
+  const { input } = read;
   if (!input.title) return failed("A lead needs a title.");
 
   const outcome = await createLead(staff, input);
@@ -70,7 +85,9 @@ export async function updateLeadAction(
   const id = String(form.get("id") ?? "");
   if (!isId(id)) return failed("That lead no longer exists.");
 
-  const input = readLead(form);
+  const read = readLead(form);
+  if (!read.ok) return failed(read.message);
+  const { input } = read;
   if (!input.title) return failed("A lead needs a title.");
 
   const outcome = await updateLead(staff, id, input, readVersion(form.get("version")));

@@ -123,3 +123,88 @@ export function formatDate(value: string | null | undefined): string {
     parts.find((candidate) => candidate.type === type)?.value ?? "";
   return `${part("day")} ${part("month")} ${part("year")}`;
 }
+
+/* ------------------------------------------------ New York wall-clock input */
+
+/**
+ * What a `datetime-local` value can turn out to be, read as New York time.
+ *
+ * - `malformed`: not the shape the field sends, or not a real calendar date
+ *   and time — 31 February, month 13, 25:00. Never normalised into another.
+ * - `nonexistent`: a time in the hour New York skips when the clocks go
+ *   forward. Not moved to the next real time.
+ * - `ambiguous`: a time in the hour New York lives twice when the clocks go
+ *   back. Not quietly given the first or the second.
+ */
+export type WallTimeRefusal = "malformed" | "nonexistent" | "ambiguous";
+
+export type WallTime = { ok: true; value: Date | null } | { ok: false; reason: WallTimeRefusal };
+
+// The field's own shape: `YYYY-MM-DDTHH:mm`, with whole seconds allowed
+// because the HTML standard allows them and a browser may send them.
+const LOCAL = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/;
+
+const WALL = new Intl.DateTimeFormat("en-US", {
+  timeZone: DISPLAY_ZONE,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hourCycle: "h23",
+});
+
+/** An instant's New York wall clock, written as if it were UTC — for comparing. */
+function wallOf(instant: number): number {
+  const parts = WALL.formatToParts(new Date(instant));
+  const part = (type: Intl.DateTimeFormatPartTypes) =>
+    Number(parts.find((candidate) => candidate.type === type)?.value ?? Number.NaN);
+  const hour = part("hour") === 24 ? 0 : part("hour");
+  return Date.UTC(part("year"), part("month") - 1, part("day"), hour, part("minute"), part("second"));
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * A `datetime-local` value, as **this wall-clock time in New York** — the
+ * instant to store, or why there is none.
+ *
+ * The field carries no zone, so the zone is the product's, stated here:
+ * `America/New_York`, whatever zone the server, the laptop or the browser is
+ * in. `new Date(raw)` would read it in the *process's* zone instead — UTC on
+ * Railway — which is exactly how a follow-up entered in New York used to be
+ * stored hours off.
+ *
+ * No offset is written down. The offsets New York actually uses on either side
+ * of the typed time come from the zone's own rules; each gives one candidate
+ * instant, and a candidate counts only if it reads back as exactly the typed
+ * wall clock. One match is the answer. None means the clocks skipped that
+ * time; two means they lived it twice. An empty field is no time at all.
+ */
+export function readWallTime(raw: string): WallTime {
+  if (raw.trim() === "") return { ok: true, value: null };
+
+  const match = LOCAL.exec(raw);
+  if (!match) return { ok: false, reason: "malformed" };
+  const [year, month, day, hour, minute, second] = match.slice(1).map((piece) => Number(piece ?? 0)) as [
+    number, number, number, number, number, number,
+  ];
+
+  // A real calendar date and a real clock time, checked rather than trusted:
+  // `Date.UTC` would roll 31 February into March and 25:00 into tomorrow.
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  if (month < 1 || month > 12 || day < 1 || day > daysInMonth || hour > 23 || minute > 59 || second > 59) {
+    return { ok: false, reason: "malformed" };
+  }
+
+  const wall = Date.UTC(year, month - 1, day, hour, minute, second);
+  const offsets = new Set([wall - DAY_MS, wall, wall + DAY_MS].map((probe) => wallOf(probe) - probe));
+  const instants = [...new Set([...offsets].map((offset) => wall - offset))].filter(
+    (instant) => wallOf(instant) === wall,
+  );
+
+  if (instants.length === 0) return { ok: false, reason: "nonexistent" };
+  if (instants.length > 1) return { ok: false, reason: "ambiguous" };
+  return { ok: true, value: new Date(instants[0]!) };
+}

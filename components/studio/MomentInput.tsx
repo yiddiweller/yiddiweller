@@ -6,9 +6,11 @@ import { momentInputValue } from "@/lib/studio-format";
 import styles from "@/app/studio/studio.module.css";
 
 /**
- * A `datetime-local` field prefilled with the New York wall clock — the zone
- * every other date and time in the product is shown in — the same on the
- * server and in the browser.
+ * A `datetime-local` field that means **New York wall-clock time**, both ways:
+ * prefilled with the stored instant's New York clock (`momentInputValue`) and
+ * read back as New York time by `readWallTime` on the server. The two are the
+ * same rule, so saving the form without touching the field stores the same
+ * instant — whatever zone the browser or the server is in.
  *
  * Once the field is typed in, what was typed wins — the suggestion is only a
  * starting point.

@@ -338,9 +338,14 @@ recorded in [`delivery.md`](./delivery.md) under *Reviews are verified on beta*.
 - **Dates and times are New York's, on a 12-hour clock**, everywhere a person
   reads one: *24 Sep 2026 · 12:05 AM*, in both worlds, through one formatter
   and one component, identical on the server and in the browser. Display only —
-  stored timestamps are untouched. Found while doing it and recorded rather than
-  fixed: a Lead's follow-up field is read back in the server's zone (UTC), so a
-  follow-up saved in New York is stored hours off. See `docs/studio.md`.
+  stored timestamps are untouched.
+- **A Lead's follow-up is now read as New York time.** It was `new Date(raw)`,
+  which reads a `datetime-local` in the server's zone (UTC on Railway): a time
+  typed in New York was stored four or five hours early and moved again on
+  every later save of the lead. `readWallTime` interprets the field as New York
+  wall-clock time in any process or browser zone, and refuses a time the clocks
+  skip or repeat. No migration; **historical follow-ups were not rewritten** —
+  `docs/studio.md` has a query for reviewing them by hand.
 - **Still not built:** video, image and region capture, and Stage G,
   notifications.
 

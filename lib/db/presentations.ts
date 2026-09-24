@@ -791,7 +791,8 @@ export async function updateItem(
  * written that was not read.
  *
  * An edge move — the first block up, the last down — is a quiet success that
- * writes nothing, because the page offers both controls on every block.
+ * writes nothing. The page does not offer one (`draftMoves`); this stays as the
+ * answer to a crafted or stale request, which is not an error either.
  */
 export async function moveItem(
   actor: AuditActor,

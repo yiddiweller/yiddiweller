@@ -139,8 +139,9 @@ test("with gaps in the draft, a block swaps with the neighbour that exists", asy
 
 test("the first block up and the last block down change nothing, as before", async () => {
   // The existing convention: an edge move is a quiet success that writes
-  // nothing — no version, no audit — because the page offers both controls on
-  // every block and pressing one at the edge is not an error.
+  // nothing — no version, no audit. The page no longer draws those controls
+  // (`draft-moves.test.ts`), so this answers a crafted or stale request, and
+  // it stays as the server's own defence.
   const id = await draft(["A", "B", "C"]);
   const start = await order(id);
   const before = await version(id);

@@ -21,6 +21,7 @@ import {
 } from "@/lib/db/presentations";
 import { openRoundOnCurrentRevision } from "@/lib/db/reviews";
 import { findWorkroom } from "@/lib/db/workrooms";
+import { draftMoves } from "@/lib/workrooms/draft-moves";
 import { publishConfirmation } from "@/lib/workrooms/publish-copy";
 import { fileKind, formatBytes } from "@/lib/storage/policy";
 import styles from "@/app/studio/studio.module.css";
@@ -196,8 +197,10 @@ export default async function StudioPresentation({
           </p>
         ) : (
           <div className={styles.list}>
-            {items.map((item) => {
+            {items.map((item, index) => {
               const file = available.find((candidate) => candidate.id === item.fileId);
+              // By place in this list, never by `position`, which has gaps.
+              const moves = draftMoves(index, items.length);
 
               return (
                 <div key={item.id} className={styles.row}>
@@ -216,31 +219,36 @@ export default async function StudioPresentation({
                   <span className={styles.rowActions}>
                     {/* Reordering is two buttons, not a drag handle. A drag is
                         not reachable by keyboard and not comfortable on a
-                        phone, and this list is short by design. */}
-                    <RecordAction
-                      action={moveItemAction}
-                      fields={{
-                        id: presentation.id,
-                        workroomId: room.id,
-                        version,
-                        itemId: item.id,
-                        direction: "up",
-                      }}
-                      label="Move up"
-                      busyLabel="Moving…"
-                    />
-                    <RecordAction
-                      action={moveItemAction}
-                      fields={{
-                        id: presentation.id,
-                        workroomId: room.id,
-                        version,
-                        itemId: item.id,
-                        direction: "down",
-                      }}
-                      label="Move down"
-                      busyLabel="Moving…"
-                    />
+                        phone, and this list is short by design. A move that
+                        could do nothing is not drawn at all. */}
+                    {moves.up ? (
+                      <RecordAction
+                        action={moveItemAction}
+                        fields={{
+                          id: presentation.id,
+                          workroomId: room.id,
+                          version,
+                          itemId: item.id,
+                          direction: "up",
+                        }}
+                        label="Move up"
+                        busyLabel="Moving…"
+                      />
+                    ) : null}
+                    {moves.down ? (
+                      <RecordAction
+                        action={moveItemAction}
+                        fields={{
+                          id: presentation.id,
+                          workroomId: room.id,
+                          version,
+                          itemId: item.id,
+                          direction: "down",
+                        }}
+                        label="Move down"
+                        busyLabel="Moving…"
+                      />
+                    ) : null}
 
                     <FormDialog
                       trigger="Edit"

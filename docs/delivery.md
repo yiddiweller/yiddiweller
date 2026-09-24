@@ -887,6 +887,15 @@ edge move is a quiet success that writes nothing, two moves from one page give
 one winner and one `conflict`, and a Revision already published is never
 touched: a reorder reaches a client only as the next Revision.
 
+**Studio offers only a move that can happen.** The first block has no *Move
+up*, the last no *Move down*, and a lone block neither — not disabled, not in
+the markup at all, so a keyboard never lands on a control that does nothing.
+`draftMoves(index, count)` in `lib/workrooms/draft-moves.ts` decides it from
+the block's place in the list the page renders, never from `position`: in a
+draft reading `0, 2, 5` the block at 5 is last and the one at 2 is in the
+middle. The server's quiet no-op for an edge move stays, for a crafted or stale
+request.
+
 ---
 
 ## Revisions — immutable

@@ -1668,17 +1668,154 @@ checks that `x`, `y`, `w` and `h` are each between 0 and 1 and nothing else, so
 `{ x: 0.9, y: 0.9, w: 0.9, h: 0.9 }` — nine-tenths of it outside the image — is
 accepted today, as is a region of zero size, and the client action will store
 either for anyone who posts one. Nothing draws regions yet, so nothing is
-wrong on screen. Stage F tightens `parseAnchor` and the projection's own check
-together: `w > 0`, `h > 0`, `x + w ≤ 1`, `y + h ≤ 1`, and a sane ceiling on
-seconds. The projection failing closed covers anything stored before.
+wrong on screen. The region rule becomes `w > 0`, `h > 0`, `x + w ≤ 1`,
+`y + h ≤ 1`, written once, in the canonical parser below; anything stored
+before fails closed on read.
 
-**Geometry.** `x` and `y` are fractions of the media's **content rectangle** —
-the area actual pixels occupy, not the element's box — measured from its
-top-left. That rectangle is computed from the intrinsic size
-(`naturalWidth`/`videoWidth`) fitted *contain*-wise into the element's box, so
-letterboxing is excluded by construction and a press in the bars is not an
-anchor. One pure module does both directions, capture and display, for both
-worlds; nothing stores or compares pixels.
+#### One anchor parser, used on the way in and on the way out
+
+Today there are two validators and they already disagree. `parseAnchor` in
+`lib/db/reviews.ts` checks exact keys and the media type; `toClientAnchor` in
+`lib/workrooms/review-view.ts` has its own `FRACTION`, `SECONDS` and `box()`,
+**does not check exact keys**, and cannot check the media type because the
+reader never tells it what the item is.
+
+**`lib/workrooms/review-anchor.ts` becomes the only definition of a valid
+anchor.** Pure and server-safe — no database import, no browser API. It owns
+the discriminated union, the exact-key whitelist, the finite-number checks, the
+point, region and time rules, and which media each kind belongs on. It returns
+the anchor or a machine reason, never a sentence.
+
+- **Writing.** `createReviewNote` calls it before storage and maps a refusal to
+  the sentence a person reads. The copy stays in the domain; the rule does not.
+- **Reading.** The projection calls the same function on the stored jsonb and
+  fails closed — the note keeps its `subject` and loses only the anchor. For
+  that, `reviewNotes` returns each item's **viewer kind** alongside its
+  position, read through the item's file, so the projection can apply the
+  media-type rule without importing anything from `lib/db`.
+- **The browser** has capture helpers that produce candidate values; it has no
+  authority. `readAnchor` stays what it is — a transport reader that parses JSON
+  under a 400-character cap and judges nothing.
+
+No invariant — `x + w ≤ 1` or any other — is written in two places.
+
+#### Time
+
+A stored moment is a **finite number ≥ 0**; a stretch adds `t2 > t`. **There is
+no upper limit on a stored time**, and no product rule that anchors live inside
+some duration: the server cannot know a file's duration without probing media,
+which it deliberately does not, so a stored value that was valid when written
+stays valid as history. JSON cannot carry `NaN` or infinity, and `readAnchor`'s
+400-character cap is already the only bound an abusive value needs; the label
+formatter renders any finite number without breaking.
+
+Duration is enforced **where it is known — at capture**: the controls are
+unavailable until the element reports a finite `duration`, and a moment or a
+stretch that does not fit inside it cannot be chosen. On **display**, a stored
+time beyond what the loaded media reports is a fact about that file, not an
+error in the note: the words and the locator stay readable, and the seek is
+clamped or declined at the media-control layer only. Stored history is never
+rewritten to match a file.
+
+#### The spatial rendering contract
+
+A normalized coordinate means something only if the layout it was measured in
+is fixed. For every element that can carry a spatial anchor — an image now, a
+video frame when that ships — the stylesheet declares, explicitly rather than by
+inheriting a browser default:
+
+```
+object-fit: contain;
+object-position: 50% 50%;
+```
+
+Today the image already renders at its own aspect ratio, so its box *is* its
+content; the video does not — `width: 100%` under a capped height letterboxes it
+inside its own element. The same helper handles both without knowing which.
+
+**One pure function, four inputs, both directions.** Given the intrinsic size
+(`naturalWidth` × `naturalHeight`, which browsers report *after* EXIF
+orientation) and the element's **content box** — its bounding rectangle less
+its own border and padding — it fits the intrinsic aspect ratio inside that box,
+centred, and returns the **content rectangle**.
+
+- **Capture:** pointer → content-local → `x = (px − left) / width`,
+  `y = (py − top) / height`. A pointer outside the content rectangle — above,
+  below, left or right, in any letterbox — is **no anchor**, not a clamped one;
+  the edges themselves are inside.
+- **Display:** `x`, `y` → content-local → the marker's position, recomputed when
+  the element resizes.
+
+Pointer coordinates and bounding rectangles are both in the same CSS pixel
+space, so browser zoom and pinch cancel out in the fraction. Nothing is measured
+against the Presentation, the `FileViewer` wrapper, the page or the viewport
+without first passing through the content rectangle. Anchors are measured and
+shown on the full-view element only, never on a thumbnail.
+
+#### Refreshing an expired media URL — once
+
+Inline URLs last fifteen minutes (`VIEW_TTL_SECONDS`), and Stage A already
+recorded that a seek is a fresh request against the redirected, signed address —
+so on a page left open, a seek can fail with nothing wrong except the clock.
+Whether the browser re-requests our route by itself is measured in F6; if it
+does, no code is added. If it does not:
+
+1. The locator's operation tries the seek or the display against the element
+   as it is.
+2. Only if the element **had loaded before** and now errors — which is what a
+   lapsed signature looks like, and what a file that never played does not —
+   the element's `src` is set back to **our own route** and reloaded, **once**.
+   Images, which the browser caches per address, get a throwaway query
+   parameter the route ignores.
+3. The operation waits for `loadedmetadata` (or `load`), bounded by a timeout.
+4. Then it performs the pending seek or display.
+5. If that fails too, it stops. The feedback stays readable, no half-drawn
+   marker is left, and the download is untouched.
+
+A refresh happens **only inside an operation somebody started**, at most once
+per operation and never twice at the same time for one element; no error
+listener outside an operation ever reloads anything. Nothing stores, reads back
+or passes on a signed address — the element is only ever given our route.
+
+#### Stretches on a phone
+
+A stretch is kept, and it is harder than a moment: two deliberate presses
+against a native player a phone controls, which may go fullscreen and whose
+scrubbing is coarse. The benchmark is not uniform here either — Frame.io's iOS
+documentation says anchored comments work but adjusting timestamps and ranged
+comments are not currently available in its iOS app.
+
+**Start here / End here stays the model**: each reads `currentTime`, the summary
+shows the choice, either end can be pressed again. No drag, no timeline, no
+custom scrubber to buy parity. A **real phone stretch is part of manual beta
+acceptance**. If it proves unusable there, phones get moments only — the
+stretch control withheld under `(pointer: coarse)` — rather than a stretch that
+half works.
+
+#### Capturing where the work is
+
+The composer sits below the Presentation and the work it is about may be a long
+way above it. Nobody should have to pick a subject at the bottom, scroll up to
+work the player, scroll back and press a button that is nowhere near what it
+measures.
+
+- After choosing a block that can take precision, the composer offers one
+  control: **Point to it** for an image, **Set precise time** for video or
+  audio.
+- Pressing it scrolls **to that one block** and opens a small capture panel
+  beside it — a point target on the image, or **Use this moment** and
+  **Start here / End here** under the player — and moves focus there.
+- **Done** returns to the composer and to the text; **Cancel** or Escape does
+  the same and keeps nothing.
+- The composer then shows the choice in words — *A point on Primary identity
+  direction*, *At 0:42*, *0:42–0:51* — with **Change** and **Clear**. Changing
+  the block clears it.
+
+The panel exists only while one draft is being written, on only the block that
+draft is about. No block carries capture controls otherwise. This fits the
+structure the lock already has: the coordinator that wraps the work and the
+round is what lets a control in the composer open a panel beside media rendered
+far above it, without either component learning the other's markup.
 
 **Display is opt-in and quiet.** Artwork is clean by default. A locator reads
 *On Primary identity direction · a point*, *At 0:42* or *0:42–0:51*; activating

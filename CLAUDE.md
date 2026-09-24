@@ -230,6 +230,17 @@ a deliberate decision, not a cleanup.
   inside it.** No note is resolved, no feedback is copied forward, no round is
   created for the new Revision, and an open round never blocks a publish. A
   staff closure keeps its reason and a withdrawal stays withdrawn.
+- **The publish confirmation discloses that, when it is true and only then.**
+  Beta found the dialog saying only that the client would see something new
+  while the same press was ending a conversation with them. It now reads *The
+  client will see this instead of Version 2. Feedback on Version 2 will close
+  and remain available as read-only history.* — the second sentence only for an
+  **open** round, because that is the only state `supersedeReviewOnPublish`
+  changes. `openRoundOnCurrentRevision` reads the same `current_revision_id` the
+  transaction reads, whatever the Presentation's status, so the dialog and the
+  publish cannot disagree about which round is affected. The words are decided
+  in `lib/workrooms/publish-copy.ts`, a pure function, and every combination is
+  tested against the behaviour by performing the publish afterwards.
 - **An `RSC: 1` request is answered with a 307, so a leak test that reads it
   manually inspects nothing.** Build 005's first flight-payload checks did
   exactly that and passed on an empty body for a week. The flight fetch follows

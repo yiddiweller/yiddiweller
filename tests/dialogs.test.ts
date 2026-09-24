@@ -153,11 +153,24 @@ test("publishing states the number of files it will hand over", { skip }, async 
   const publish = found.find((entry) => entry.title.startsWith("Publish"));
   assert.ok(publish, "no confirmation on publish");
   assert.equal(publish.action, "Publish");
+  // The first sentence is always one of three consequences; the version being
+  // replaced is named by number. Copy decided in `publishConfirmation`, whose
+  // own suite covers every combination — this checks what actually rendered.
   assert.match(
     publish.note,
-    /(One file|\d+ files) will also be shared with the client|will see this instead of the current version|can open it from that moment/,
+    /^((One file|\d+ files) will also be shared with the client\.|The client will see this instead of (Version \d+|the current version)\.|The client can open it from that moment\.)/,
     `publish said: ${publish.note}`,
   );
+
+  // And when the version being replaced has an open round, that is said too —
+  // the consequence beta found missing.
+  if (/Feedback on/.test(publish.note)) {
+    assert.match(
+      publish.note,
+      / Feedback on (Version \d+|the current version) will close and remain available as read-only history\.$/,
+      `publish said: ${publish.note}`,
+    );
+  }
 
   const withdraw = found.find((entry) => entry.title === "Withdraw this presentation?");
   assert.ok(withdraw, "no confirmation on withdraw");

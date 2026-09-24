@@ -1395,6 +1395,45 @@ their own Revision, items are keyed by position, and anchors are normalised
 against the media rather than the screen. It is not built because two tabs
 already work.
 
+### Publishing tells you it will end the round
+
+Publishing over an open round supersedes it — terminally, and on purpose. Beta
+found the confirmation saying only *The client will see this instead of the
+current version*, so somebody about to close a conversation with a client was
+not told they were doing it. The dialog now says:
+
+```
+Publish a new version?
+The client will see this instead of Version 2. Feedback on Version 2 will
+close and remain available as read-only history.
+Cancel · Publish
+```
+
+| The round on the version being replaced | Said in the dialog | What publishing does |
+| --- | --- | --- |
+| none | nothing about feedback | nothing to close |
+| open | *Feedback on Version N will close…* | closes it, `superseded`, for good |
+| closed by the studio | nothing about feedback | keeps it closed, reason `staff` |
+| withdrawn | nothing — not even an allusion | leaves it withdrawn |
+
+**Only the open case is disclosed, because only the open case changes.** Saying
+a closed round will close would promise a consequence that does not happen, and
+mentioning a withdrawn one would surface administration the studio chose to take
+back. `openRoundOnCurrentRevision` reads the same column the transaction reads —
+`current_revision_id`, whatever the Presentation's status — so a presentation
+withdrawn with its round still open warns correctly on republish, which a
+"published only" reader would have missed. Each row of the table is tested by
+reading the dialog and then publishing and checking the round.
+
+The words live in `lib/workrooms/publish-copy.ts`, a pure function of four
+facts. The files sentence still leads when there are files to share; the
+feedback sentence is added, never substituted, because it is a different
+consequence. The version is named by number, never by row.
+
+Advisory, like every sidecar here: a round closed between render and press
+means one warning that turned out unnecessary, never a consequence nobody was
+told about. Publishing itself is unchanged.
+
 ### One number for a block, and the beta defect that needed it
 
 A **draft**'s `position` is an ordering key. `removeItem` does not renumber —

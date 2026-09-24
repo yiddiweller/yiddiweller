@@ -287,6 +287,13 @@ page, no Studio page and no notification, and nothing renders any of it.
   while the same person also wrote the live note beside it, so it would have
   passed however badly the tombstone leaked. Every tombstone fixture is now
   built so the removed note's author, block and resolver appear nowhere else.
+- **The publish confirmation did not say it would end a round.** Beta reached
+  the moment of publishing Version 3 over Version 2's open round and was told
+  only that the client would see something new. It now names the version by
+  number and, for an open round and only an open round, adds *Feedback on
+  Version 2 will close and remain available as read-only history.* No round, a
+  staff-closed round and a withdrawn round say nothing about feedback, because
+  publishing changes none of them. Publish semantics are untouched.
 - **Stage C is not manually accepted on beta, and there are no notifications.**
   Feedback is general or item-level; precise anchors are stored and projected
   but not yet drawn.

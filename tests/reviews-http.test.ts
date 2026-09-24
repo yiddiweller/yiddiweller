@@ -299,6 +299,42 @@ test("a removed comment carries nothing of itself into the response", { skip }, 
   }
 });
 
+/* ------------------------------------------------------ publish disclosure */
+
+/**
+ * The words in the publish dialog, read out of the rendered page.
+ *
+ * `ConfirmDialog` renders its `<dialog>` closed, with the title and the
+ * consequence in the markup, so the sentence a person will read is in the
+ * response before anybody presses anything.
+ */
+function publishDialog(body: string): string | null {
+  const title = body.indexOf("Publish a new version?</h2>");
+  if (title === -1) return null;
+  const note = body.slice(title).match(/<p[^>]*dialogNote[^>]*>([^<]*)<\/p>/);
+  return note ? note[1]! : null;
+}
+
+test("publishing over an open round says so before the button", { skip }, async () => {
+  // The fixture's Version 2 holds an open round with real feedback in it.
+  const studio = await get(studioPath, staff);
+  assert.equal(studio.status, 200);
+
+  assert.equal(
+    publishDialog(studio.body),
+    "The client will see this instead of Version 2. Feedback on Version 2 will close and remain available as read-only history.",
+    "the publish dialog does not disclose that the round will close",
+  );
+
+  // Named by number, never by row. The Studio page carries ids in its hidden
+  // fields by design; the sentence a person reads must not.
+  assert.ok(!UUID.test(publishDialog(studio.body)!), "the dialog names something by its id");
+
+  // And the client world has no publish control and no such sentence.
+  const client = await whole(clientPath, clientA);
+  assert.ok(!client.includes("will close and remain available"), "a client was shown Studio's dialog");
+});
+
 test("no database identifier reaches a client page", { skip }, async () => {
   const body = await whole(clientPath, clientA);
   const found = body.match(new RegExp(UUID, "gi")) ?? [];

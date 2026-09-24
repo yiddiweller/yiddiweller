@@ -19,7 +19,9 @@ import {
   INTRO_MAX,
   TITLE_MAX,
 } from "@/lib/db/presentations";
+import { openRoundOnCurrentRevision } from "@/lib/db/reviews";
 import { findWorkroom } from "@/lib/db/workrooms";
+import { publishConfirmation } from "@/lib/workrooms/publish-copy";
 import { fileKind, formatBytes } from "@/lib/storage/policy";
 import styles from "@/app/studio/studio.module.css";
 
@@ -62,12 +64,26 @@ export default async function StudioPresentation({
   const [room, presentation] = await Promise.all([findWorkroom(id), findPresentation(pid)]);
   if (!room || !presentation || presentation.workroomId !== room.id) notFound();
 
-  const [items, revisions, available, willShare] = await Promise.all([
+  const [items, revisions, available, willShare, closesFeedback] = await Promise.all([
     listDraftRows(presentation.id),
     listRevisions(presentation.id),
     presentableFiles(room.id),
     filesToShareOnPublish(presentation.id),
+    openRoundOnCurrentRevision(room.id, presentation.id),
   ]);
+
+  // The version a publish would replace, by number — read off the
+  // Presentation's own pointer rather than assumed to be the highest, which is
+  // what the publish transaction does too.
+  const replacing =
+    revisions.find((entry) => entry.id === presentation.currentRevisionId)?.revisionNumber ?? null;
+
+  const publishing = publishConfirmation({
+    firstPublish: revisions.length === 0,
+    sharing: willShare.length,
+    replacing,
+    closesFeedback,
+  });
 
   const used = new Set(items.map((item) => item.fileId).filter(Boolean));
   const addable = available.filter((file) => !used.has(file.id));
@@ -403,19 +419,12 @@ export default async function StudioPresentation({
             label={revisions.length === 0 ? "Publish" : "Publish a new version"}
             busyLabel="Publishing…"
             variant="primary"
-            /* The consequence is the message, and the count is the whole of
-               it: publishing shares what it references, and somebody about to
-               hand three files to a client should read the number three. */
-            confirm={{
-              title: revisions.length === 0 ? "Publish presentation?" : "Publish a new version?",
-              message:
-                willShare.length > 0
-                  ? `${willShare.length === 1 ? "One file" : `${willShare.length} files`} will also be shared with the client.`
-                  : revisions.length === 0
-                    ? "The client can open it from that moment."
-                    : "The client will see this instead of the current version.",
-              action: "Publish",
-            }}
+            /* The consequences are the message: which version this replaces,
+               how many files it shares, and — when that version has an open
+               round — that the round ends for good. Decided in one pure
+               function, `publishConfirmation`, so every combination is tested
+               rather than read out of a ternary. */
+            confirm={{ ...publishing, action: "Publish" }}
           />
 
           {published ? (

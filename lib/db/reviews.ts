@@ -1611,6 +1611,44 @@ export async function currentRevisionForStaff(
   return row?.id ?? null;
 }
 
+/**
+ * Whether publishing this Presentation now would end an open round.
+ *
+ * The one Review fact a publish confirmation has to disclose, read from exactly
+ * the column `supersedeReviewOnPublish` reads — `current_revision_id`, whatever
+ * the Presentation's status — and true for exactly the state it acts on. So the
+ * dialog and the transaction cannot disagree about which round is affected, or
+ * about whether a closed or withdrawn one is.
+ *
+ * Advisory, like every sidecar here: somebody may close the round between the
+ * page rendering and the press. The publish transaction reads the round again
+ * under its own lock and does the right thing either way; the worst this can
+ * be is one render out of date, in the direction of a warning that turned out
+ * unnecessary.
+ */
+export async function openRoundOnCurrentRevision(
+  workroomId: string,
+  presentationId: string,
+): Promise<boolean> {
+  const [row] = await db()
+    .select({ status: presentationReviews.status })
+    .from(presentations)
+    .innerJoin(
+      presentationReviews,
+      eq(presentationReviews.presentationRevisionId, presentations.currentRevisionId),
+    )
+    .where(
+      and(
+        eq(presentations.id, presentationId),
+        eq(presentations.workroomId, workroomId),
+        isNull(presentations.archivedAt),
+      ),
+    )
+    .limit(1);
+
+  return row?.status === "open";
+}
+
 /* --------------------------------------------------- the surface's bundle */
 
 /**

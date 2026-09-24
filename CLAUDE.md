@@ -58,8 +58,13 @@ one canonical parser, `parseReviewAnchor` in `lib/workrooms/review-anchor.ts`,
 judges an anchor on the way in and on the way out, against the viewer **the
 Revision's frozen snapshot** recorded, never the live file; regions are
 tightened, time has no ceiling, and `0006`'s CHECK is a coarser backstop. Pure
-geometry and label primitives exist. Capture, markers, seeking and any
-`FileViewer` change do not, and Stage F is not usable.
+geometry and label primitives exist. **F2 — display and return to context — is
+built and locally browser-tested, not manually accepted**: a precise note's
+locator shows its image point or pauses its player at the moment, on that
+note's own Revision only, through one small client coordinator
+(`components/workrooms/ReviewStage.tsx`) and no change to `FileViewer`;
+Studio's draft page links to `/revisions/{N}?note={n}` instead. Nothing a
+person can reach creates a precise anchor yet, so Stage F is not usable.
 Approvals has not begun. Build 005 is **not promoted**: production has no bucket, the sweep is
 unscheduled and there is no per-object backup strategy, so production remains
 Build 004.**

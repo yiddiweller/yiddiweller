@@ -2,11 +2,13 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import PresentationView from "@/components/workrooms/PresentationView";
+import { ReviewStage } from "@/components/workrooms/ReviewStage";
 import ReviewPanel from "@/app/studio/(app)/workrooms/[id]/presentations/ReviewPanel";
 import { requireStaff } from "@/lib/auth/guard";
 import { isId } from "@/lib/business";
 import { findPresentation, listRevisions, revisionForStaff } from "@/lib/db/presentations";
 import { findWorkroom } from "@/lib/db/workrooms";
+import { readNoteParam } from "@/lib/workrooms/review-locator";
 import studio from "@/app/studio/studio.module.css";
 import styles from "@/app/workrooms/workroom.module.css";
 
@@ -22,8 +24,10 @@ export const metadata = { title: "Version" };
  */
 export default async function StudioPresentationRevision({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string; pid: string; n: string }>;
+  searchParams: Promise<{ note?: string | string[] }>;
 }) {
   const staff = await requireStaff();
   const { id, pid, n } = await params;
@@ -34,6 +38,10 @@ export default async function StudioPresentationRevision({
   if (!room || !presentation || presentation.workroomId !== room.id) notFound();
 
   const number = Number(n);
+  // A locator on the draft page sends only the note's ordinal. Whether that
+  // note exists, is in *this* version's round and has anywhere to point is
+  // answered by this page's own projection, below — never by the link.
+  const note = readNoteParam((await searchParams).note);
   const [view, revisions] = await Promise.all([
     revisionForStaff(presentation, number),
     listRevisions(presentation.id),
@@ -61,29 +69,35 @@ export default async function StudioPresentationRevision({
         </p>
       </div>
 
-      <div className={`${styles.tokens} ${studio.section}`}>
-        {/* The same history affordance the client has, pointing at Studio's
-            own revision routes. Staff comparing two versions should not have
-            to go back to a list — and it keeps this page structurally
-            identical to the client's, which is what the parity test checks. */}
-        <PresentationView
-          presentation={view}
-          revisionHref={(other) =>
-            `/studio/workrooms/${room.id}/presentations/${presentation.id}/revisions/${other}`
-          }
-        />
-      </div>
+      {/* This version's work and this version's round, as one stage — so a
+          locator here can only ever reach the frozen work it was written
+          about. */}
+      <ReviewStage>
+        <div className={`${styles.tokens} ${studio.section}`}>
+          {/* The same history affordance the client has, pointing at Studio's
+              own revision routes. Staff comparing two versions should not have
+              to go back to a list — and it keeps this page structurally
+              identical to the client's, which is what the parity test checks. */}
+          <PresentationView
+            presentation={view}
+            revisionHref={(other) =>
+              `/studio/workrooms/${room.id}/presentations/${presentation.id}/revisions/${other}`
+            }
+          />
+        </div>
 
-      {/* This version's own round, if it ever had one. A round belongs to the
-          Revision it was asked about, so an older version keeps what was said
-          about it — closed, because publishing a newer one closed it. */}
-      <ReviewPanel
-        staff={{ userId: staff.id }}
-        workroomId={room.id}
-        presentationId={presentation.id}
-        revision={number}
-        loadItems={async () => view.items}
-      />
+        {/* This version's own round, if it ever had one. A round belongs to the
+            Revision it was asked about, so an older version keeps what was said
+            about it — closed, because publishing a newer one closed it. */}
+        <ReviewPanel
+          staff={{ userId: staff.id }}
+          workroomId={room.id}
+          presentationId={presentation.id}
+          revision={number}
+          loadItems={async () => view.items}
+          activate={note}
+        />
+      </ReviewStage>
     </>
   );
 }

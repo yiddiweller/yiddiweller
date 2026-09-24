@@ -1,8 +1,9 @@
 import Moment from "@/components/studio/Moment";
 import RecordAction from "@/components/studio/RecordAction";
-import ReviewThread from "@/components/workrooms/ReviewThread";
+import ReviewThread, { type LocatorMode } from "@/components/workrooms/ReviewThread";
 import { reviewPanelForStaff } from "@/lib/db/reviews";
 import { labelAt, type ClientRevisionItem } from "@/lib/workrooms/presentation-view";
+import { revisionLocatorHref } from "@/lib/workrooms/review-locator";
 import { type ReviewLifecycle } from "@/lib/workrooms/review-lifecycle";
 import studio from "@/app/studio/studio.module.css";
 import room from "@/app/workrooms/workroom.module.css";
@@ -181,6 +182,7 @@ export default async function ReviewPanel({
   presentationId,
   loadItems,
   revision,
+  activate,
 }: {
   staff: { userId: string };
   workroomId: string;
@@ -195,6 +197,11 @@ export default async function ReviewPanel({
   loadItems: () => Promise<ClientRevisionItem[]>;
   /** Absent on the presentation page, which is always about the current version. */
   revision?: number;
+  /**
+   * The note this page was opened to show, from a locator on the draft page.
+   * Only meaningful on a version's own page, where that version's work is.
+   */
+  activate?: number | null;
 }) {
   const panel = await reviewPanelForStaff(staff, workroomId, presentationId, revision);
   const fields = { workroomId, presentationId, ...(revision === undefined ? {} : { revision }) };
@@ -206,6 +213,22 @@ export default async function ReviewPanel({
   const aboutABlock =
     panel.review?.notes.some((note) => !note.removed && note.subject !== undefined) ?? false;
   const items = aboutABlock ? await loadItems() : [];
+
+  // On a version's own page the work is right above, so a locator shows it in
+  // place. On the presentation page the work above is the *draft*, which may
+  // have changed since this round was asked about — so a locator there goes to
+  // the version the round belongs to instead of drawing on the wrong thing.
+  const reviewed = panel.revision;
+  const locator: LocatorMode | undefined =
+    revision !== undefined
+      ? { kind: "here", activate }
+      : reviewed !== null
+        ? {
+            kind: "revision",
+            href: (n) =>
+              revisionLocatorHref(`/studio/workrooms/${workroomId}/presentations/${presentationId}`, reviewed, n),
+          }
+        : undefined;
 
   return (
     /* Unnamed on purpose when the thread is here: `ReviewThread` is a labelled
@@ -239,6 +262,7 @@ export default async function ReviewPanel({
             }}
             fields={fields}
             itemLabel={(position) => labelAt(items, position)}
+            locator={locator}
             lead={
               panel.review.status === "open"
                 ? "Exactly what the client is reading, and exactly what they can write in."

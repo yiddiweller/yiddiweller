@@ -1,8 +1,13 @@
+import Link from "next/link";
+
 import Moment from "@/components/studio/Moment";
 import ReviewAction from "@/components/workrooms/ReviewAction";
 import ReviewComposer, { type ReviewSubject } from "@/components/workrooms/ReviewComposer";
+import { ReviewLocator } from "@/components/workrooms/ReviewStage";
 import { type ActionResult } from "@/lib/studio-result";
+import { locatorLabel } from "@/lib/workrooms/anchor-label";
 import { type ReviewCapabilities } from "@/lib/workrooms/review-capabilities";
+import { locatable } from "@/lib/workrooms/review-locator";
 import {
   type ClientAuthor,
   type ClientLiveNote,
@@ -64,6 +69,23 @@ export type ReviewActions = {
   reopen: Action;
 };
 
+/**
+ * What a precise note's locator does on this page — the one Stage F decision a
+ * page makes, and it makes it from where the work is, not from who is reading.
+ *
+ * - `here`: the Revision under review is rendered on this page, inside a
+ *   `ReviewStage`, so the locator shows the point or pauses the player in
+ *   place. `activate` names the one note the page was opened for, if any.
+ * - `revision`: this page shows something else — Studio's draft — so the
+ *   locator is a link to the reviewed Revision's own page, carrying the note's
+ *   ordinal and nothing more.
+ *
+ * Absent, a precise note reads exactly as item-level feedback always has.
+ */
+export type LocatorMode =
+  | { kind: "here"; activate?: number | null }
+  | { kind: "revision"; href: (n: number) => string };
+
 const NO_CONTROLS = { reply: false, edit: false, remove: false, resolve: false, reopen: false };
 
 /** The studio is named as the studio. Everyone else is simply themselves. */
@@ -104,6 +126,7 @@ export default function ReviewThread({
   subjects,
   itemLabel,
   lead,
+  locator,
 }: {
   review: ClientReview;
   capabilities: ReviewCapabilities;
@@ -120,6 +143,7 @@ export default function ReviewThread({
   itemLabel: (position: number) => string | null;
   /** The one sentence above the thread. The only copy either world supplies. */
   lead: string;
+  locator?: LocatorMode;
 }) {
   const controlsFor = (n: number) => capabilities.notes[n] ?? NO_CONTROLS;
 
@@ -220,6 +244,12 @@ export default function ReviewThread({
     const subject =
       note.subject === undefined ? null : (named ?? `Item ${note.subject + 1}`);
 
+    // Precision is additional: only a root with a block *and* an anchor gets a
+    // locator, and it takes the place of the plain *On …* line rather than
+    // adding a second one. Replies never have one; a tombstone never got here.
+    const precise = locator ? locatable(note) : null;
+    const located = precise && subject ? locatorLabel(subject, precise.anchor) : null;
+
     return (
       <li className={styles.note}>
         <div className={styles.noteHead}>
@@ -229,7 +259,25 @@ export default function ReviewThread({
               with its own comment marker, which leaves the sentence in two
               pieces for anything reading the response — a test, a screen
               reader announcing it, somebody copying the line. */}
-          {subject ? <span className={styles.subject}>{`On ${subject}`}</span> : null}
+          {precise && located && subject && locator ? (
+            locator.kind === "here" ? (
+              <ReviewLocator
+                className={styles.locator}
+                n={precise.n}
+                subject={precise.subject}
+                anchor={precise.anchor}
+                name={subject}
+                label={located}
+                activateOnLoad={locator.activate === precise.n}
+              />
+            ) : (
+              <Link className={styles.locator} href={locator.href(precise.n)}>
+                {located}
+              </Link>
+            )
+          ) : subject ? (
+            <span className={styles.subject}>{`On ${subject}`}</span>
+          ) : null}
           {note.edited ? <span className={styles.meta}>Corrected</span> : null}
         </div>
 

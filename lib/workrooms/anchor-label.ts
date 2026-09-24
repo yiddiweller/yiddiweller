@@ -74,3 +74,26 @@ export function anchorPhrase(anchor: ReviewAnchor): string | null {
       return momentLabel(anchor.t);
   }
 }
+
+/**
+ * What a locator says — *On Primary identity direction · Point*, *On The
+ * motion · At 0:42*, *On The sound · 1:12–1:24*.
+ *
+ * The block is always named first, because the locator replaces the plain
+ * *On …* line an item-level note carries and a precise note is still about that
+ * block. What follows is the precision in a word or a time, never a
+ * coordinate. A moment with an area on its frame says only the moment: the
+ * area is kept in the note and in history, but nothing draws it yet, and a
+ * label must not promise what activating it will not show.
+ */
+export function locatorLabel(subject: string, anchor: ReviewAnchor): string | null {
+  const precision =
+    anchor.kind === "point"
+      ? "Point"
+      : anchor.kind === "region"
+        ? "Area"
+        : "t2" in anchor
+          ? rangeLabel(anchor.t, anchor.t2)
+          : momentLabel(anchor.t);
+  return precision === null ? null : `On ${subject} · ${precision}`;
+}

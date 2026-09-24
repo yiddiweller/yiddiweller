@@ -1829,6 +1829,13 @@ export async function reviewPanelForViewer(
 }
 
 export type StaffReviewPanel = {
+  /**
+   * The public number of the Revision this panel was read for, or null when
+   * there is none. Studio's draft page shows the *current* Revision's round
+   * beside a draft that may since have changed, so its locators go to this
+   * Revision's own page rather than pointing into the draft.
+   */
+  revision: number | null;
   /** Null when no round was ever asked for, and when one was withdrawn. */
   review: ClientReview | null;
   capabilities: ReviewCapabilities;
@@ -1855,6 +1862,7 @@ export async function reviewPanelForStaff(
   now: Date = new Date(),
 ): Promise<StaffReviewPanel> {
   const nothing: StaffReviewPanel = {
+    revision: null,
     review: null,
     capabilities: NO_CAPABILITIES,
     lifecycle: reviewLifecycle({
@@ -1878,6 +1886,7 @@ export async function reviewPanelForStaff(
   const [row] = await db()
     .select({
       revisionId: presentationRevisions.id,
+      revisionNumber: presentationRevisions.revisionNumber,
       currentRevisionId: presentations.currentRevisionId,
       presentationStatus: presentations.status,
       presentationArchivedAt: presentations.archivedAt,
@@ -1910,6 +1919,7 @@ export async function reviewPanelForStaff(
 
   if (!row.reviewId || !row.status) {
     return {
+      revision: row.revisionNumber,
       review: null,
       capabilities: NO_CAPABILITIES,
       lifecycle: reviewLifecycle({
@@ -1934,6 +1944,7 @@ export async function reviewPanelForStaff(
   const panel = await panelFor(round, { side: "studio", userId: staff.userId }, true, now);
 
   return {
+    revision: row.revisionNumber,
     review: panel.review,
     capabilities: panel.capabilities,
     lifecycle: reviewLifecycle({

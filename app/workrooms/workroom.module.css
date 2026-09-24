@@ -453,6 +453,10 @@
      is the artwork, and cropping somebody's work to fit a box is the one thing
      a viewer must not do. */
   object-fit: contain;
+  /* Declared rather than inherited: a stored point is a fraction of the
+     picture, and it means one place only while this layout is fixed. See the
+     spatial rendering contract in docs/delivery.md. */
+  object-position: 50% 50%;
 }
 
 /* A document needs height to be usable; a phone has little of it, so this

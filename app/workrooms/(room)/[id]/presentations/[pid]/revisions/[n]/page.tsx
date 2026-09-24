@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import PresentationView from "@/components/workrooms/PresentationView";
+import { ReviewStage } from "@/components/workrooms/ReviewStage";
 import ReviewPanel from "@/app/workrooms/(room)/[id]/presentations/ReviewPanel";
 import { requireViewer } from "@/lib/client-auth/guard";
 import { presentationForViewer } from "@/lib/db/presentations";
@@ -47,21 +48,25 @@ export default async function ClientPresentationRevision({
         </Link>
       </p>
 
-      <PresentationView
-        presentation={presentation}
-        revisionHref={(other) => `/workrooms/${id}/presentations/${pid}/revisions/${other}`}
-      />
+      {/* The work and what was said about it, as one stage: a note's locator
+          brings its own block of *this* version into view. */}
+      <ReviewStage>
+        <PresentationView
+          presentation={presentation}
+          revisionHref={(other) => `/workrooms/${id}/presentations/${pid}/revisions/${other}`}
+        />
 
-      {/* The round that belonged to *this* version, with whatever was said in
-          it. Read-only, and not because history is special: publishing a newer
-          version closed it, and a closed round takes nothing from anybody. */}
-      <ReviewPanel
-        viewer={{ contactId: viewer.contactId, identityId: viewer.id }}
-        room={id}
-        presentation={pid}
-        items={presentation.items}
-        revision={revision}
-      />
+        {/* The round that belonged to *this* version, with whatever was said in
+            it. Read-only, and not because history is special: publishing a newer
+            version closed it, and a closed round takes nothing from anybody. */}
+        <ReviewPanel
+          viewer={{ contactId: viewer.contactId, identityId: viewer.id }}
+          room={id}
+          presentation={pid}
+          items={presentation.items}
+          revision={revision}
+        />
+      </ReviewStage>
     </>
   );
 }

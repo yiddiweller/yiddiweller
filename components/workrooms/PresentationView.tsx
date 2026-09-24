@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import FileViewer from "@/components/workrooms/FileViewer";
+import { AnchorTarget } from "@/components/workrooms/ReviewStage";
 import Moment from "@/components/studio/Moment";
 import { type ClientPresentation } from "@/lib/workrooms/presentation-view";
 import styles from "@/app/workrooms/workroom.module.css";
@@ -81,7 +82,12 @@ export default function PresentationView({
               </section>
             ) : (
               <section key={item.position} className={styles.presentationPiece}>
-                <FileViewer kind={item.file.viewer} source={item.file.sourcePath} name={item.file.name} />
+                {/* Findable by its position in this Revision, so a note about
+                    it can bring it into view. Inert — the viewer alone —
+                    anywhere that is not showing a round beside the work. */}
+                <AnchorTarget position={item.position}>
+                  <FileViewer kind={item.file.viewer} source={item.file.sourcePath} name={item.file.name} />
+                </AnchorTarget>
 
                 <div className={styles.presentationCaption}>
                   {item.caption ? <p className={styles.presentationCaptionText}>{item.caption}</p> : null}

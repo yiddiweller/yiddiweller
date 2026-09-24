@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import PresentationView from "@/components/workrooms/PresentationView";
+import { ReviewStage } from "@/components/workrooms/ReviewStage";
 import ReviewPanel from "@/app/workrooms/(room)/[id]/presentations/ReviewPanel";
 import { requireViewer } from "@/lib/client-auth/guard";
 import { presentationForViewer } from "@/lib/db/presentations";
@@ -39,20 +40,24 @@ export default async function ClientPresentation({
         </Link>
       </p>
 
-      <PresentationView
-        presentation={presentation}
-        revisionHref={(revision) => `/workrooms/${id}/presentations/${pid}/revisions/${revision}`}
-      />
+      {/* The work and what was said about it, as one stage: a note's locator
+          brings its own block of *this* version into view. */}
+      <ReviewStage>
+        <PresentationView
+          presentation={presentation}
+          revisionHref={(revision) => `/workrooms/${id}/presentations/${pid}/revisions/${revision}`}
+        />
 
-      {/* Below the work, never beside it. A round is a response to something
-          that has to be read first, and a comment box competing with the piece
-          it is about is how a presentation becomes a form. */}
-      <ReviewPanel
-        viewer={{ contactId: viewer.contactId, identityId: viewer.id }}
-        room={id}
-        presentation={pid}
-        items={presentation.items}
-      />
+        {/* Below the work, never beside it. A round is a response to something
+            that has to be read first, and a comment box competing with the piece
+            it is about is how a presentation becomes a form. */}
+        <ReviewPanel
+          viewer={{ contactId: viewer.contactId, identityId: viewer.id }}
+          room={id}
+          presentation={pid}
+          items={presentation.items}
+        />
+      </ReviewStage>
     </>
   );
 }

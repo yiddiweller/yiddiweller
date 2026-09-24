@@ -313,9 +313,22 @@ recorded in [`delivery.md`](./delivery.md) under *Reviews are verified on beta*.
   version first and never reached the write; Stage F1's tests reached it. The
   two blocks now exchange the positions they already hold — the neighbour that
   exists, gaps and all — with no parking step and nothing renumbered. Published
-  Revisions are untouched. Awaiting manual retest on beta.
-- **Still not built:** Stage F, drawing precise anchors — they are stored and
-  projected, and nothing draws them — and Stage G, notifications.
+  Revisions are untouched. Studio then stopped offering a move that could not
+  happen: the first block has no *Move up*, the last no *Move down*, a lone
+  block neither, decided by rendered order rather than by `position`.
+- **Reordering is manually accepted on real Railway beta**, on `e2c6148`: *Move
+  up* changed the real draft order and *Move down* changed it back; the top
+  block rendered only *Move down* and the bottom only *Move up*; after a move
+  the controls followed the new order; the impossible edge controls were absent
+  from the DOM; and the published version stayed separate from the draft edits.
+- **Stage F1 and F2 are built; neither is usable yet.** F1 is one canonical
+  anchor parser and the geometry and label primitives. F2 displays what is
+  stored: a locator shows an image point or pauses a player at the moment, on
+  the note's own Revision only, and Studio's draft page links to that
+  Revision's page. Browser-tested locally; **not manually accepted on beta**,
+  because nothing a person can reach creates a precise anchor yet.
+- **Still not built:** anchor capture (Stage F's remaining stages), and Stage G,
+  notifications.
 
 **Stage A beta acceptance.** Migration `0004` deployed and applied. `npm run
 storage:verify` was run **inside the real beta app container against the real

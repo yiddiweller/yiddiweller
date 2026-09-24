@@ -68,6 +68,9 @@ export default async function ReviewPanel({
       fields={revision === undefined ? { room, presentation } : { room, presentation, revision }}
       subjects={itemSubjects(items)}
       itemLabel={(position) => labelAt(items, position)}
+      // Both routes that use this panel render this version's work just above
+      // it, inside a `ReviewStage`: a locator shows its point in place.
+      locator={{ kind: "here" }}
       lead={
         open
           ? "The studio asked for your thoughts on this version. Say as much or as little as you like."

@@ -896,6 +896,13 @@ draft reading `0, 2, 5` the block at 5 is last and the one at 2 is in the
 middle. The server's quiet no-op for an edge move stays, for a crafted or stale
 request.
 
+**Manually accepted on real Railway beta, on `e2c6148`.** *Move up* changed the
+real draft order and *Move down* changed it back; the top block rendered only
+*Move down* and the bottom block only *Move up*; after a move the controls
+followed the new rendered order; the impossible edge controls were absent from
+the DOM; and the current published version stayed separate from the draft
+edits.
+
 ---
 
 ## Revisions — immutable
@@ -1660,8 +1667,8 @@ a 38px button, Cancel holding the focus, and Escape mutating nothing.
 
 ### Stage F — precise anchors: the lock
 
-**Architecture, with its foundation built (F1, below); nothing a person can
-see is built.** Stage F answers one question a
+**Architecture, with its foundation (F1) and its display (F2) built, below;
+nothing a person can reach creates a precise anchor yet.** Stage F answers one question a
 feedback point sometimes needs — *exactly where do you mean?* — without turning
 a Workroom into a drawing application. Precision is always optional: general
 feedback and item-level feedback stay exactly as they are, and remain the
@@ -1905,9 +1912,9 @@ of a fraction, a millisecond). `lib/workrooms/anchor-label.ts` says an anchor in
 words — *At 0:42*, *0:42–0:51*, *At 25:03:08* — as a duration, never a time of
 day. Both are pure: no DOM, no clock.
 
-**Still not built:** capture, markers, return to context, seeking, the
-coordinator, any `FileViewer` change, any visible anchor, and Stage G. Stage F
-is not usable by anybody yet.
+**Still not built at F1:** capture, markers, return to context, seeking, the
+coordinator, any `FileViewer` change, any visible anchor, and Stage G. F2,
+below, has since built the display half.
 
 **Found while testing, and fixed on its own afterwards.** Studio's *Move up* /
 *Move down* could not succeed: `moveItem` parked a row at position `-1` and
@@ -1915,6 +1922,92 @@ is not usable by anybody yet.
 threw. The only test of it used a stale version and was refused before reaching
 the write. Fixed as a separate Stage B patch before F2 — see *Reordering* under
 the draft's version, above.
+
+#### F2 — display and return to context, built
+
+**A locator answers *show me exactly what this comment is about*, and only
+when asked.** Nothing moves because a Review is on screen: the work stays clean,
+no marker is drawn and no player is touched until somebody presses one. Then
+exactly one context is active — pressing another replaces it; pressing the
+same one again, Escape, or leaving the page clears it.
+
+**Which notes have one.** A live root note with a block *and* an anchor
+(`locatable` in `lib/workrooms/review-locator.ts`). Its locator takes the place
+of the plain *On …* line and reads *On The board · Point*, *On The board ·
+Area*, *On The motion · At 0:42*, *On The sound · 1:12–1:24* (`locatorLabel`).
+Item-level notes keep the D/E line unchanged; general notes, replies and
+tombstones have none; a resolved note keeps its locator, because what was dealt
+with is still history.
+
+**One coordinator, and a small one.** `components/workrooms/ReviewStage.tsx` is
+the only client island: `ReviewStage` wraps the work and its round on the four
+pages that render a Revision beside its own round; `AnchorTarget` registers each
+presented file under its **dense Revision position**; `ReviewLocator` is the
+button. It holds registered elements, the one active note (`n`, position,
+anchor) and a pending seek — no identifier, no signed address, no Review state,
+no rule. `PresentationView` and `ReviewThread` stay server components, and
+outside a stage `AnchorTarget` renders its children untouched, so the Files
+pages, Preview and the one `FileViewer` are exactly as they were.
+
+**Image point.** Scrolled into view (`smooth`, or immediate under
+`prefers-reduced-motion`), focus handed to the block, and one double-ring marker
+— white between black, no animation, `pointer-events: none` — placed through
+F1's `containRect` on the image's content box (its bounding rectangle less its
+own border and padding), then expressed relative to the block. A
+`ResizeObserver` on the image and the block moves it with a resize or a
+rotation. `.viewerImage` now declares `object-position: 50% 50%` beside its
+`object-fit: contain`, as the rendering contract requires.
+
+**Video and audio.** Scrolled to, paused, focus on the player, then — once
+metadata is known — `currentTime` set and left paused. Nothing calls `play()`.
+A stretch seeks to its start; there is no loop and no restriction to the range.
+If metadata is not ready the seek waits for `loadedmetadata`, bounded by ten
+seconds, with one listener pair per wait that a newer press removes; an
+`error` or the timeout gives up quietly. A stored time past the reported
+duration is **declined, not clamped** (`seekPlan`): the player stays where it
+was and the label is untouched, because parking at the end would claim the
+comment was about the ending.
+
+**Regions, honestly.** A stored image region's locator reads *· Area* and
+brings the image into view without drawing anything — never its top-left
+corner passed off as a point. A moment with a region on its frame seeks to the
+moment and draws nothing; the region stays in the projection and in history.
+Both overlays remain deferred.
+
+**History.** Each page's stage holds only that page's Revision, so a locator
+can only reach the work its round was asked about: the client's current page
+reaches the current version, *Previous versions → Version 2* reaches Version 2,
+and Studio's Version 2 reaches Version 2. **Studio's presentation page shows
+the draft**, so its locators are links instead —
+`/studio/workrooms/{room}/presentations/{presentation}/revisions/{N}?note={n}`,
+the existing Studio route plus the Revision's public number and the note's
+ordinal (`revisionLocatorHref`). The target page parses `note` strictly
+(`readNoteParam`) and looks it up in **its own** projection: a tombstone, an
+item-level note, a number in another round, or nonsense opens nothing. That
+Revision number comes from the staff panel (`StaffReviewPanel.revision`), so
+it is the Revision whose round is on screen.
+
+**Accessibility.** Locators are real buttons named by their own words, with
+`aria-pressed`; a polite live region says what was shown (*Showing the point on
+The board.*, *The motion, paused at 0:42.*); Escape clears; no focus is moved
+while somebody is only reading.
+
+**Tested.** `review-locator-navigation.test.ts` (the decisions, the Revision
+number, the capture-copy gate, one `FileViewer`) and
+`review-locator-browser.test.ts`, a real Chromium against a server sharing the
+test database, with playable media (`tests/support/media.ts`: PNG and WAV
+written byte by byte, one committed 8-second VP8 WebM). Three deliberately
+broken builds — a cancelled wait that kept its listeners, smooth scrolling
+under reduced motion, Escape ignored — each failed exactly the test written for
+it, and a client Version 2 page rendering the current version's work failed the
+history test.
+
+**Still not built:** client anchor capture of any kind — image points, audio
+and video moments and stretches, regions; video frame-region display; PDF
+precision; signed-URL recovery (F6); Stage G. **F2 is not manually accepted on
+beta** and cannot honestly be yet: nothing a person can reach creates a precise
+anchor, and no backdoor was added to manufacture one. It becomes manually
+testable end to end once capture exists. Stage F is not complete.
 
 ## Reviews are verified on beta
 

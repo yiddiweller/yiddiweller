@@ -113,6 +113,34 @@
   color: var(--w-45);
 }
 
+/* The same line, when it can take you somewhere: the block's name and the
+   precision, pressable. Quiet until it is used — underlined rather than boxed,
+   and marked while what it shows is showing. */
+.locator {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: var(--fs-ui);
+  color: var(--w-72);
+  text-align: left;
+  text-decoration: underline;
+  text-decoration-color: var(--w-30);
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.locator:hover,
+.locator[aria-pressed="true"] {
+  color: var(--white);
+  text-decoration-color: var(--white);
+}
+
+.locator:focus-visible {
+  outline: 1px solid var(--white);
+  outline-offset: 3px;
+}
+
 .body {
   font-size: 1rem;
   line-height: 1.6;

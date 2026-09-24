@@ -1634,6 +1634,70 @@ a 38px button, Cancel holding the focus, and Escape mutating nothing.
 
 ---
 
+### Stage F — precise anchors: the lock
+
+**Architecture only; nothing below is built.** Stage F answers one question a
+feedback point sometimes needs — *exactly where do you mean?* — without turning
+a Workroom into a drawing application. Precision is always optional: general
+feedback and item-level feedback stay exactly as they are, and remain the
+ordinary case.
+
+**Adopted.** Image **point**. Video **moment** and video **stretch**. Audio
+**moment** and audio **stretch**. And **return to context** — activating a
+locator brings the reader to that place in that version's media — which is the
+part of the benchmark that makes precision worth having.
+
+**Deferred, architected.** Image **region** capture and display; a **region on
+a video frame**; **PDF page** anchors. **Refused.** Freehand, arrows, lines,
+circles, colours, an annotation toolbar, a waveform, a custom audio player, a
+custom video timeline, text highlighting, OCR, always-on marker overlays.
+
+| Decision | Why |
+| --- | --- |
+| Point, not region, on images | A point and a sentence covers what a region does in almost every real comment. A region needs a drag, which fights scrolling on a phone, and an accessible keyboard equivalent that is disproportionate for the value. The vocabulary already holds `region`; it waits for a reason. |
+| No spatial anchor on video | The video sits in native controls that occupy its lower edge, goes native-fullscreen where no overlay follows, and letterboxes inside its own element (`width: 100%` with a capped height). A moment is what video review actually runs on. The vocabulary already holds `time + region`. |
+| No PDF anchors | The PDF renders in the browser's own viewer, inside an iframe that reaches **another origin** after the redirect, so the page cannot read which page is showing, and many phones do not render it inline at all. Doing it properly means pdf.js — replacing the accepted viewer — which is a decision of its own, not a side effect of this one. PDFs keep general and item-level feedback. |
+| Native players untouched | Capture reads `currentTime`; return-to-context sets it and pauses. No scrubber, no waveform, no marker drawn into a browser control. |
+
+**No migration.** `subject` (`revision_item_id`) plus the `anchor` jsonb already
+represent everything adopted, and the composite foreign keys already pin an
+anchor to its exact Revision.
+
+**The parser has a hole, and closing it is the first step.** `region()`
+checks that `x`, `y`, `w` and `h` are each between 0 and 1 and nothing else, so
+`{ x: 0.9, y: 0.9, w: 0.9, h: 0.9 }` — nine-tenths of it outside the image — is
+accepted today, as is a region of zero size, and the client action will store
+either for anyone who posts one. Nothing draws regions yet, so nothing is
+wrong on screen. Stage F tightens `parseAnchor` and the projection's own check
+together: `w > 0`, `h > 0`, `x + w ≤ 1`, `y + h ≤ 1`, and a sane ceiling on
+seconds. The projection failing closed covers anything stored before.
+
+**Geometry.** `x` and `y` are fractions of the media's **content rectangle** —
+the area actual pixels occupy, not the element's box — measured from its
+top-left. That rectangle is computed from the intrinsic size
+(`naturalWidth`/`videoWidth`) fitted *contain*-wise into the element's box, so
+letterboxing is excluded by construction and a press in the bars is not an
+anchor. One pure module does both directions, capture and display, for both
+worlds; nothing stores or compares pixels.
+
+**Display is opt-in and quiet.** Artwork is clean by default. A locator reads
+*On Primary identity direction · a point*, *At 0:42* or *0:42–0:51*; activating
+it scrolls to the block, shows that one marker — a double ring legible on light
+and dark work — or seeks and pauses. One marker at a time, never all of them.
+
+**One `FileViewer`, one coordinator.** `FileViewer` stays the only renderer and
+never learns ids or authorization. A page that shows both the work and its
+round wraps them in one small client coordinator; outside it — the Files pages,
+Preview — every viewer behaves exactly as it does now. Studio's presentation
+page shows the draft, not the Revision's media, so its locators link to that
+Revision's own page, carrying **only the note's ordinal**; geometry never
+travels in a URL.
+
+**Unchanged rules.** Anchors are written once, with the root, by the client.
+Editing changes words only. Replies never anchor. A tombstone carries nothing.
+Resolution never touches an anchor, and a historical round navigates within its
+own version, never the current one.
+
 ## Reviews are verified on beta
 
 Implementation D/E, exercised by hand on the real Railway beta deployment:

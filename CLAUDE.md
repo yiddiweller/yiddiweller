@@ -50,7 +50,10 @@ current version with no round. The walk found three defects — the item locator
 the tombstone and the publish consequence — each fixed at its cause and retested
 on beta; the record is *Reviews are verified on beta* in `docs/delivery.md`.
 **Stage C is not complete**: Stage F, drawing precise anchors (stored and
-projected, drawn by nothing), and Stage G, notifications, are not built.
+projected, drawn by nothing), and Stage G, notifications, are not built. Stage
+F's architecture is locked in `docs/delivery.md` — image point, video and audio
+moment and stretch, return to context; no migration; regions, frame anchors and
+PDF anchors deferred.
 Approvals has not begun. Build 005 is **not promoted**: production has no bucket, the sweep is
 unscheduled and there is no per-object backup strategy, so production remains
 Build 004.**

@@ -15,13 +15,21 @@
    Nothing here introduces a grey value, an accent, a shadow or a downloaded
    font, and the only motion is opacity and a small rise. */
 
-.review {
+/* The thread's own sizes, as a class of their own so that the one other place
+   its controls appear — the capture panel under a recording, which sits in
+   the work rather than in the thread — composes the same values instead of
+   copying them. */
+.sizes {
   --r-1: 6px;
   --r-2: 12px;
   --r-3: 20px;
   --r-4: 32px;
   --r-hit: 44px;
   --r-control-h: 38px;
+}
+
+.review {
+  composes: sizes;
 
   display: flex;
   flex-direction: column;

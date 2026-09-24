@@ -211,20 +211,18 @@ function sources(dir: string): string[] {
   });
 }
 
-test("nothing anybody can reach offers to create a precise anchor yet", () => {
-  const capture = [
-    "Point to it",
-    "Set precise time",
-    "Use this moment",
-    "Start here",
-    "End here",
-    "Change anchor",
-    "Clear anchor draft",
-  ];
+test("capture exists for audio alone: its words live in the coordinator, and nothing captures a picture", () => {
+  // F3 added the audio controls. Everything else stays uncreatable.
+  const never = ["Point to it", "Change anchor", "Clear anchor draft"];
+  const audioOnly = ["Set precise time", "Use this moment", "Start here", "End here"];
   for (const file of [...sources("app"), ...sources("components")]) {
     const text = readFileSync(file, "utf8");
-    for (const words of capture) {
+    for (const words of never) {
       assert.ok(!text.includes(words), `${file} offers "${words}"`);
+    }
+    if (file.endsWith("components/workrooms/ReviewStage.tsx")) continue;
+    for (const words of audioOnly) {
+      assert.ok(!text.includes(words), `${file} offers "${words}" outside the one capture panel`);
     }
   }
 });

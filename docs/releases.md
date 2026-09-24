@@ -327,7 +327,15 @@ recorded in [`delivery.md`](./delivery.md) under *Reviews are verified on beta*.
   the note's own Revision only, and Studio's draft page links to that
   Revision's page. Browser-tested locally; **not manually accepted on beta**,
   because nothing a person can reach creates a precise anchor yet.
-- **Still not built:** anchor capture (Stage F's remaining stages), and Stage G,
+- **F2 passed a real-beta regression smoke** — Brand Direction, reorder,
+  historical Version 2 and its Review, tombstone all intact. Not acceptance of
+  precise anchors.
+- **Stage F3 is built: audio capture.** A client's new point about a recording
+  can carry a moment or a stretch, chosen on the native player with *Use this
+  moment* or *Start here* / *End here*, kept in the draft with *Change* and
+  *Clear*, and sent through the existing action. Browser-tested locally at
+  desktop and 390px; **not manually accepted on beta**.
+- **Still not built:** video, image and region capture, and Stage G,
   notifications.
 
 **Stage A beta acceptance.** Migration `0004` deployed and applied. `npm run

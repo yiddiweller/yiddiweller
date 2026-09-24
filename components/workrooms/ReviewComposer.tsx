@@ -2,12 +2,18 @@
 
 import { useActionState, useId, useRef, useState } from "react";
 
+import { PrecisionControl } from "@/components/workrooms/ReviewStage";
+import { anchorAfterSubjectChange, capturesTime, type TimeCandidate } from "@/lib/workrooms/audio-capture";
 import { BODY_MAX } from "@/lib/workrooms/review-input";
 import { type ActionResult } from "@/lib/studio-result";
 import styles from "@/components/workrooms/ReviewThread.module.css";
 
-/** One option in the *what is this about* control. A position, never an id. */
-export type ReviewSubject = { value: string; label: string };
+/**
+ * One option in the *what is this about* control. A position, never an id.
+ * `capture` marks a block that takes a precise time — read from the frozen
+ * Revision the page is rendering, never from anything the browser inspects.
+ */
+export type ReviewSubject = { value: string; label: string; capture?: "audio" };
 
 /**
  * Somewhere to write: a new point, a reply, or a correction to your own words.
@@ -56,9 +62,19 @@ export default function ReviewComposer({
   const id = useId();
   const [open, setOpen] = useState(trigger === undefined);
   const area = useRef<HTMLTextAreaElement>(null);
+  // What the unsent point is about, and — for a recording — the precise time
+  // chosen in it. Both belong to this draft only; sending or switching the
+  // subject is the end of them.
+  const [subject, setSubject] = useState("");
+  const [anchor, setAnchor] = useState<TimeCandidate | null>(null);
+  const about = subjects?.find((candidate) => candidate.value === subject);
   const [result, submit, pending] = useActionState<ActionResult | null, FormData>(
     async (previous, form) => {
       const outcome = await action(previous, form);
+      if (outcome.ok) {
+        setSubject("");
+        setAnchor(null);
+      }
       // Collapses only on success, and only when it had somewhere to collapse
       // to. A refusal keeps the words that were refused: retyping a paragraph
       // because the server said no is the cost of a form that tidies itself.
@@ -109,7 +125,19 @@ export default function ReviewComposer({
           <label className={styles.label} htmlFor={`${id}-item`}>
             About
           </label>
-          <select id={`${id}-item`} className={styles.select} name="item" defaultValue="">
+          <select
+            id={`${id}-item`}
+            className={styles.select}
+            name="item"
+            defaultValue=""
+            onChange={(event) => {
+              const next = event.target.value;
+              // A time belongs to one recording; it never follows the comment
+              // to another block, or to the version as a whole.
+              setAnchor((current) => anchorAfterSubjectChange(subject, next, current));
+              setSubject(next);
+            }}
+          >
             <option value="">This version as a whole</option>
             {subjects.map((subject) => (
               <option key={subject.value} value={subject.value}>
@@ -117,6 +145,18 @@ export default function ReviewComposer({
               </option>
             ))}
           </select>
+          {/* Keyed by the block, so moving to another recording ends any
+              capture still open on the last one. */}
+          {about && capturesTime(about) ? (
+            <PrecisionControl
+              key={about.value}
+              subject={Number(about.value)}
+              name={about.label}
+              draft={anchor}
+              onDraft={setAnchor}
+              composer={area}
+            />
+          ) : null}
         </div>
       ) : null}
 

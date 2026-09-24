@@ -46,3 +46,97 @@
   white-space: nowrap;
   border: 0;
 }
+
+/* ---------------------------------------------------------- F3: capture */
+
+/* Under the recording, while a time is being chosen. One quiet surface — a
+   rule, no card, no shadow — sized by the thread's own tokens (composed onto
+   it in the markup), because these are the thread's controls standing in the
+   work for a moment. Wraps rather than scrolls, so a 390px screen with its
+   keyboard up never scrolls sideways. */
+.capture {
+  display: flex;
+  flex-direction: column;
+  gap: var(--r-2);
+  margin-top: var(--r-2);
+  padding: var(--r-3);
+  border: 1px solid var(--rule-faint);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.capture:focus {
+  outline: none;
+}
+
+.capture:focus-visible {
+  outline: 1px solid var(--white);
+  outline-offset: 4px;
+}
+
+.captureTitle {
+  font-size: var(--fs-label);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--w-45);
+}
+
+.captureHint,
+.captureNow {
+  font-size: var(--fs-ui);
+  color: var(--w-45);
+}
+
+.captureChoice {
+  font-size: 1rem;
+  color: var(--white);
+}
+
+/* What a press records. Outlined rather than filled: Done is the one filled
+   button, and it means *keep this*. */
+.captureAction {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--r-control-h);
+  padding: 0 var(--r-3);
+  font-size: var(--fs-ui);
+  color: var(--white);
+  background: none;
+  border: 1px solid var(--w-45);
+  border-radius: 0;
+  cursor: pointer;
+}
+
+.captureAction:hover {
+  border-color: var(--white);
+}
+
+.captureAction:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.captureAction:focus-visible {
+  outline: 1px solid var(--white);
+  outline-offset: 4px;
+}
+
+/* A thumb needs a real target. */
+@media (pointer: coarse) {
+  .captureAction {
+    min-height: var(--r-hit);
+  }
+}
+
+/* In the composer: the chosen time, with Change and Clear beside it. */
+.precision {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--r-1) var(--r-3);
+}
+
+.precisionChoice {
+  font-size: var(--fs-ui);
+  color: var(--white);
+}

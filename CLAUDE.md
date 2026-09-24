@@ -63,8 +63,12 @@ built and locally browser-tested, not manually accepted**: a precise note's
 locator shows its image point or pauses its player at the moment, on that
 note's own Revision only, through one small client coordinator
 (`components/workrooms/ReviewStage.tsx`) and no change to `FileViewer`;
-Studio's draft page links to `/revisions/{N}?note={n}` instead. Nothing a
-person can reach creates a precise anchor yet, so Stage F is not usable.
+Studio's draft page links to `/revisions/{N}?note={n}` instead. F2 passed a
+real-beta regression smoke. **F3 — audio capture — is built and locally
+browser-tested, not manually accepted**: a client's new point about a recording
+can carry a moment or a stretch, chosen on the native player, sent through the
+existing `anchor` field and action. Video, image and region capture are not
+built, and Stage F is not complete.
 Approvals has not begun. Build 005 is **not promoted**: production has no bucket, the sweep is
 unscheduled and there is no per-object backup strategy, so production remains
 Build 004.**

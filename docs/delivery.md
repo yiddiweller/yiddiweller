@@ -1667,8 +1667,9 @@ a 38px button, Cancel holding the focus, and Escape mutating nothing.
 
 ### Stage F — precise anchors: the lock
 
-**Architecture, with its foundation (F1) and its display (F2) built, below;
-nothing a person can reach creates a precise anchor yet.** Stage F answers one question a
+**Architecture, with its foundation (F1), its display (F2) and audio capture
+(F3) built, below; nothing yet captures a video time, an image point or an
+area.** Stage F answers one question a
 feedback point sometimes needs — *exactly where do you mean?* — without turning
 a Workroom into a drawing application. Precision is always optional: general
 feedback and item-level feedback stay exactly as they are, and remain the
@@ -2008,6 +2009,77 @@ precision; signed-URL recovery (F6); Stage G. **F2 is not manually accepted on
 beta** and cannot honestly be yet: nothing a person can reach creates a precise
 anchor, and no backdoor was added to manufacture one. It becomes manually
 testable end to end once capture exists. Stage F is not complete.
+
+**Real-beta regression smoke after F2 deployed: passed.** Studio's Brand
+Direction page rendered normally; the reorder controls were still correct;
+historical Version 2 still rendered its frozen media and its Review intact —
+comments, replies and *Dealt with* state — with the clean *Comment removed*
+tombstone. That is a smoke test that nothing regressed, **not** acceptance of
+precise anchors, which nothing on beta could create.
+
+#### F3 — audio capture, built
+
+**A client writing a new point about a recording may say exactly when.**
+Choosing an audio block in *About* offers one quiet control, *Set precise
+time*. It scrolls to **that** block — by position, so the second of two
+recordings opens the second — and opens a small panel under its **native
+player**, which is how the person gets to the place they mean: *Use this
+moment*, or *Start here* and *End here*, then *Done* or *Cancel*. The panel
+reads `currentTime` and `duration` and nothing else — no waveform, no
+scrubber, no second player — and never plays anything.
+
+**Optional means optional.** General feedback, item-level feedback about a
+recording, a moment and a stretch are four ordinary ways to send a point.
+
+**The rules are data** (`lib/workrooms/audio-capture.ts`, pure). Nothing can
+be chosen until the file reports a finite duration, and the panel says so; a
+time is rounded by F1's rule to the millisecond, never past the end, with no
+ceiling of its own. An end at or before the start is refused with *Choose an
+end after the start.* — never swapped — and the start is kept. Either end can
+be pressed again.
+
+**The draft.** *Done* keeps the choice in the unsent comment and returns
+focus to the words, which then show *At 0:42* or *0:42–0:51* with *Change* and
+*Clear*. *Cancel* — and Escape while choosing — keeps whatever the draft had
+before: *Change* then *Cancel* gives the old time back. *Clear* removes only
+the time. Switching to another block, or to the version as a whole, drops the
+time without asking.
+
+**Sent through the path that already existed.** The choice travels in the
+root composer's own `anchor` field — `{"kind":"time","t":2.5}` — through
+`createReviewNoteAction`, `readAnchor`, `parseReviewAnchor` and
+`createReviewNote`. No new endpoint, no new write, no browser storage. The
+server judges it from scratch: a stretch that ends first, a time on a picture
+and a frame area on audio are all refused whatever the browser sent.
+
+**Where it lives.** Eligibility is read from the frozen Revision the page
+renders — `itemSubjects` marks a block whose snapshot viewer is `audio` — and
+the capture session is one more context in F2's `ReviewStage`: opening it puts
+away any locator's point, and pressing a locator cancels it. The panel renders
+inside that block's `AnchorTarget`. Once sent, showing the time again is F2's
+code, unchanged. Only the new-comment composer has it — not replies, not
+corrections, not a closed or superseded round, not Studio.
+
+**Phones.** Every control wraps at 390px with nothing overflowing, and the
+capture buttons are 44px under a coarse pointer. Stretches are offered there
+too; `RANGES_ON_COARSE_POINTERS` withholds them in one line if real-phone
+acceptance finds the native player too coarse for two presses. No timeline
+will be built to rescue them.
+
+**Tested.** `audio-capture.test.ts` (the rules, and the real write path with
+crafted refusals) and `review-capture-browser.test.ts` (15 flows in Chromium
+at 1280px and 390px: both shapes stored exactly and found again by F2's
+locator, invalid ends, Change/Cancel/Escape, Clear, switching subjects, two
+recordings, a file still loading and one that fails, keyboard only, reduced
+motion, nowhere it must not appear, and a precise comment taken back leaving
+nothing of its time). Three deliberately broken builds — Cancel keeping the
+new time, a time surviving a change of subject, video offered capture — each
+failed the test written for it.
+
+**Still not built:** video capture, image point capture, regions, frame-region
+display, PDF precision, signed-URL recovery (F6), Stage G. **F3 is not
+manually accepted on beta** until we walk it, on a desktop and a real phone.
+Stage F is not complete.
 
 ## Reviews are verified on beta
 

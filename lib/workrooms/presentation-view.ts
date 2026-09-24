@@ -288,8 +288,17 @@ export function itemLabel(item: ClientRevisionItem): string {
 }
 
 /** Every block a feedback point may be about, in the order they appear. */
-export function itemSubjects(items: ClientRevisionItem[]): { value: string; label: string }[] {
-  return items.map((item) => ({ value: String(item.position), label: itemLabel(item) }));
+export function itemSubjects(
+  items: ClientRevisionItem[],
+): { value: string; label: string; capture?: "audio" }[] {
+  // `capture` is read from the viewer this Revision froze, the same one the
+  // page renders it with — never from the live file or the draft. Only audio
+  // takes a precise time in this build.
+  return items.map((item) => ({
+    value: String(item.position),
+    label: itemLabel(item),
+    ...(item.kind === "file" && item.file.viewer === "audio" ? { capture: "audio" as const } : {}),
+  }));
 }
 
 /** The label for one position, or null when that position is not in this version. */

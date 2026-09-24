@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -15,9 +16,23 @@ import {
 
 import { containRect, fromFraction } from "@/lib/workrooms/anchor-geometry";
 import { formatDuration } from "@/lib/workrooms/anchor-label";
+import {
+  beginCapture,
+  candidateLabel,
+  captureSummary,
+  noticeText,
+  rangesOffered,
+  serializeAnchor,
+  takeEnd,
+  takeMoment,
+  takeStart,
+  type CaptureState,
+  type TimeCandidate,
+} from "@/lib/workrooms/audio-capture";
 import { seekPlan } from "@/lib/workrooms/review-locator";
 import type { ClientAnchor } from "@/lib/workrooms/review-view";
 import styles from "@/components/workrooms/ReviewStage.module.css";
+import thread from "@/components/workrooms/ReviewThread.module.css";
 
 /**
  * Where a Review meets the work it is about — **the one client island Stage F
@@ -40,6 +55,15 @@ import styles from "@/components/workrooms/ReviewStage.module.css";
  * Outside a stage every piece of this is inert: `AnchorTarget` renders its
  * children untouched, so the Files pages, Preview and any page without a round
  * render exactly the markup they always did.
+ *
+ * **Stage F3 adds capture, and nothing else.** The one root comment being
+ * written may open a **capture session** on the recording it is about: a small
+ * panel under that block's own native player that reads where the player is.
+ * The session is the composer's, not the stage's — the stage only knows which
+ * block it is on and whom to answer when it ends — and it is one more context
+ * of the same kind: opening it puts away any locator's, and a locator pressed
+ * meanwhile cancels it. Once a comment is sent, showing its time again is F2's
+ * job, done by F2's code.
  */
 
 type Active = { n: number; subject: number; anchor: ClientAnchor };
@@ -47,12 +71,34 @@ type Active = { n: number; subject: number; anchor: ClientAnchor };
 /** One locator's request: the note, its block and precision, and its block's name. */
 export type LocatorRequest = Active & { name: string };
 
+/**
+ * One capture, opened by the composer for the block its comment is about.
+ * `initial` is the draft's current choice, so *Change* then *Cancel* gives it
+ * back untouched; `done` and `cancel` are how the composer hears the result.
+ */
+export type CaptureSession = {
+  owner: symbol;
+  subject: number;
+  name: string;
+  initial: TimeCandidate | null;
+  done: (anchor: TimeCandidate) => void;
+  cancel: () => void;
+  /** Stamped by the stage, so each opening starts a fresh panel. */
+  serial?: number;
+};
+
 type Stage = {
   active: Active | null;
   register: (position: number, element: HTMLElement) => () => void;
   activate: (request: LocatorRequest) => void;
   /** Clears everything, or only note `n` if that is what is showing. */
   clear: (n?: number) => void;
+  capture: CaptureSession | null;
+  openCapture: (session: CaptureSession) => void;
+  /** Done with a candidate, or Cancel with null. Answers the composer. */
+  endCapture: (anchor: TimeCandidate | null) => void;
+  /** Closes the owner's session without answering — its subject changed. */
+  abandonCapture: (owner: symbol) => void;
 };
 
 const StageContext = createContext<Stage | null>(null);
@@ -142,6 +188,61 @@ export function ReviewStage({ children }: { children: ReactNode }) {
     [show, stop],
   );
 
+  // The one capture session, if the composer has opened one.
+  const [capture, setCapture] = useState<CaptureSession | null>(null);
+  const session = useRef<CaptureSession | null>(null);
+  const serial = useRef(0);
+
+  const setSession = useCallback((next: CaptureSession | null) => {
+    session.current = next;
+    setCapture(next);
+  }, []);
+
+  const endCapture = useCallback(
+    (anchor: TimeCandidate | null) => {
+      const open = session.current;
+      if (!open) return;
+      setSession(null);
+      if (anchor) {
+        setMessage(`Precise time set: ${candidateLabel(anchor) ?? ""}.`);
+        open.done(anchor);
+      } else {
+        setMessage("The precise time was left as it was.");
+        open.cancel();
+      }
+    },
+    [setSession],
+  );
+
+  const abandonCapture = useCallback(
+    (owner: symbol) => {
+      if (session.current?.owner === owner) setSession(null);
+    },
+    [setSession],
+  );
+
+  const openCapture = useCallback(
+    (next: CaptureSession) => {
+      // One context: a point or a paused moment being shown is put away.
+      stop();
+      show(null);
+
+      const element = targets.current.get(next.subject);
+      if (!element?.isConnected) {
+        setSession(null);
+        setMessage(`${next.name} is not shown on this page.`);
+        next.cancel();
+        return;
+      }
+
+      serial.current += 1;
+      setSession({ ...next, serial: serial.current });
+      setMessage("");
+      element.scrollIntoView({ behavior: reducedMotion() ? "auto" : "smooth", block: "center" });
+    },
+    [setSession, show, stop],
+  );
+
   const register = useCallback((position: number, element: HTMLElement) => {
     targets.current.set(position, element);
     return () => {
@@ -156,6 +257,8 @@ export function ReviewStage({ children }: { children: ReactNode }) {
 
   const activate = useCallback(
     (request: LocatorRequest) => {
+      // Showing a sent note's place ends any capture still open: one context.
+      if (session.current) endCapture(null);
       stop();
       const mine = generation.current;
       const stale = () => generation.current !== mine;
@@ -232,7 +335,7 @@ export function ReviewStage({ children }: { children: ReactNode }) {
         setMessage(`${name}, paused at ${formatDuration(plan.seek) ?? "that moment"}.`);
       })();
     },
-    [show, stop],
+    [endCapture, show, stop],
   );
 
   useEffect(() => {
@@ -240,6 +343,8 @@ export function ReviewStage({ children }: { children: ReactNode }) {
       if (event.key !== "Escape" || event.defaultPrevented) return;
       // A dialog takes Escape for itself; this is not the thing being closed.
       if (document.querySelector("dialog[open]")) return;
+      // While a time is being chosen, Escape is that panel's Cancel.
+      if (session.current) return endCapture(null);
       clear();
     };
     document.addEventListener("keydown", onKey);
@@ -247,11 +352,11 @@ export function ReviewStage({ children }: { children: ReactNode }) {
       document.removeEventListener("keydown", onKey);
       stop();
     };
-  }, [clear, stop]);
+  }, [clear, endCapture, stop]);
 
   const stage = useMemo<Stage>(
-    () => ({ active, register, activate, clear }),
-    [active, register, activate, clear],
+    () => ({ active, register, activate, clear, capture, openCapture, endCapture, abandonCapture }),
+    [active, register, activate, clear, capture, openCapture, endCapture, abandonCapture],
   );
 
   return (
@@ -294,12 +399,17 @@ function Target({ stage, position, children }: { stage: Stage; position: number;
       ? stage.active.anchor
       : null;
 
+  const capturing = stage.capture?.subject === position ? stage.capture : null;
+
   return (
     // Focusable by script only, so a locator can hand focus to the work it
     // brought into view; never a tab stop of its own.
     <div ref={box} className={styles.target} tabIndex={-1}>
       {children}
       {point ? <Marker box={box} x={point.x} y={point.y} /> : null}
+      {capturing ? (
+        <CapturePanel key={capturing.serial} box={box} session={capturing} end={stage.endCapture} />
+      ) : null}
     </div>
   );
 }
@@ -425,5 +535,241 @@ export function ReviewLocator({
     >
       {label}
     </button>
+  );
+}
+
+/* ------------------------------------------------------------ F3: capture */
+
+type Player = { duration: number; current: number; failed: boolean };
+
+function readPlayer(media: HTMLMediaElement | null): Player {
+  if (!media) return { duration: Number.NaN, current: 0, failed: true };
+  return { duration: media.duration, current: media.currentTime, failed: media.error !== null };
+}
+
+/**
+ * The panel under a recording while somebody chooses a time in it.
+ *
+ * **It reads the native player and nothing else.** No waveform, no scrubber,
+ * no second player: the browser's own controls are how a person gets to the
+ * place they mean, and these buttons only record where that is. Each press
+ * goes through the pure rules in `audio-capture.ts`, so the panel can only
+ * ever hold a moment inside the file or a stretch that ends after it starts.
+ *
+ * Unavailable — with the reason said, not implied — until the file reports a
+ * finite duration, and for good if it cannot load: ordinary feedback about the
+ * recording is unaffected either way.
+ */
+function CapturePanel({
+  box,
+  session,
+  end,
+}: {
+  box: RefObject<HTMLDivElement | null>;
+  session: CaptureSession;
+  end: (anchor: TimeCandidate | null) => void;
+}) {
+  const panel = useRef<HTMLDivElement>(null);
+  const heading = useId();
+  // The panel only ever mounts after a press, in a browser, inside a block
+  // that is already on the page — so the player can be read as it opens.
+  const media = (): HTMLMediaElement | null => box.current?.querySelector<HTMLMediaElement>("audio") ?? null;
+  const [state, setState] = useState<CaptureState>(() => beginCapture(session.initial));
+  const [player, setPlayer] = useState<Player>(() => readPlayer(media()));
+  const [ranges] = useState(() => rangesOffered(window.matchMedia("(pointer: coarse)").matches));
+
+  useEffect(() => {
+    const audio = box.current?.querySelector<HTMLMediaElement>("audio");
+    if (!audio) return;
+    const update = () => setPlayer(readPlayer(audio));
+    const events = ["loadedmetadata", "durationchange", "timeupdate", "seeked", "error"] as const;
+    for (const event of events) audio.addEventListener(event, update);
+    return () => {
+      for (const event of events) audio.removeEventListener(event, update);
+    };
+  }, [box]);
+
+  // Focus arrives here only because somebody pressed *Set precise time*.
+  useEffect(() => {
+    panel.current?.focus({ preventScroll: true });
+  }, []);
+
+  const ready = !player.failed && Number.isFinite(player.duration) && player.duration > 0;
+  const press = (take: typeof takeMoment) => () => {
+    const now = readPlayer(media());
+    setState((previous) => take(previous, now.current, now.duration));
+  };
+
+  const reason = !media()
+    ? "This block cannot take a precise time."
+    : player.failed
+      ? "This recording could not be loaded here, so a precise time cannot be set. Your feedback can still be about it as a whole."
+      : ready
+        ? null
+        : noticeText("not_ready");
+
+  return (
+    <div
+      ref={panel}
+      className={`${styles.capture} ${thread.sizes}`}
+      role="group"
+      aria-labelledby={heading}
+      tabIndex={-1}
+    >
+      <p id={heading} className={styles.captureTitle}>
+        {`Precise time on ${session.name}`}
+      </p>
+      <p className={styles.captureHint}>
+        {ranges
+          ? "Play or move the player above to the place you mean, then choose a moment — or a start and an end."
+          : "Play or move the player above to the place you mean, then choose the moment."}
+      </p>
+
+      {reason ? (
+        <p className={styles.captureHint} role="status">
+          {reason}
+        </p>
+      ) : (
+        <p className={styles.captureNow}>{`Player at ${formatDuration(player.current) ?? "0:00"}`}</p>
+      )}
+
+      <div className={thread.controls}>
+        <button type="button" className={styles.captureAction} disabled={!ready} onClick={press(takeMoment)}>
+          Use this moment
+        </button>
+        {ranges ? (
+          <>
+            <button type="button" className={styles.captureAction} disabled={!ready} onClick={press(takeStart)}>
+              Start here
+            </button>
+            <button
+              type="button"
+              className={styles.captureAction}
+              disabled={!ready || state.start === null}
+              onClick={press(takeEnd)}
+            >
+              End here
+            </button>
+          </>
+        ) : null}
+      </div>
+
+      {/* The choice in words, said as it changes, and any reason a press did
+          not make one — so nobody has to read a time off a slider. */}
+      <p className={styles.captureChoice} role="status" aria-live="polite">
+        {state.notice && state.notice !== "not_ready" ? noticeText(state.notice) : captureSummary(state)}
+      </p>
+
+      <div className={thread.controls}>
+        <button
+          type="button"
+          className={thread.button}
+          disabled={state.candidate === null}
+          onClick={() => state.candidate && end(state.candidate)}
+        >
+          Done
+        </button>
+        <button type="button" className={thread.buttonQuiet} onClick={() => end(null)}>
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The composer's half of capture: *Set precise time* for a recording, and the
+ * choice once made — *At 0:42* — with *Change* and *Clear*.
+ *
+ * The anchor lives in the unsent draft and travels in the form's own `anchor`
+ * field when it is sent, through the same action, reader, parser and domain as
+ * everything else. Nothing here stores it anywhere else, and the server judges
+ * it again from scratch.
+ */
+export function PrecisionControl({
+  subject,
+  name,
+  draft,
+  onDraft,
+  composer,
+}: {
+  subject: number;
+  name: string;
+  draft: TimeCandidate | null;
+  onDraft: (anchor: TimeCandidate | null) => void;
+  /** Where focus goes when a chosen time comes back: the words being written. */
+  composer: RefObject<HTMLTextAreaElement | null>;
+}) {
+  const stage = useContext(StageContext);
+  const opener = useRef<HTMLButtonElement>(null);
+  const [owner] = useState(() => Symbol("capture"));
+  const abandon = stage?.abandonCapture;
+
+  // The composer going away takes its unfinished capture with it.
+  useEffect(() => () => abandon?.(owner), [abandon, owner]);
+
+  if (!stage) return null;
+
+  const back = (target: HTMLElement | null) => {
+    if (!target) return;
+    target.scrollIntoView({ behavior: reducedMotion() ? "auto" : "smooth", block: "center" });
+    target.focus({ preventScroll: true });
+  };
+
+  const open = () =>
+    stage.openCapture({
+      owner,
+      subject,
+      name,
+      initial: draft,
+      done: (anchor) => {
+        onDraft(anchor);
+        back(composer.current);
+      },
+      cancel: () => back(opener.current),
+    });
+
+  const capturing = stage.capture?.owner === owner;
+  const chosen = candidateLabel(draft);
+
+  return (
+    <div className={styles.precision}>
+      {chosen ? (
+        <>
+          <span className={styles.precisionChoice}>{chosen}</span>
+          <button
+            ref={opener}
+            type="button"
+            className={thread.buttonQuiet}
+            aria-label={`Change the precise time on ${name}`}
+            aria-expanded={capturing}
+            onClick={open}
+          >
+            Change
+          </button>
+          <button
+            type="button"
+            className={thread.buttonQuiet}
+            aria-label={`Clear the precise time on ${name}`}
+            onClick={() => onDraft(null)}
+          >
+            Clear
+          </button>
+        </>
+      ) : (
+        <button
+          ref={opener}
+          type="button"
+          className={thread.buttonQuiet}
+          aria-label={`Set precise time on ${name}`}
+          aria-expanded={capturing}
+          onClick={open}
+        >
+          Set precise time
+        </button>
+      )}
+      {/* The draft's anchor, in the form, and nowhere else. */}
+      <input type="hidden" name="anchor" value={serializeAnchor(draft)} />
+    </div>
   );
 }

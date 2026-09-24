@@ -1,31 +1,21 @@
-"use client";
-
-import { useSyncExternalStore } from "react";
-
-import { formatMoment, formatMomentUtc, type MomentStyle } from "@/lib/studio-format";
+import { formatMoment, type MomentStyle } from "@/lib/studio-format";
 
 /**
- * One instant, rendered in the zone of whoever is reading it.
+ * One instant, as Yiddi Weller writes it: in New York, on a 12-hour clock —
+ * *24 Sep 2026 · 12:05 AM* — for a client and for the studio alike.
  *
- * Every timestamp in Studio goes through this. The database keeps UTC and that
- * does not change; this is a display concern and lives entirely at the edge.
+ * Every user-facing timestamp goes through this, in both worlds. The database
+ * keeps UTC and that does not change; this is display, at the edge.
  *
- * `useSyncExternalStore` is how the two sides differ without a hydration
- * mismatch: React takes the server snapshot for the HTML it hydrates, then the
- * client snapshot, and re-renders the difference. An effect that set state
- * would do the same job less honestly and would trip on React's own rules.
- *
- * The server's snapshot is UTC with the zone written out, so the text is never
- * quietly wrong — including when scripting never runs at all, which is the one
- * case the browser cannot fix.
+ * **The same characters on the server and in the browser.** The zone is named,
+ * never the runtime's, so the HTML the server sends is already final: there is
+ * no second render in the reader's own zone and nothing to mismatch on
+ * hydration. A reader somewhere else sees the studio's time, which is the
+ * product's choice until there is ever a per-person setting.
  *
  * `<time dateTime>` carries the exact instant for anything reading the page
- * mechanically, in a format that does not depend on either zone.
+ * mechanically, in a format that depends on no zone at all.
  */
-
-// The value never changes after mount, so there is nothing to subscribe to.
-const subscribe = () => () => {};
-
 export default function Moment({
   iso,
   style = "exact",
@@ -35,15 +25,9 @@ export default function Moment({
   style?: MomentStyle;
   className?: string;
 }) {
-  const text = useSyncExternalStore(
-    subscribe,
-    () => formatMoment(iso, style),
-    () => formatMomentUtc(iso, style),
-  );
-
   return (
     <time className={className} dateTime={iso}>
-      {text}
+      {formatMoment(iso, style)}
     </time>
   );
 }

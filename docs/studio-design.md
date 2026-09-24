@@ -169,11 +169,11 @@ tracked uppercase is slower to read and Studio is for working.
 
 Numbers that line up in a column use `font-variant-numeric: tabular-nums`.
 
-**Every timestamp goes through `components/studio/Moment.tsx`.** The server
-renders UTC and labels it; the browser re-renders the same instant in the
-viewer's own zone. A Studio module must not call `Intl.DateTimeFormat` itself —
-the zone would silently become the server's, which on Railway is UTC and wrong
-for whoever is reading. The reasoning is in [`studio.md`](./studio.md).
+**Every timestamp goes through `components/studio/Moment.tsx`**, and reads
+the way the whole product writes time: New York, 12-hour, *24 Sep 2026 · 12:05
+AM* — the same in the client world. A module must not call
+`Intl.DateTimeFormat` itself; the one formatter is `lib/studio-format.ts`. The
+reasoning is in [`studio.md`](./studio.md).
 
 ---
 

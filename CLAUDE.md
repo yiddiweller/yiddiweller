@@ -470,6 +470,12 @@ broken by accident:
   Cancel · Publish.*
 - **Spacing** comes from `--page-x` and `--page-y`, so the gutter matches on
   every page.
+- **Time is New York's, on a 12-hour clock.** Every user-facing date and time,
+  in Studio and the client world alike, is presented in `America/New_York` with
+  `AM`/`PM` — *24 Sep 2026 · 12:05 AM* — through the one formatter,
+  `lib/studio-format.ts`, and the one component, `<Moment>`. Never an offset or
+  `EST`/`EDT`, and never the runtime's zone. Stored timestamps stay UTC; this is
+  presentation only. See `docs/studio.md`.
 
 ## Before every push
 

@@ -1,62 +1,84 @@
 /**
- * How Studio writes dates and times. One place, so two screens cannot disagree
- * about what a moment looks like.
+ * How Yiddi Weller writes dates and times — **both worlds, one place**, so two
+ * screens cannot disagree about what a moment looks like.
  *
- * **The zone is always explicit.** These functions take one and never fall back
- * to "whatever zone this code happens to be running in" — on Railway that is
- * UTC, which would quietly show every time an hour or two wrong to the person
- * reading it. The server renders UTC and says so; the browser re-renders in the
- * viewer's own zone. `components/studio/Moment.tsx` is the component that does
- * that, and every Studio timestamp goes through it.
+ * **New York, on a 12-hour clock, for everybody.** Yiddi Weller is a New York
+ * studio; every user-facing instant is presented in `America/New_York` with
+ * AM and PM — *24 Sep 2026 · 12:05 AM* — whoever is reading and wherever the
+ * code runs. The zone is the IANA name, never an offset or an abbreviation, so
+ * daylight saving moves with the calendar rather than with a constant somebody
+ * has to remember to change.
  *
- * Locale is fixed to en-GB rather than the viewer's: Studio is one company's
- * internal software, and a date that changes shape depending on who is looking
- * makes two people describing the same record disagree. The zone is the part
- * that has to be personal; the format is not.
+ * **Deterministic by construction.** Every function here names its zone
+ * explicitly and never falls back to the runtime's: the Railway server (UTC),
+ * a developer's laptop and a client's browser all produce the same characters
+ * for the same instant, so the server's HTML and the browser's hydration agree
+ * and there is nothing to swap after load.
+ *
+ * **Display only.** Timestamps are stored as `timestamptz` in UTC and stay
+ * that way; nothing here reads or writes the database.
+ *
+ * The parts are assembled by hand from `formatToParts` rather than trusting a
+ * locale's whole pattern: `en-GB` writes *Sept*, `en-US` puts the month first
+ * and adds commas, and neither is the house style. The pieces — a short month,
+ * a numeric hour with no leading zero, two-digit minutes, `AM`/`PM` — are the
+ * same in every engine.
  */
 
-export type MomentStyle = "exact" | "day";
-
-/** The zone the server renders in, and the only zone Studio ever labels. */
-export const SERVER_ZONE = "UTC";
-
-const OPTIONS: Record<MomentStyle, Intl.DateTimeFormatOptions> = {
-  // "4 Sept, 14:20" — for things that happened, where the hour matters.
-  exact: { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false },
-  // "4 Sept 2026" — for dates, where it does not.
-  day: { day: "numeric", month: "short", year: "numeric" },
-};
+/** The studio's zone. The only one any user-facing date or time is shown in. */
+export const DISPLAY_ZONE = "America/New_York";
 
 /**
- * Formats an instant in a named zone. Pass `undefined` for the runtime's own
- * zone, which is only ever correct in the browser.
+ * - `exact` — *24 Sep 2026 · 12:05 AM*, for things that happened.
+ * - `day` — *24 Sep 2026*, where the hour does not matter.
+ * - `time` — *12:05 AM*, beside a date already said.
  */
-export function formatMoment(iso: string, style: MomentStyle, timeZone?: string): string {
+export type MomentStyle = "exact" | "day" | "time";
+
+const PARTS = new Intl.DateTimeFormat("en-US", {
+  timeZone: DISPLAY_ZONE,
+  year: "numeric",
+  month: "short",
+  day: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+  hour12: true,
+});
+
+function pieces(value: Date): Record<"year" | "month" | "day" | "hour" | "minute" | "dayPeriod", string> {
+  const parts = PARTS.formatToParts(value);
+  const part = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((candidate) => candidate.type === type)?.value ?? "";
+  return {
+    year: part("year"),
+    month: part("month"),
+    day: part("day"),
+    hour: part("hour"),
+    minute: part("minute"),
+    dayPeriod: part("dayPeriod").toUpperCase(),
+  };
+}
+
+/** An instant, as it reads in New York. Empty for anything that is not one. */
+export function formatMoment(iso: string, style: MomentStyle = "exact"): string {
   const value = new Date(iso);
   if (Number.isNaN(value.getTime())) return "";
-  return new Intl.DateTimeFormat("en-GB", { ...OPTIONS[style], timeZone }).format(value);
+
+  const { year, month, day, hour, minute, dayPeriod } = pieces(value);
+  const date = `${day} ${month} ${year}`;
+  const time = `${hour}:${minute} ${dayPeriod}`;
+
+  if (style === "day") return date;
+  if (style === "time") return time;
+  return `${date} · ${time}`;
 }
 
 /**
- * What the server sends: the same instant in UTC, labelled, so it is never
- * silently wrong for the person reading it. The browser replaces it with their
- * own zone; if scripting never runs, this is what stays on screen, and it is
- * true.
+ * The New York wall clock, in the only shape `datetime-local` accepts:
+ * `YYYY-MM-DDTHH:mm`, 24-hour, with no zone written on it. The field shows it
+ * in the reader's own browser convention; this is only what it is filled with.
  */
-export function formatMomentUtc(iso: string, style: MomentStyle): string {
-  const text = formatMoment(iso, style, SERVER_ZONE);
-  return text && style === "exact" ? `${text} ${SERVER_ZONE}` : text;
-}
-
-/**
- * The wall clock in a named zone, in the only shape `datetime-local` accepts:
- * `YYYY-MM-DDTHH:mm`, with no zone written on it at all.
- *
- * The input then means "this time, where the person is", which is exactly how
- * the server reads it back. Pass `undefined` for the runtime's own zone, which
- * is only ever the reader's in the browser.
- */
-export function momentInputValue(iso: string, timeZone?: string): string {
+export function momentInputValue(iso: string, timeZone: string = DISPLAY_ZONE): string {
   const value = new Date(iso);
   if (Number.isNaN(value.getTime())) return "";
 
@@ -78,22 +100,26 @@ export function momentInputValue(iso: string, timeZone?: string): string {
   return `${part("year")}-${part("month")}-${part("day")}T${hour}:${part("minute")}`;
 }
 
+const DAY_PARTS = new Intl.DateTimeFormat("en-US", {
+  timeZone: "UTC",
+  year: "numeric",
+  month: "short",
+  day: "numeric",
+});
+
 /**
- * A date with no clock on it: `2026-09-01` → `1 Sept 2026`.
+ * A date with no clock on it: `2026-09-01` → `1 Sep 2026`.
  *
- * `starts_on` and `target_on` are `date` columns, so they name a day rather
- * than an instant and there is no zone to resolve. That makes this safe on the
- * server — unlike `formatMoment`, it cannot be wrong for the person reading it,
- * so it does not need `<Moment>`.
+ * `starts_on` and `target_on` are `date` columns: they name a day rather than
+ * an instant, so there is no zone to resolve and it reads the same in New York
+ * as anywhere. Written in the same house style as `formatMoment`'s `day`.
  */
 export function formatDate(value: string | null | undefined): string {
   if (!value) return "—";
   const [year, month, day] = value.split("-").map(Number);
   if (!year || !month || !day) return value;
-  return new Intl.DateTimeFormat("en-GB", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    timeZone: SERVER_ZONE,
-  }).format(new Date(Date.UTC(year, month - 1, day)));
+  const parts = DAY_PARTS.formatToParts(new Date(Date.UTC(year, month - 1, day)));
+  const part = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((candidate) => candidate.type === type)?.value ?? "";
+  return `${part("day")} ${part("month")} ${part("year")}`;
 }

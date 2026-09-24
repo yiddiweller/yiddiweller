@@ -242,43 +242,54 @@ why. It was verified by changing a status without deleting the session.
 
 ## Dates and times
 
-The database keeps `timestamptz` in UTC and that does not change. Display is a
-separate concern and lives entirely at the edge:
+**Every user-facing date and time in Yiddi Weller — Studio and the client world
+alike — is presented in `America/New_York`, on a 12-hour clock with `AM` and
+`PM`.** Yiddi Weller is a New York studio; a reader anywhere sees the studio's
+time, until the product ever chooses to offer a personal setting.
 
 ```
-server   →  "15 Sept, 14:08 UTC"   labelled, so it is never quietly wrong
-browser  →  "15 Sept, 16:08"       the same instant, in the viewer's own zone
-markup   →  <time dateTime="2026-09-15T14:08:08.942Z">
+exact  →  "24 Sep 2026 · 12:05 AM"
+day    →  "24 Sep 2026"
+time   →  "12:05 AM"
+markup →  <time dateTime="2026-09-24T04:05:00.000Z">
 ```
 
-`components/studio/Moment.tsx` is the only place this happens, and every Studio
-timestamp goes through it. It uses `useSyncExternalStore` with a server
-snapshot and a client snapshot, which is how the two sides can differ without a
-hydration mismatch — React takes the server's value for the HTML it hydrates,
-then the client's, and re-renders the difference. Verified in four zones with
-no console errors and no hydration warnings.
+**Display only.** The database keeps `timestamptz` in UTC and that does not
+change — no column, value, ordering, audit record or expiry was touched to
+adopt this. The convention replaced an earlier one (the server rendered UTC
+and labelled it, then the browser swapped in the reader's own zone on a 24-hour
+clock), and it is a presentation change and nothing else.
 
-Three rules for later modules:
+Rules for every module, in both worlds:
 
-- **Never call `Intl.DateTimeFormat` in a Studio page.** The zone would default
-  to the server's, which on Railway is UTC and wrong for the person reading.
-  Use `Moment`.
-- **Formatting lives in `lib/studio-format.ts`**, takes an explicit zone, and is
-  locale-fixed to en-GB. The zone is the part that has to be personal; the
-  format is not, because two people describing the same record should see the
-  same shape.
-- **A field that collects an instant needs the same treatment.**
-  `components/studio/MomentInput.tsx` prefills a `datetime-local` with the wall
-  clock in the viewer's zone, exactly the zone the server reads it back in.
-  Prefilling it in UTC and parsing it as local is how a follow-up quietly moves
-  by five hours the first time somebody edits it.
+- **One formatter.** `lib/studio-format.ts` owns it: `DISPLAY_ZONE`,
+  `formatMoment(iso, "exact" | "day" | "time")`, `formatDate` for `date`
+  columns, and `momentInputValue` for a `datetime-local` prefill. Nothing else
+  may call `Intl.DateTimeFormat` or `toLocale*String` for a person to read, and
+  a test scans the source for it.
+- **One component.** `components/studio/Moment.tsx` renders every instant, in
+  the client world as in Studio. There is no `StudioDate` and no `ClientDate`.
+- **The zone is the IANA name.** Never `EST`, `EDT` or an offset: daylight
+  saving is the calendar's job, and tests pin both 2026 transitions.
+- **Deterministic.** The zone is named, never the runtime's, so the Railway
+  server (UTC), a laptop and a browser produce the same characters. The server
+  HTML is final; there is no second render and nothing to mismatch on
+  hydration. A test formats the same instants under five process zones and
+  compares them.
 
-A `date` column is different, and simpler: `starts_on` and `target_on` name a
-day, not an instant, so there is no zone to resolve and `formatDate` is safe on
-the server. `<Moment>` is for instants only.
+A `date` column is simpler: `starts_on` and `target_on` name a day, not an
+instant, so there is no zone to resolve. `formatDate` writes it in the same
+house style — *1 Sep 2026*.
 
-If scripting never runs, the labelled UTC text stays on screen. That is the one
-case the browser cannot fix, and it is true as it stands.
+**A known defect, found while adopting this and not fixed by it.** A Lead's
+follow-up is entered in a `datetime-local` field, which carries no zone, and
+`optionalMoment` in `lib/business.ts` reads it with `new Date(raw)` — in the
+*server's* zone, which on Railway is UTC. The field is prefilled with New York
+wall-clock time (and before this change, with the reader's own zone), so a
+follow-up entered or re-saved in New York is stored four or five hours off.
+This predates the convention and is a write path, so it is recorded rather than
+changed here: the fix is to read the field as New York wall-clock time, and it
+wants its own decision because it changes how new follow-ups are stored.
 
 ---
 

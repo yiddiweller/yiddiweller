@@ -335,6 +335,12 @@ recorded in [`delivery.md`](./delivery.md) under *Reviews are verified on beta*.
   moment* or *Start here* / *End here*, kept in the draft with *Change* and
   *Clear*, and sent through the existing action. Browser-tested locally at
   desktop and 390px; **not manually accepted on beta**.
+- **Dates and times are New York's, on a 12-hour clock**, everywhere a person
+  reads one: *24 Sep 2026 · 12:05 AM*, in both worlds, through one formatter
+  and one component, identical on the server and in the browser. Display only —
+  stored timestamps are untouched. Found while doing it and recorded rather than
+  fixed: a Lead's follow-up field is read back in the server's zone (UTC), so a
+  follow-up saved in New York is stored hours off. See `docs/studio.md`.
 - **Still not built:** video, image and region capture, and Stage G,
   notifications.
 

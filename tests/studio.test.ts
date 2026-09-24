@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { isCurrent, navFor, STUDIO_NAV } from "../lib/studio-nav.ts";
-import { formatDate, formatMoment, formatMomentUtc, momentInputValue } from "../lib/studio-format.ts";
+import { DISPLAY_ZONE, formatDate, formatMoment, momentInputValue } from "../lib/studio-format.ts";
 
 /**
  * The two pure pieces of the Studio shell. Neither needs a browser, and both
@@ -64,38 +64,30 @@ test("Home is current only at Home, and sections claim their own subtree", () =>
 
 const EVENING_IN_UTC = new Date(Date.UTC(2026, 8, 4, 22, 20)).toISOString();
 
-test("a moment is written the same way in every zone, and only the clock moves", () => {
-  assert.equal(formatMoment(EVENING_IN_UTC, "exact", "UTC"), "4 Sept, 22:20");
-  assert.equal(formatMoment(EVENING_IN_UTC, "exact", "Europe/Brussels"), "5 Sept, 00:20");
-  assert.equal(formatMoment(EVENING_IN_UTC, "exact", "America/New_York"), "4 Sept, 18:20");
-
-  // The shape never changes: 24-hour, short month, no locale surprises.
-  for (const zone of ["UTC", "Europe/Brussels", "America/New_York", "Asia/Tokyo"]) {
-    assert.match(formatMoment(EVENING_IN_UTC, "exact", zone), /^\d{1,2} \w+, \d{2}:\d{2}$/, zone);
-  }
+test("a moment is written in New York, on a 12-hour clock, whatever zone the code runs in", () => {
+  // 22:20 UTC on 4 September is 6:20 PM in New York (EDT).
+  assert.equal(formatMoment(EVENING_IN_UTC, "exact"), "4 Sep 2026 · 6:20 PM");
+  assert.equal(formatMoment(EVENING_IN_UTC, "day"), "4 Sep 2026");
+  assert.equal(formatMoment(EVENING_IN_UTC, "time"), "6:20 PM");
+  assert.equal(DISPLAY_ZONE, "America/New_York");
 });
 
-test("a date can belong to a different day either side of a zone", () => {
-  assert.equal(formatMoment(EVENING_IN_UTC, "day", "UTC"), "4 Sept 2026");
-  assert.equal(formatMoment(EVENING_IN_UTC, "day", "Asia/Tokyo"), "5 Sept 2026");
-});
-
-test("what the server sends is labelled, so it is never quietly wrong", () => {
-  // Rendered before the browser has had its say, and true as it stands.
-  assert.equal(formatMomentUtc(EVENING_IN_UTC, "exact"), "4 Sept, 22:20 UTC");
-  // A date carries no clock, so a zone suffix would say nothing.
-  assert.equal(formatMomentUtc(EVENING_IN_UTC, "day"), "4 Sept 2026");
+test("a date can belong to a different day in New York than in UTC", () => {
+  // 02:30 UTC on 5 September is still the evening of the 4th in New York.
+  const late = new Date(Date.UTC(2026, 8, 5, 2, 30)).toISOString();
+  assert.equal(formatMoment(late, "day"), "4 Sep 2026");
+  assert.equal(formatMoment(late, "exact"), "4 Sep 2026 · 10:30 PM");
 });
 
 test("a value that is not a date renders as nothing rather than as Invalid Date", () => {
-  assert.equal(formatMoment("not-a-date", "exact", "UTC"), "");
-  assert.equal(formatMomentUtc("", "day"), "");
+  assert.equal(formatMoment("not-a-date", "exact"), "");
+  assert.equal(formatMoment("", "day"), "");
 });
 
 // ------------------------------------------------------- dates without a clock
 
 test("a date column names a day, and says so the same way everywhere", () => {
-  assert.equal(formatDate("2026-09-01"), "1 Sept 2026");
+  assert.equal(formatDate("2026-09-01"), "1 Sep 2026");
   assert.equal(formatDate("2026-12-31"), "31 Dec 2026");
   // Nothing set is nothing shown, not "Invalid Date" and not today.
   assert.equal(formatDate(null), "—");
@@ -103,15 +95,14 @@ test("a date column names a day, and says so the same way everywhere", () => {
   assert.equal(formatDate("not a date"), "not a date");
 });
 
-test("a datetime-local field is prefilled in the zone it will be read back in", () => {
-  // The same instant, written as the wall clock somebody would actually see.
+test("a datetime-local field is prefilled with the New York wall clock", () => {
+  // The same instant, written as the wall clock the rest of the product shows.
+  assert.equal(momentInputValue(EVENING_IN_UTC), "2026-09-04T18:20");
   assert.equal(momentInputValue(EVENING_IN_UTC, "UTC"), "2026-09-04T22:20");
-  assert.equal(momentInputValue(EVENING_IN_UTC, "Europe/Brussels"), "2026-09-05T00:20");
-  assert.equal(momentInputValue(EVENING_IN_UTC, "America/New_York"), "2026-09-04T18:20");
 
   // Midnight is 00, never 24 — a value the input would refuse.
-  const midnight = new Date(Date.UTC(2026, 8, 5, 0, 0)).toISOString();
-  assert.equal(momentInputValue(midnight, "UTC"), "2026-09-05T00:00");
+  const midnight = new Date(Date.UTC(2026, 8, 5, 4, 0)).toISOString();
+  assert.equal(momentInputValue(midnight), "2026-09-05T00:00");
 
-  assert.equal(momentInputValue("not a date", "UTC"), "");
+  assert.equal(momentInputValue("not a date"), "");
 });

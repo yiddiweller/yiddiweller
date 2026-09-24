@@ -23,15 +23,14 @@ import {
 import {
   canonical,
   presentedItems,
+  readSnapshot,
   toClientPresentationView,
   toPresentationContent,
   type ClientPresentation,
   type PresentableItem,
   type PresentationContent,
-  type PresentedItem,
 } from "../workrooms/presentation-view.ts";
 import { clientFileBase, studioFileBase } from "../workrooms/delivery-view.ts";
-import { type FileKind, type ViewerKind } from "../storage/policy.ts";
 import { opaquePublicId } from "../workrooms/id.ts";
 
 /**
@@ -237,80 +236,6 @@ export async function listRevisions(presentationId: string): Promise<RevisionRow
   return rows as RevisionRow[];
 }
 
-/**
- * The frozen content of one Revision.
- *
- * Read straight out of `snapshot`. The relational items beside it are the
- * integrity record — they carry the foreign keys, the archive guard and the
- * proof of which physical file belonged to a decision — but the thing the
- * client reads is the thing that was written for the client, unaltered.
- */
-function readSnapshot(value: unknown): PresentationContent {
-  const snapshot = value as { title?: unknown; intro?: unknown; items?: unknown } | null;
-  const items = Array.isArray(snapshot?.items) ? snapshot.items : [];
-
-  return {
-    title: typeof snapshot?.title === "string" ? snapshot.title : "",
-    intro: typeof snapshot?.intro === "string" ? snapshot.intro : "",
-    // **Renumbered on the way out, and that is a repair.** Revisions frozen
-    // before `presentedItems` existed carry the draft's own ordering key, which
-    // has gaps in it, while `presentation_revision_items` has always been
-    // written densely by index — so the same block had two different numbers
-    // depending on which table you asked, and a Review note named by one was
-    // resolved against the other. The rows are immutable and are read rather
-    // than rewritten, exactly as the frozen file paths above are. The order is
-    // untouched, so nothing about what the client was shown changes; only the
-    // label on each place in it does, and it now agrees with the relational
-    // items it has always been in step with.
-    items: items
-      .map(readSnapshotItem)
-      .filter((item): item is PresentedItem => item !== null)
-      .map((item, position) => ({ ...item, position })),
-  };
-}
-
-/**
- * One frozen item, normalised.
- *
- * Revisions published before routes were separated from content froze a file's
- * four paths into the snapshot. Those rows are immutable — correctly — so they
- * are read rather than rewritten: the file's opaque public id was always in
- * there, the routes are rebuilt per surface from it, and whether a thumbnail
- * exists is taken from the newer boolean or inferred from the old
- * `previewPath`. Nothing about what the client was shown changes either way.
- */
-function readSnapshotItem(value: unknown): PresentedItem | null {
-  const item = value as Record<string, unknown> | null;
-  if (!item || typeof item.position !== "number") return null;
-
-  if (item.kind === "note") {
-    return {
-      position: item.position,
-      kind: "note",
-      caption: typeof item.caption === "string" ? item.caption : null,
-      body: typeof item.body === "string" ? item.body : "",
-    };
-  }
-
-  if (item.kind !== "file") return null;
-  const file = item.file as Record<string, unknown> | null;
-  if (!file || typeof file.id !== "string") return null;
-
-  return {
-    position: item.position,
-    kind: "file",
-    caption: typeof item.caption === "string" ? item.caption : null,
-    file: {
-      id: file.id,
-      name: typeof file.name === "string" ? file.name : "",
-      kind: (typeof file.kind === "string" ? file.kind : "other") as FileKind,
-      viewer: (typeof file.viewer === "string" ? file.viewer : "download") as ViewerKind,
-      size: typeof file.size === "string" ? file.size : "",
-      hasPreview:
-        typeof file.hasPreview === "boolean" ? file.hasPreview : typeof file.previewPath === "string",
-    },
-  };
-}
 
 /* ------------------------------------------------------------ staff reads */
 

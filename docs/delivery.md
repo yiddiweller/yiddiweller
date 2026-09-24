@@ -1636,7 +1636,8 @@ a 38px button, Cancel holding the focus, and Escape mutating nothing.
 
 ### Stage F — precise anchors: the lock
 
-**Architecture only; nothing below is built.** Stage F answers one question a
+**Architecture, with its foundation built (F1, below); nothing a person can
+see is built.** Stage F answers one question a
 feedback point sometimes needs — *exactly where do you mean?* — without turning
 a Workroom into a drawing application. Precision is always optional: general
 feedback and item-level feedback stay exactly as they are, and remain the
@@ -1663,18 +1664,18 @@ custom video timeline, text highlighting, OCR, always-on marker overlays.
 represent everything adopted, and the composite foreign keys already pin an
 anchor to its exact Revision.
 
-**The parser has a hole, and closing it is the first step.** `region()`
+**The parser had a hole, and closing it was the first step (F1).** `region()`
 checks that `x`, `y`, `w` and `h` are each between 0 and 1 and nothing else, so
-`{ x: 0.9, y: 0.9, w: 0.9, h: 0.9 }` — nine-tenths of it outside the image — is
-accepted today, as is a region of zero size, and the client action will store
-either for anyone who posts one. Nothing draws regions yet, so nothing is
+`{ x: 0.9, y: 0.9, w: 0.9, h: 0.9 }` — nine-tenths of it outside the image — was
+accepted, as was a region of zero size, and the client action would store
+either for anyone who posted one. Nothing draws regions yet, so nothing is
 wrong on screen. The region rule becomes `w > 0`, `h > 0`, `x + w ≤ 1`,
 `y + h ≤ 1`, written once, in the canonical parser below; anything stored
 before fails closed on read.
 
 #### One anchor parser, used on the way in and on the way out
 
-Today there are two validators and they already disagree. `parseAnchor` in
+Before F1 there were two validators and they already disagreed. `parseAnchor` in
 `lib/db/reviews.ts` checks exact keys and the media type; `toClientAnchor` in
 `lib/workrooms/review-view.ts` has its own `FRACTION`, `SECONDS` and `box()`,
 **does not check exact keys**, and cannot check the media type because the
@@ -1691,8 +1692,9 @@ the anchor or a machine reason, never a sentence.
 - **Reading.** The projection calls the same function on the stored jsonb and
   fails closed — the note keeps its `subject` and loses only the anchor. For
   that, `reviewNotes` returns each item's **viewer kind** alongside its
-  position, read through the item's file, so the projection can apply the
-  media-type rule without importing anything from `lib/db`.
+  position, so the projection can apply the media-type rule without importing
+  anything from `lib/db`. The viewer is read from **the Revision's frozen
+  snapshot**, never the live file row — see F1 below.
 - **The browser** has capture helpers that produce candidate values; it has no
   authority. `readAnchor` stays what it is — a transport reader that parses JSON
   under a 400-character cap and judges nothing.
@@ -1834,6 +1836,60 @@ travels in a URL.
 Editing changes words only. Replies never anchor. A tombstone carries nothing.
 Resolution never touches an anchor, and a historical round navigates within its
 own version, never the current one.
+
+#### F1 — the foundation, built
+
+**One parser, both directions.** `lib/workrooms/review-anchor.ts` is the only
+definition of a valid anchor: `parseReviewAnchor(raw, viewer)` returns the
+anchor, `null` for none, or a machine reason — `invalid_shape`,
+`unknown_key`, `invalid_number`, `out_of_bounds`, `invalid_region`,
+`invalid_range`, `unsupported_for_viewer` — and never a sentence. It imports
+one type and nothing else. `parseAnchor` in `lib/db/reviews.ts` now only turns
+a reason into the sentence a person has always read; `toClientAnchor` in
+`lib/workrooms/review-view.ts` calls the same function on what is stored and
+fails closed to no anchor, keeping the note and its `subject`. `FRACTION`,
+`SECONDS` and `box()` are gone, and a source scan keeps them gone.
+
+**The viewer comes from the Revision, not the file.** Both directions judge an
+anchor against `file.viewer` in **that Revision's frozen snapshot**
+(`viewersByPosition` in `lib/workrooms/presentation-view.ts`, on the same dense
+positions `readSnapshot` returns). The live `workroom_files` row is not
+consulted: a point on Revision 2's image stays a point on an image after the
+draft is reordered and Revision 3 shows a video in that position, and after the
+file row itself changes. A snapshot item with no viewer reads as `download` and
+fails closed.
+
+**Tightened.** Regions need `w > 0`, `h > 0`, `x + w ≤ 1`, `y + h ≤ 1` — at the
+top level and inside a frame region. Every object has exactly its keys.
+**Time has no ceiling**: any finite `t ≥ 0`, `t2 > t`; a recording longer than
+a day is still addressable. Which kinds each viewer takes: image — point,
+region; video — moment, stretch, moment with region; audio — moment, stretch;
+PDF, download and a written note — none.
+
+**`0006`'s CHECK is a coarser backstop, deliberately.** It enforces the kind,
+the required keys, fractions in [0, 1], `t ≥ 0` and `t2 > t`. It does not know
+`x + w ≤ 1`, a zero size, an extra key, a nested region's shape or the viewer —
+so it never refuses what the parser accepts, and a row it lets through that the
+parser does not is simply not shown as an anchor. No migration, and no stored
+row rewritten; tests plant such rows directly and read them back.
+
+**Primitives, for the surfaces to come.** `lib/workrooms/anchor-geometry.ts`
+maps between a pointer and a fraction of the media's **content rectangle** —
+the `contain`, centred box the pixels actually occupy — refuses a press in the
+letterbox rather than clamping it, and holds the stored precision (four places
+of a fraction, a millisecond). `lib/workrooms/anchor-label.ts` says an anchor in
+words — *At 0:42*, *0:42–0:51*, *At 25:03:08* — as a duration, never a time of
+day. Both are pure: no DOM, no clock.
+
+**Still not built:** capture, markers, return to context, seeking, the
+coordinator, any `FileViewer` change, any visible anchor, and Stage G. Stage F
+is not usable by anybody yet.
+
+**Found while testing, not fixed here.** Studio's *Move up* / *Move down*
+cannot succeed: `moveItem` parks a row at position `-1` and
+`presentation_items_position_check` (`position >= 0`) refuses it, so the
+action throws. The only test of it used a stale version and was refused before
+reaching the write. It is Stage B, outside F1, and awaits a decision.
 
 ## Reviews are verified on beta
 

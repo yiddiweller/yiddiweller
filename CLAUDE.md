@@ -53,7 +53,13 @@ on beta; the record is *Reviews are verified on beta* in `docs/delivery.md`.
 projected, drawn by nothing), and Stage G, notifications, are not built. Stage
 F's architecture is locked in `docs/delivery.md` — image point, video and audio
 moment and stretch, return to context; no migration; regions, frame anchors and
-PDF anchors deferred.
+PDF anchors deferred. **F1, its foundation, is built and nothing visible is**:
+one canonical parser, `parseReviewAnchor` in `lib/workrooms/review-anchor.ts`,
+judges an anchor on the way in and on the way out, against the viewer **the
+Revision's frozen snapshot** recorded, never the live file; regions are
+tightened, time has no ceiling, and `0006`'s CHECK is a coarser backstop. Pure
+geometry and label primitives exist. Capture, markers, seeking and any
+`FileViewer` change do not, and Stage F is not usable.
 Approvals has not begun. Build 005 is **not promoted**: production has no bucket, the sweep is
 unscheduled and there is no per-object backup strategy, so production remains
 Build 004.**

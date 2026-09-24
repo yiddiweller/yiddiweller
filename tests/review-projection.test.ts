@@ -354,29 +354,35 @@ test("a stored anchor that should not exist fails closed rather than passing thr
   // column some other way keeps the note's subject — a position, read from a
   // join, and therefore known good — and loses the precision nobody can vouch
   // for. Nothing arbitrary crosses the boundary.
-  for (const stored of [
-    { kind: "sticker", x: 0.1, y: 0.2 },
-    { kind: "point", x: 42, y: 0.2 },
-    { kind: "point", x: "0.4", y: "0.2" },
-    { kind: "point", x: Number.NaN, y: 0.2 },
-    { kind: "point" },
-    { kind: "region", x: 0.1, y: 0.2 },
-    { kind: "time", t: -1 },
-    { kind: "time", t: 10, t2: 4 },
-    { kind: "time", t: 1, region: { x: 9, y: 9, w: 9, h: 9 } },
-    { note: "arbitrary", secret: "MARKER-SHOULD-NOT-PASS" },
-    [],
-    "point",
-    42,
-  ]) {
-    assert.equal(toClientAnchor(stored), undefined, `passed through: ${JSON.stringify(stored)}`);
+  // Each judged against the viewer it would have to be valid for, so a refusal
+  // is about the value rather than about the item happening to be an image.
+  for (const [stored, viewer] of [
+    [{ kind: "sticker", x: 0.1, y: 0.2 }, "image"],
+    [{ kind: "point", x: 42, y: 0.2 }, "image"],
+    [{ kind: "point", x: "0.4", y: "0.2" }, "image"],
+    [{ kind: "point", x: Number.NaN, y: 0.2 }, "image"],
+    [{ kind: "point" }, "image"],
+    [{ kind: "region", x: 0.1, y: 0.2 }, "image"],
+    [{ kind: "time", t: -1 }, "video"],
+    [{ kind: "time", t: 10, t2: 4 }, "video"],
+    [{ kind: "time", t: 1, region: { x: 9, y: 9, w: 9, h: 9 } }, "video"],
+    [{ note: "arbitrary", secret: "MARKER-SHOULD-NOT-PASS" }, "image"],
+    [[], "image"],
+    ["point", "image"],
+    [42, "video"],
+  ] as const) {
+    assert.equal(
+      toClientAnchor(stored, viewer),
+      undefined,
+      `passed through: ${JSON.stringify(stored)} on ${viewer}`,
+    );
   }
 
   // Losing an anchor costs a note its pin and never the block it is about:
   // `subject` is read from a join rather than from this column, so it survives
   // anything that happens here.
-  assert.equal(toClientAnchor(null), undefined);
-  assert.deepEqual(toClientAnchor({ kind: "point", x: 0.1, y: 0.2 }), {
+  assert.equal(toClientAnchor(null, "image"), undefined);
+  assert.deepEqual(toClientAnchor({ kind: "point", x: 0.1, y: 0.2 }, "image"), {
     kind: "point",
     x: 0.1,
     y: 0.2,
@@ -397,6 +403,7 @@ test("the projection orders a round for itself, whatever order the rows arrive i
     authorSide: "client" as const,
     authorName: "Ana",
     itemPosition: null,
+    itemViewer: null,
     anchor: null,
     resolvedAt: null,
     resolvedBySide: null,

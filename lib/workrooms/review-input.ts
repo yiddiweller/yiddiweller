@@ -61,10 +61,11 @@ export function readBody(value: FormDataEntryValue | null | undefined): string |
  * The anchor, as a JSON string in the form.
  *
  * Parsed to a plain object and no further: the exact shape is
- * `parseAnchor`'s in `lib/db/reviews.ts`, which validates against the item's
- * own viewer kind — a question this layer cannot answer, because it has not
- * read the item yet. So this refuses only what could never be an anchor at all,
- * and hands the rest to the one place that knows.
+ * `parseReviewAnchor`'s in `lib/workrooms/review-anchor.ts`, which judges it
+ * against the viewer the item's Revision froze — a question this layer cannot
+ * answer, because it has not read the Revision yet. So this refuses only what
+ * could never be an anchor at all, and hands the rest to the one place that
+ * knows.
  *
  * `undefined` means the form said nothing, which is the ordinary case. `null`
  * means it said something that is not an object, which is a refusal.

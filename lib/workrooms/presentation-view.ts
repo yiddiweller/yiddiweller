@@ -1,4 +1,5 @@
 import { type WorkroomFileRow } from "../db/files.ts";
+import { type FileKind, type ViewerKind } from "../storage/policy.ts";
 import {
   toPresentedFile,
   withPaths,
@@ -295,4 +296,102 @@ export function itemSubjects(items: ClientRevisionItem[]): { value: string; labe
 export function labelAt(items: ClientRevisionItem[], position: number): string | null {
   const item = items.find((candidate) => candidate.position === position);
   return item ? itemLabel(item) : null;
+}
+
+/* ------------------------------------------------- reading a frozen Revision */
+
+/**
+ * The frozen content of one Revision.
+ *
+ * Read straight out of `snapshot`. The relational items beside it are the
+ * integrity record — they carry the foreign keys, the archive guard and the
+ * proof of which physical file belonged to a decision — but the thing the
+ * client reads is the thing that was written for the client, unaltered.
+ */
+export function readSnapshot(value: unknown): PresentationContent {
+  const snapshot = value as { title?: unknown; intro?: unknown; items?: unknown } | null;
+  const items = Array.isArray(snapshot?.items) ? snapshot.items : [];
+
+  return {
+    title: typeof snapshot?.title === "string" ? snapshot.title : "",
+    intro: typeof snapshot?.intro === "string" ? snapshot.intro : "",
+    // **Renumbered on the way out, and that is a repair.** Revisions frozen
+    // before `presentedItems` existed carry the draft's own ordering key, which
+    // has gaps in it, while `presentation_revision_items` has always been
+    // written densely by index — so the same block had two different numbers
+    // depending on which table you asked, and a Review note named by one was
+    // resolved against the other. The rows are immutable and are read rather
+    // than rewritten, exactly as the frozen file paths above are. The order is
+    // untouched, so nothing about what the client was shown changes; only the
+    // label on each place in it does, and it now agrees with the relational
+    // items it has always been in step with.
+    items: items
+      .map(readSnapshotItem)
+      .filter((item): item is PresentedItem => item !== null)
+      .map((item, position) => ({ ...item, position })),
+  };
+}
+
+/**
+ * One frozen item, normalised.
+ *
+ * Revisions published before routes were separated from content froze a file's
+ * four paths into the snapshot. Those rows are immutable — correctly — so they
+ * are read rather than rewritten: the file's opaque public id was always in
+ * there, the routes are rebuilt per surface from it, and whether a thumbnail
+ * exists is taken from the newer boolean or inferred from the old
+ * `previewPath`. Nothing about what the client was shown changes either way.
+ */
+function readSnapshotItem(value: unknown): PresentedItem | null {
+  const item = value as Record<string, unknown> | null;
+  if (!item || typeof item.position !== "number") return null;
+
+  if (item.kind === "note") {
+    return {
+      position: item.position,
+      kind: "note",
+      caption: typeof item.caption === "string" ? item.caption : null,
+      body: typeof item.body === "string" ? item.body : "",
+    };
+  }
+
+  if (item.kind !== "file") return null;
+  const file = item.file as Record<string, unknown> | null;
+  if (!file || typeof file.id !== "string") return null;
+
+  return {
+    position: item.position,
+    kind: "file",
+    caption: typeof item.caption === "string" ? item.caption : null,
+    file: {
+      id: file.id,
+      name: typeof file.name === "string" ? file.name : "",
+      kind: (typeof file.kind === "string" ? file.kind : "other") as FileKind,
+      viewer: (typeof file.viewer === "string" ? file.viewer : "download") as ViewerKind,
+      size: typeof file.size === "string" ? file.size : "",
+      hasPreview:
+        typeof file.hasPreview === "boolean" ? file.hasPreview : typeof file.previewPath === "string",
+    },
+  };
+}
+
+/**
+ * How each block of one frozen Revision was shown, by its position.
+ *
+ * **The viewer kind an anchor is judged against comes from here**, and not
+ * from the file as it is now. A Revision froze each file's `viewer` at the
+ * moment it was published — what that version rendered, and therefore what a
+ * point or a moment on it could have meant. Reading it back through the file
+ * row instead would recompute it with today's rules from today's row, and a
+ * Version 2 anchor has to be read as a Version 2 anchor for ever.
+ *
+ * A written note maps to `null`: words hold no precision. A position this
+ * Revision does not have is simply absent, and an anchor on it fails closed.
+ */
+export function viewersByPosition(snapshot: unknown): Map<number, ViewerKind | null> {
+  const viewers = new Map<number, ViewerKind | null>();
+  for (const item of readSnapshot(snapshot).items) {
+    viewers.set(item.position, item.kind === "file" ? item.file.viewer : null);
+  }
+  return viewers;
 }

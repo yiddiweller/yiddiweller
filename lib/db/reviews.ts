@@ -11,7 +11,6 @@ import {
   presentationReviewNotes,
   presentationReviews,
   presentations,
-  workroomFiles,
   workroomMembers,
   workrooms,
   NOTE_GRACE_MINUTES,
@@ -19,7 +18,14 @@ import {
   type ReviewClosureReason,
   type ReviewStatus,
 } from "./schema.ts";
-import { viewerKind, type ViewerKind } from "../storage/policy.ts";
+import { type ViewerKind } from "../storage/policy.ts";
+import { viewersByPosition } from "../workrooms/presentation-view.ts";
+import {
+  parseReviewAnchor,
+  type AnchorKind,
+  type AnchorRefusal,
+  type ReviewAnchor,
+} from "../workrooms/review-anchor.ts";
 import {
   reviewCapabilities,
   NO_CAPABILITIES,
@@ -132,114 +138,69 @@ async function settle<T>(work: Promise<Outcome<T>>): Promise<Outcome<T>> {
 
 /* ------------------------------------------------------------------ anchors */
 
-/** Where inside an item a note points. Normalised to the media, never the screen. */
-export type ReviewAnchor =
-  | { kind: "point"; x: number; y: number }
-  | { kind: "region"; x: number; y: number; w: number; h: number }
-  | { kind: "time"; t: number }
-  | { kind: "time"; t: number; t2: number }
-  | { kind: "time"; t: number; region: { x: number; y: number; w: number; h: number } };
+/**
+ * The anchor vocabulary, re-exported for callers of this module. It is defined
+ * — and judged — in exactly one place, `lib/workrooms/review-anchor.ts`.
+ */
+export type { ReviewAnchor };
 
-const FRACTION = (value: unknown): value is number =>
-  typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1;
+/**
+ * What a person reads when an anchor is refused.
+ *
+ * **Words only; no rule lives here.** Every judgement about whether a value is
+ * a valid anchor is `parseReviewAnchor`'s, and the projection reading stored
+ * anchors calls the same function — so the write path and the read path cannot
+ * disagree, because there is nothing here to disagree with. This turns a
+ * machine reason into the sentence that has always been shown for it.
+ */
+function refusalSentence(
+  reason: AnchorRefusal,
+  kind: AnchorKind | null,
+  viewer: ViewerKind | null,
+): string {
+  if (reason === "unsupported_for_viewer") {
+    if (viewer === null) return "There is nothing to point at in a written note.";
+    if (viewer === "pdf" || viewer === "download" || !["image", "video", "audio"].includes(viewer)) {
+      return "This kind of file takes feedback as a whole, not at a point in it.";
+    }
+    if (kind === "point") return "A point belongs on an image.";
+    if (kind === "region") return "An area belongs on an image.";
+    if (kind === "time_region") return "There is no picture to point at here.";
+    return "A moment belongs in something that plays.";
+  }
 
-const SECONDS = (value: unknown): value is number =>
-  typeof value === "number" && Number.isFinite(value) && value >= 0;
-
-/** Exactly these keys, no more. An unknown key is a refusal, never ignored. */
-function onlyKeys(value: Record<string, unknown>, allowed: string[]): boolean {
-  const keys = Object.keys(value);
-  return keys.length <= allowed.length && keys.every((key) => allowed.includes(key));
-}
-
-function region(value: unknown): { x: number; y: number; w: number; h: number } | null {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
-  const raw = value as Record<string, unknown>;
-  if (!onlyKeys(raw, ["x", "y", "w", "h"])) return null;
-  if (!FRACTION(raw.x) || !FRACTION(raw.y) || !FRACTION(raw.w) || !FRACTION(raw.h)) return null;
-  return { x: raw.x, y: raw.y, w: raw.w, h: raw.h };
+  switch (kind) {
+    case "point":
+      return "That point is not inside the image.";
+    case "region":
+      return "That area is not inside the image.";
+    case "time_range":
+      return reason === "invalid_range"
+        ? "A stretch has to end after it starts."
+        : "That is not a moment in this file.";
+    case "time_region":
+      return reason === "invalid_region" || reason === "unknown_key" || reason === "invalid_shape"
+        ? "That area is not inside the picture."
+        : "That is not a moment in this file.";
+    case "time":
+      return "That is not a moment in this file.";
+    default:
+      return "That is not a place in the work.";
+  }
 }
 
 /**
- * The whitelist, and it is a whitelist rather than a filter.
+ * An anchor judged for storage, as an `Outcome` the rest of this module speaks.
  *
- * **What precision can mean is decided by the viewer, not by the caller.** An
- * image has no timeline and audio has no frame, so a temporal anchor on an
- * image and a spatial one on audio are both refused rather than quietly
- * dropped. PDF renders in the browser's own viewer, which is opaque to us, and
- * a download has nothing to point at — neither takes a precise anchor at all,
- * and a note item is words rather than media.
- *
- * Nothing here normalises malformed input into something valid. A shape that
- * does not match exactly is a refusal, so a caller never gets back a different
- * anchor from the one it sent.
+ * A thin wrapper: `parseReviewAnchor` decides, this translates. Kept because
+ * the domain answers in `Outcome` everywhere, and because a refusal needs the
+ * sentence the person will read.
  */
 export function parseAnchor(raw: unknown, viewer: ViewerKind | null): Outcome<ReviewAnchor | null> {
-  if (raw === null || raw === undefined) return ok(null);
-
-  if (viewer === null) {
-    return refuse("invalid", "There is nothing to point at in a written note.");
-  }
-  if (viewer === "pdf" || viewer === "download") {
-    return refuse("invalid", "This kind of file takes feedback as a whole, not at a point in it.");
-  }
-
-  if (typeof raw !== "object" || Array.isArray(raw)) {
-    return refuse("invalid", "That is not a place in the work.");
-  }
-
-  const value = raw as Record<string, unknown>;
-  const kind = value.kind;
-
-  if (kind === "point") {
-    if (viewer !== "image") return refuse("invalid", "A point belongs on an image.");
-    if (!onlyKeys(value, ["kind", "x", "y"]) || !FRACTION(value.x) || !FRACTION(value.y)) {
-      return refuse("invalid", "That point is not inside the image.");
-    }
-    return ok({ kind: "point", x: value.x, y: value.y });
-  }
-
-  if (kind === "region") {
-    if (viewer !== "image") return refuse("invalid", "An area belongs on an image.");
-    if (!onlyKeys(value, ["kind", "x", "y", "w", "h"])) {
-      return refuse("invalid", "That area is not inside the image.");
-    }
-    const box = region({ x: value.x, y: value.y, w: value.w, h: value.h });
-    if (!box) return refuse("invalid", "That area is not inside the image.");
-    return ok({ kind: "region", ...box });
-  }
-
-  if (kind === "time") {
-    if (viewer !== "video" && viewer !== "audio") {
-      return refuse("invalid", "A moment belongs in something that plays.");
-    }
-    if (!SECONDS(value.t)) return refuse("invalid", "That is not a moment in this file.");
-
-    if (onlyKeys(value, ["kind", "t"])) return ok({ kind: "time", t: value.t });
-
-    if (onlyKeys(value, ["kind", "t", "t2"])) {
-      if (!SECONDS(value.t2) || value.t2 <= value.t) {
-        return refuse("invalid", "A stretch has to end after it starts.");
-      }
-      return ok({ kind: "time", t: value.t, t2: value.t2 });
-    }
-
-    if (onlyKeys(value, ["kind", "t", "region"])) {
-      // A frame is a picture, so only video carries one. Audio has no frame,
-      // and saying so is better than storing coordinates nothing can render.
-      if (viewer !== "video") return refuse("invalid", "There is no picture to point at here.");
-      const box = region(value.region);
-      if (!box) return refuse("invalid", "That area is not inside the picture.");
-      return ok({ kind: "time", t: value.t, region: box });
-    }
-
-    return refuse("invalid", "That is not a moment in this file.");
-  }
-
-  return refuse("invalid", "That is not a place in the work.");
+  const parsed = parseReviewAnchor(raw, viewer);
+  if (parsed.ok) return ok(parsed.anchor);
+  return refuse("invalid", refusalSentence(parsed.reason, parsed.kind, viewer));
 }
-
-/* -------------------------------------------------------------- the round */
 
 type RoundRow = {
   id: string;
@@ -299,6 +260,28 @@ async function lockRound(tx: Tx, reviewId: string): Promise<RoundRow | null> {
     .limit(1);
 
   return (row as RoundRow | undefined) ?? null;
+}
+
+/**
+ * How each block of one Revision was shown when it was published, by position.
+ *
+ * Read from the Revision's frozen snapshot, which is immutable, rather than
+ * recomputed from the file row with today's rules — so an anchor is always
+ * judged against the Revision it belongs to. Used on the way in by
+ * `createReviewNote` and on the way out by `reviewNotes`, so both judge an
+ * anchor against the same fact.
+ */
+async function revisionViewers(
+  runner: Pick<Tx, "select">,
+  revisionId: string,
+): Promise<Map<number, ViewerKind | null>> {
+  const [row] = await runner
+    .select({ snapshot: presentationRevisions.snapshot })
+    .from(presentationRevisions)
+    .where(eq(presentationRevisions.id, revisionId))
+    .limit(1);
+
+  return row ? viewersByPosition(row.snapshot) : new Map();
 }
 
 /** The round, or a refusal that says nothing about whether it exists. */
@@ -865,13 +848,8 @@ export async function createReviewNote(
 
       if (input.itemPosition !== null && input.itemPosition !== undefined) {
         const [item] = await tx
-          .select({
-            id: presentationRevisionItems.id,
-            kind: presentationRevisionItems.kind,
-            contentType: workroomFiles.contentType,
-          })
+          .select({ id: presentationRevisionItems.id })
           .from(presentationRevisionItems)
-          .leftJoin(workroomFiles, eq(workroomFiles.id, presentationRevisionItems.fileId))
           .where(
             and(
               eq(presentationRevisionItems.presentationRevisionId, round.revisionId),
@@ -883,7 +861,10 @@ export async function createReviewNote(
         if (!item) refused("not_found", "That part of the work is not in this version.");
         itemId = item.id;
 
-        const viewer = item.kind === "file" && item.contentType ? viewerKind(item.contentType) : null;
+        // Judged against how **this Revision** showed the block — the viewer
+        // it froze at publication — which is exactly what the projection will
+        // judge it against when it is read back, for as long as it exists.
+        const viewer = (await revisionViewers(tx, round.revisionId)).get(input.itemPosition) ?? null;
         const parsed = parseAnchor(input.anchor ?? null, viewer);
         if (!parsed.ok) return parsed;
         anchor = parsed.value;
@@ -1276,7 +1257,16 @@ export type ReviewNoteRow = {
   authorSide: NoteSide;
   authorName: string;
   itemPosition: number | null;
-  anchor: ReviewAnchor | null;
+  /**
+   * How the block this note is about was shown in **its own** Revision — the
+   * viewer that Revision froze at publication. `null` for a written note, for
+   * general feedback, and for a position the snapshot does not have; every one
+   * of those holds no precise anchor, which is what `null` tells the parser.
+   * Internal: the projection judges the anchor with it and emits nothing of it.
+   */
+  itemViewer: ViewerKind | null;
+  /** The stored jsonb, unjudged. Only `parseReviewAnchor` decides what it is. */
+  anchor: unknown;
   resolvedAt: Date | null;
   resolvedBySide: NoteSide | null;
   resolvedByName: string | null;
@@ -1331,7 +1321,19 @@ export async function reviewNotes(reviewId: string): Promise<ReviewNoteRow[]> {
     .where(eq(presentationReviewNotes.presentationReviewId, reviewId))
     .orderBy(presentationReviewNotes.number);
 
-  return rows as ReviewNoteRow[];
+  // Every note in a round belongs to the round's one Revision, so its frozen
+  // viewers are read once — from that Revision, never from the current one.
+  const [round] = await db()
+    .select({ revisionId: presentationReviews.presentationRevisionId })
+    .from(presentationReviews)
+    .where(eq(presentationReviews.id, reviewId))
+    .limit(1);
+  const viewers = round ? await revisionViewers(db(), round.revisionId) : new Map();
+
+  return rows.map((row) => ({
+    ...row,
+    itemViewer: row.itemPosition === null ? null : (viewers.get(row.itemPosition) ?? null),
+  })) as ReviewNoteRow[];
 }
 
 /* ----------------------------------------------------- the authorized read */

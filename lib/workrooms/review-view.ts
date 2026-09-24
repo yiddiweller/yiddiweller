@@ -1,5 +1,7 @@
 import { type ReviewNoteRow } from "../db/reviews.ts";
 import { type ReviewStatus } from "../db/schema.ts";
+import { type ViewerKind } from "../storage/policy.ts";
+import { parseReviewAnchor, type ReviewAnchor } from "./review-anchor.ts";
 
 /**
  * What a Review looks like to somebody outside the database.
@@ -48,17 +50,13 @@ export type ClientAuthor = {
  * anchor to find. A note can have a subject and no anchor — that is ordinary
  * item-level feedback, and it is the common case.
  *
- * Fractions are of the media's own intrinsic box and seconds are from its
- * start, so a phone and a desktop resolve to the same place. This is the Stage
- * C vocabulary unchanged; only the redundant `item` field is gone, because the
- * note already carries it and two copies of one fact eventually disagree.
+ * Fractions are of the media's content rectangle and seconds are from its
+ * start, so a phone and a desktop resolve to the same place. The shape is
+ * `ReviewAnchor` itself — the one vocabulary, defined and judged in
+ * `review-anchor.ts` — because a second copy of the type is where a second
+ * copy of the rules starts.
  */
-export type ClientAnchor =
-  | { kind: "point"; x: number; y: number }
-  | { kind: "region"; x: number; y: number; w: number; h: number }
-  | { kind: "time"; t: number }
-  | { kind: "time"; t: number; t2: number }
-  | { kind: "time"; t: number; region: { x: number; y: number; w: number; h: number } };
+export type ClientAnchor = ReviewAnchor;
 
 /**
  * A note that was taken back.
@@ -135,62 +133,25 @@ export type ClientReview = {
 
 /* ------------------------------------------------------------------ anchors */
 
-const FRACTION = (value: unknown): value is number =>
-  typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1;
-
-const SECONDS = (value: unknown): value is number =>
-  typeof value === "number" && Number.isFinite(value) && value >= 0;
-
-function box(value: unknown): { x: number; y: number; w: number; h: number } | null {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
-  const raw = value as Record<string, unknown>;
-  if (!FRACTION(raw.x) || !FRACTION(raw.y) || !FRACTION(raw.w) || !FRACTION(raw.h)) return null;
-  return { x: raw.x, y: raw.y, w: raw.w, h: raw.h };
-}
-
 /**
  * The stored anchor, projected — **and it fails closed to nothing.**
  *
- * `parseAnchor` in the domain is what stops a malformed anchor being stored, so
- * anything that reaches here and does not match the Stage C vocabulary exactly
- * got in some other way. It is not passed through and it is not repaired: the
- * note keeps its `subject`, which is a position read from a join and therefore
- * known good, and loses only the precision nobody can vouch for. Losing an
- * anchor costs a note its pin; it never costs the note the block it is about.
+ * Judged by `parseReviewAnchor`, **the same function that judged it on the way
+ * in**, against the viewer its own Revision froze. There is no second
+ * validator here and never should be: until Stage F there was one, it had
+ * already drifted — it ignored keys the domain refused, and it could not ask
+ * whether a moment belonged on an image at all — and two rules that are meant
+ * to agree eventually do not.
  *
- * Nothing arbitrary crosses this boundary. Every field emitted is named here.
+ * Anything that reaches here and does not parse got into the column some other
+ * way, or was written before a rule tightened. It is not passed through and it
+ * is not repaired: the note keeps its `subject`, which is a position read from
+ * a join, and loses only the precision nobody can vouch for. Losing an anchor
+ * costs a note its pin; it never costs the note the block it is about.
  */
-export function toClientAnchor(stored: unknown): ClientAnchor | undefined {
-  if (stored === null || stored === undefined) return undefined;
-  if (typeof stored !== "object" || Array.isArray(stored)) return undefined;
-
-  const raw = stored as Record<string, unknown>;
-
-  if (raw.kind === "point") {
-    return FRACTION(raw.x) && FRACTION(raw.y) ? { kind: "point", x: raw.x, y: raw.y } : undefined;
-  }
-
-  if (raw.kind === "region") {
-    const region = box(raw);
-    return region ? { kind: "region", ...region } : undefined;
-  }
-
-  if (raw.kind === "time") {
-    if (!SECONDS(raw.t)) return undefined;
-
-    if (raw.t2 !== undefined) {
-      return SECONDS(raw.t2) && raw.t2 > raw.t ? { kind: "time", t: raw.t, t2: raw.t2 } : undefined;
-    }
-
-    if (raw.region !== undefined) {
-      const region = box(raw.region);
-      return region ? { kind: "time", t: raw.t, region } : undefined;
-    }
-
-    return { kind: "time", t: raw.t };
-  }
-
-  return undefined;
+export function toClientAnchor(stored: unknown, viewer: ViewerKind | null): ClientAnchor | undefined {
+  const parsed = parseReviewAnchor(stored, viewer);
+  return parsed.ok && parsed.anchor !== null ? parsed.anchor : undefined;
 }
 
 /* -------------------------------------------------------------- the notes */
@@ -236,7 +197,7 @@ function toNote(row: ReviewNoteRow, replies: ReviewNoteRow[]): ClientReviewNote 
   // is about" is the domain's rule, and this is the projection agreeing with it
   // rather than inferring the subject back out of the anchor.
   const subject = row.itemPosition;
-  const anchor = subject === null ? undefined : toClientAnchor(row.anchor);
+  const anchor = subject === null ? undefined : toClientAnchor(row.anchor, row.itemViewer);
   const resolved = row.resolvedAt !== null;
 
   return {

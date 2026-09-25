@@ -1,9 +1,11 @@
+import type { ViewerKind } from "../storage/policy.ts";
 import { roundSeconds } from "./anchor-geometry.ts";
 import { momentLabel, rangeLabel } from "./anchor-label.ts";
 import type { ReviewAnchor } from "./review-anchor.ts";
 
 /**
- * Choosing a moment or a stretch in a recording, decided without a browser.
+ * Choosing a moment or a stretch in something that plays — a recording or a
+ * video — decided without a browser.
  *
  * The native player is how somebody gets to the place they mean; these rules
  * only read where it is. Nothing here draws, plays or seeks. `ReviewStage`
@@ -11,12 +13,29 @@ import type { ReviewAnchor } from "./review-anchor.ts";
  * of what a press can produce is tested as data: a moment inside the file, a
  * stretch that ends after it starts, or nothing.
  *
- * **Audio only, in this build.** Video shares the shape and will share these
- * rules; it is not offered until its own stage.
+ * **One set of rules for audio and video (F3, then F4.1).** A time is media
+ * time in seconds, rounded to the millisecond — never a frame number, and
+ * nothing here claims to know which frame a video shows at it.
  */
 
-/** The two shapes capture can make — the time anchors F1 accepts for audio. */
+/** The two shapes capture can make — the time anchors F1 accepts for both. */
 export type TimeCandidate = { kind: "time"; t: number } | { kind: "time"; t: number; t2: number };
+
+/**
+ * The viewers a precise time is chosen in: the two that play. Never `download`
+ * — a file frozen as one has no player to read, whatever it is now — and never
+ * an image or a PDF, which have no time.
+ */
+const TIMED: readonly ViewerKind[] = ["audio", "video"];
+
+/**
+ * Whether an item of this **frozen** viewer takes a precise time. Called with
+ * the viewer a Revision's snapshot recorded, and nothing else: not the
+ * filename, not the live file row, not the Files policy as it reads today.
+ */
+export function takesTime(viewer: ViewerKind | null): boolean {
+  return viewer !== null && TIMED.includes(viewer);
+}
 
 /**
  * Whether a subject in the composer takes a precise time.
@@ -25,8 +44,8 @@ export type TimeCandidate = { kind: "time"; t: number } | { kind: "time"; t: num
  * snapshot — its viewer, as it was published — so a file changed since, or a
  * draft reordered since, cannot make a block take precision it did not have.
  */
-export function capturesTime(subject: { capture?: "audio" } | undefined): boolean {
-  return subject?.capture === "audio";
+export function capturesTime(subject: { capture?: "time" } | undefined): boolean {
+  return subject?.capture === "time";
 }
 
 /**
@@ -63,7 +82,7 @@ export type CaptureNotice = "not_ready" | "no_start" | "end_before_start";
 export function noticeText(notice: CaptureNotice): string {
   switch (notice) {
     case "not_ready":
-      return "Available once the recording has loaded — press play if it has not.";
+      return "Available once the file has loaded — press play if it has not.";
     case "no_start":
       return "Choose where it starts first.";
     case "end_before_start":
@@ -149,7 +168,7 @@ export function captureSummary(state: CaptureState): string {
 
 /**
  * The draft's anchor after the subject changes. A time belongs to one
- * recording: moving the comment anywhere else — another block, or the version
+ * file: moving the comment anywhere else — another block, or the version
  * as a whole — drops it, without asking, since nothing has been sent.
  */
 export function anchorAfterSubjectChange<T>(previous: string, next: string, anchor: T | null): T | null {

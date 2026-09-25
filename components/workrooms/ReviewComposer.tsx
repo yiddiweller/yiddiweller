@@ -3,7 +3,7 @@
 import { useActionState, useId, useRef, useState } from "react";
 
 import { PrecisionControl } from "@/components/workrooms/ReviewStage";
-import { anchorAfterSubjectChange, capturesTime, type TimeCandidate } from "@/lib/workrooms/audio-capture";
+import { anchorAfterSubjectChange, capturesTime, type TimeCandidate } from "@/lib/workrooms/time-capture";
 import { BODY_MAX } from "@/lib/workrooms/review-input";
 import { type ActionResult } from "@/lib/studio-result";
 import styles from "@/components/workrooms/ReviewThread.module.css";
@@ -13,7 +13,7 @@ import styles from "@/components/workrooms/ReviewThread.module.css";
  * `capture` marks a block that takes a precise time — read from the frozen
  * Revision the page is rendering, never from anything the browser inspects.
  */
-export type ReviewSubject = { value: string; label: string; capture?: "audio" };
+export type ReviewSubject = { value: string; label: string; capture?: "time" };
 
 /**
  * Somewhere to write: a new point, a reply, or a correction to your own words.
@@ -62,7 +62,7 @@ export default function ReviewComposer({
   const id = useId();
   const [open, setOpen] = useState(trigger === undefined);
   const area = useRef<HTMLTextAreaElement>(null);
-  // What the unsent point is about, and — for a recording — the precise time
+  // What the unsent point is about, and — for a recording or a video — the precise time
   // chosen in it. Both belong to this draft only; sending or switching the
   // subject is the end of them.
   const [subject, setSubject] = useState("");
@@ -132,7 +132,7 @@ export default function ReviewComposer({
             defaultValue=""
             onChange={(event) => {
               const next = event.target.value;
-              // A time belongs to one recording; it never follows the comment
+              // A time belongs to one file; it never follows the comment
               // to another block, or to the version as a whole.
               setAnchor((current) => anchorAfterSubjectChange(subject, next, current));
               setSubject(next);
@@ -145,7 +145,7 @@ export default function ReviewComposer({
               </option>
             ))}
           </select>
-          {/* Keyed by the block, so moving to another recording ends any
+          {/* Keyed by the block, so moving to another file ends any
               capture still open on the last one. */}
           {about && capturesTime(about) ? (
             <PrecisionControl

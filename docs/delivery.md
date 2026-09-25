@@ -1699,9 +1699,9 @@ a 38px button, Cancel holding the focus, and Escape mutating nothing.
 
 ### Stage F — precise anchors: the lock
 
-**Architecture, with its foundation (F1), its display (F2) and audio capture
-(F3) built, below; nothing yet captures a video time, an image point or an
-area.** Stage F answers one question a
+**Architecture, with its foundation (F1), its display (F2), audio capture
+(F3) and video capture (F4.1) built, below; nothing yet captures an image point
+or an area.** Stage F answers one question a
 feedback point sometimes needs — *exactly where do you mean?* — without turning
 a Workroom into a drawing application. Precision is always optional: general
 feedback and item-level feedback stay exactly as they are, and remain the
@@ -2063,7 +2063,7 @@ scrubber, no second player — and never plays anything.
 **Optional means optional.** General feedback, item-level feedback about a
 recording, a moment and a stretch are four ordinary ways to send a point.
 
-**The rules are data** (`lib/workrooms/audio-capture.ts`, pure). Nothing can
+**The rules are data** (`lib/workrooms/audio-capture.ts` at F3, `time-capture.ts` since F4.1; pure). Nothing can
 be chosen until the file reports a finite duration, and the panel says so; a
 time is rounded by F1's rule to the millisecond, never past the end, with no
 ceiling of its own. An end at or before the start is refused with *Choose an
@@ -2085,7 +2085,8 @@ server judges it from scratch: a stretch that ends first, a time on a picture
 and a frame area on audio are all refused whatever the browser sent.
 
 **Where it lives.** Eligibility is read from the frozen Revision the page
-renders — `itemSubjects` marks a block whose snapshot viewer is `audio` — and
+renders — `itemSubjects` marks a block whose snapshot viewer is `audio` (and,
+since F4.1, `video`) — and
 the capture session is one more context in F2's `ReviewStage`: opening it puts
 away any locator's point, and pressing a locator cancels it. The panel renders
 inside that block's `AnchorTarget`. Once sent, showing the time again is F2's
@@ -2098,7 +2099,7 @@ too; `RANGES_ON_COARSE_POINTERS` withholds them in one line if real-phone
 acceptance finds the native player too coarse for two presses. No timeline
 will be built to rescue them.
 
-**Tested.** `audio-capture.test.ts` (the rules, and the real write path with
+**Tested.** `audio-capture.test.ts` (now `time-capture.test.ts`) (the rules, and the real write path with
 crafted refusals) and `review-capture-browser.test.ts` (15 flows in Chromium
 at 1280px and 390px: both shapes stored exactly and found again by F2's
 locator, invalid ends, Change/Cancel/Escape, Clear, switching subjects, two
@@ -2137,9 +2138,59 @@ The walk also exercised **F2's audio return-to-context** end to end, in both
 worlds and across the draft-to-Revision link. F2's **image point** display has
 not been walked on beta — nothing yet creates one.
 
-**Still not built:** video capture, image point capture, regions, frame-region
-display, PDF precision, signed-URL recovery (F6), Stage G. Stage F is not
-complete.
+#### F4.0 — the MOV plays — is verified on beta
+
+Walked by hand on the real Railway beta deployment against *IMG_0044.mov*, about
+15 MB, in the **Files** viewer — before any Review capture was built on it, as
+the stage required:
+
+- **Desktop Chrome**: the one native inline `<video>` played it — picture,
+  sound, seeking, and pausing after a seek all work.
+- **A real iPhone in Safari**: the same, correctly.
+- **Download original** stayed available under it.
+
+So the real file's codec decodes in both supported browsers; the automated
+tests' playable stand-in declared `video/quicktime` was never evidence of that.
+
+#### F4.1 — video capture
+
+**F3's system, pointed at a video.** No second capture system: the rules
+module is renamed `time-capture.ts` — the rules unchanged, `takesTime(viewer)`
+added — and it owns both players. A block takes a precise time when the
+Revision's **frozen** viewer is `audio` or `video` (`itemSubjects`); never from
+the filename, the live file row or today's Files policy, so a MOV a Revision
+froze as `download` takes no time, for good, and the server refuses one on it
+anyway. `ReviewSubject.capture` is `"time"`, not a media kind.
+
+**The same panel, under the video's own player.** `CapturePanel` reads the one
+native player its block holds — `video, audio` — so it sits under the
+`<video controls preload="metadata" playsInline>` that `FileViewer` already
+renders: no second element, nothing laid over the video, native controls and
+native fullscreen untouched. Every press reads `currentTime` and `duration`
+from that element there and then, so a video scrubbed in iPhone fullscreen and
+brought back inline is read where it was left; *Player at …* follows
+`timeupdate` and `seeked`. The copy is shared: *Available once the file has
+loaded — press play if it has not.*; *This file could not be loaded here…*
+
+**The same anchors.** `{ kind: "time", t }` and `{ kind: "time", t, t2 }`, media
+time in seconds rounded to the millisecond — **not frames**, and nothing claims
+frame accuracy. No migration, no new shape, no parser change. `time + region`
+stays in F1's vocabulary for video, produced by nothing and drawn by nothing.
+
+**Return to context is F2's, unchanged.** The locator already queried `video,
+audio`: it scrolls to the block, pauses, focuses the player, waits for
+metadata, sets `currentTime` to the moment or the stretch's start, and never
+calls `play()`. Studio's draft page links to `/revisions/{N}?note={n}`.
+
+**Tested** in a real browser against a playable stand-in declared
+`video/quicktime` (`video-capture-browser.test.ts`) — eligibility both ways,
+a moment and a stretch captured and stored exactly, an end at or before the
+start refused, the client's and Studio's locators seeking and staying paused,
+a replaced version's notes, 390px on a touch screen, and the server's refusals
+— plus the whole F3 audio suite unchanged. **Not yet walked on beta.**
+
+**Still not built:** image point capture, regions, frame-region display, PDF
+precision, signed-URL recovery (F6), Stage G. Stage F is not complete.
 
 ## Reviews are verified on beta
 

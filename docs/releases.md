@@ -364,16 +364,24 @@ recorded in [`delivery.md`](./delivery.md) under *Reviews are verified on beta*.
   because each Revision keeps the viewer it froze. **Cleared on a real iPhone**
   in the F3 walk.
 - **Stage F4.0 — an `.mov` plays inline: implemented, automated tests pass,
-  not yet walked on beta.** Every iPhone video is an `.mov`, declared
+  real-beta manual acceptance pass.** Every iPhone video is an `.mov`, declared
   `video/quicktime`; beta's *IMG_0044.mov* read *video* in Files and was a
   download card everywhere. `video/quicktime` is now on the viewer's list by
   exact name — no parameters, no `video/x-quicktime`, never a file extension —
   so the one native `<video>` renders it. Whether a browser can decode the
   codec inside is the browser's to say; the Download link stays under every
   file. Files show the player at once; a Presentation from its next published
-  Revision. **No precise video time yet** — that is F4.1, after IMG_0044.mov
-  is watched on a real iPhone and a real desktop Chrome.
-- **Still not built:** video, image and region capture, and Stage G,
+  Revision. Walked on beta in the Files viewer against *IMG_0044.mov* (about
+  15 MB): picture, sound, seeking and pausing after a seek all work in desktop
+  Chrome and on a real iPhone in Safari, with *Download original* still there.
+- **Stage F4.1 — video capture: implemented, automated tests pass, not yet
+  walked on beta.** F3's panel and rules, unchanged, now open under a video's
+  own native player when the Revision froze it as `video`: *Use this moment*,
+  *Start here* / *End here*, *Change*, *Clear*, sent as the same time anchors
+  through the same action, and found again by the same locators, paused. A MOV
+  frozen as a download before F4.0 never takes a time. The capture module is
+  renamed `time-capture.ts`. Audio behaviour is unchanged.
+- **Still not built:** image and region capture, and Stage G,
   notifications.
 
 **Stage A beta acceptance.** Migration `0004` deployed and applied. `npm run

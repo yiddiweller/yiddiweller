@@ -124,13 +124,13 @@ const focused = (page: Page) =>
 
 /* ---------------------------------------------------------- eligibility */
 
-test("only a recording offers a precise time — an M4A included — not the version, a note, a picture, a video or a PDF", { skip }, async () => {
+test("a recording offers a precise time — an M4A included — and since F4.1 so does a video; not the version, a note, a picture or a PDF", { skip }, async () => {
   const { page, errors } = await open(clientPage());
 
   for (const [label, offered] of [
     ["This version as a whole", false],
     ["Intro", false],
-    ["The motion", false],
+    ["The motion", true],
     ["The board", false],
     ["The sound", true],
     ["The poster", false],
@@ -375,7 +375,7 @@ test("until a recording has loaded, nothing can be chosen, and the reason is sai
   assert.ok(await button(page, "Use this moment").isDisabled());
   assert.ok(await button(page, "Start here").isDisabled());
   assert.equal(
-    await panel(page).getByText("Available once the recording has loaded — press play if it has not.").count(),
+    await panel(page).getByText("Available once the file has loaded — press play if it has not.").count(),
     1,
   );
 

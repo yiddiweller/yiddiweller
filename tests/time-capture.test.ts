@@ -21,17 +21,19 @@ import {
   takeEnd,
   takeMoment,
   takeStart,
+  takesTime,
   type CaptureState,
-} from "../lib/workrooms/audio-capture.ts";
+} from "../lib/workrooms/time-capture.ts";
 import { itemSubjects } from "../lib/workrooms/presentation-view.ts";
 import { parseReviewAnchor } from "../lib/workrooms/review-anchor.ts";
 import { readAnchor } from "../lib/workrooms/review-input.ts";
 import { clearOwner, round, seedOwner, stage } from "./support/review-stage.ts";
 
 /**
- * Stage F3's rules for choosing a time, as data — and the path a chosen time
- * takes to the database, run for real. The browser half is
- * `review-capture-browser.test.ts`.
+ * The rules for choosing a time — Stage F3's for audio, shared by F4.1's video
+ * — as data, and the path a chosen time takes to the database, run for real.
+ * The browser halves are `review-capture-browser.test.ts` (audio) and
+ * `video-capture-browser.test.ts` (video).
  */
 
 before(seedOwner);
@@ -45,7 +47,7 @@ const empty: CaptureState = { candidate: null, start: null, notice: null };
 
 /* ------------------------------------------------------------ eligibility */
 
-test("only an audio block offers a precise time, read from the frozen Revision", () => {
+test("audio and video blocks offer a precise time, read from the frozen Revision — nothing else does", () => {
   const file = (viewer: "image" | "video" | "audio" | "pdf" | "download") =>
     ({
       name: `${viewer}.bin`,
@@ -69,13 +71,36 @@ test("only an audio block offers a precise time, read from the frozen Revision",
     [
       ["Intro", false],
       ["Picture", false],
-      ["Film", false],
+      ["Film", true],
       ["Sound", true],
       ["Deck", false],
       ["Archive", false],
     ],
   );
   assert.equal(capturesTime(undefined), false, "the version as a whole offered a time");
+
+  // The viewer is the only input: the frozen one, by name.
+  assert.deepEqual(
+    (["audio", "video", "image", "pdf", "download", null] as const).map((viewer) => [viewer, takesTime(viewer)]),
+    [["audio", true], ["video", true], ["image", false], ["pdf", false], ["download", false], [null, false]],
+  );
+  // A viewer this build does not know takes nothing.
+  assert.equal(takesTime("hologram" as never), false);
+});
+
+test("a video frozen as a download takes no time, whatever it is called or is now", () => {
+  // A MOV published before F4.0 froze `{ kind: "video", viewer: "download" }`.
+  // Its label says video and its name says .mov; neither is consulted.
+  const frozen = itemSubjects([
+    {
+      position: 0,
+      kind: "file",
+      caption: null,
+      file: { id: "f", name: "IMG_0044.mov", kind: "video", viewer: "download", size: "15 MB", downloadPath: "/d" },
+    } as never,
+  ]);
+  assert.deepEqual(frozen, [{ value: "0", label: "IMG_0044.mov" }]);
+  assert.equal(capturesTime(frozen[0]), false);
 });
 
 test("stretches are offered on every pointer until a real phone says otherwise", () => {
@@ -182,7 +207,7 @@ test("the choice is said in words, including a stretch half chosen and why a pre
   assert.equal(captureSummary({ candidate: null, start: 42, notice: null }), "Starts at 0:42 — now choose where it ends.");
   assert.equal(noticeText("end_before_start"), "Choose an end after the start.");
   assert.equal(noticeText("no_start"), "Choose where it starts first.");
-  assert.match(noticeText("not_ready"), /once the recording has loaded/);
+  assert.equal(noticeText("not_ready"), "Available once the file has loaded — press play if it has not.");
 });
 
 /* ------------------------------------------- the path to the database */
@@ -197,7 +222,11 @@ test("the form field is compact and deterministic, and the server reads it with 
     { kind: "time" as const, t: 1.25, t2: 3.5 },
   ]) {
     const read = readAnchor(serializeAnchor(candidate));
-    assert.deepEqual(parseReviewAnchor(read, "audio"), { ok: true, anchor: candidate });
+    // The same field, the same parser, the same answer for a video.
+    for (const viewer of ["audio", "video"] as const) {
+      assert.deepEqual(parseReviewAnchor(read, viewer), { ok: true, anchor: candidate });
+    }
+    assert.deepEqual(parseReviewAnchor(read, "download"), { ok: false, reason: "unsupported_for_viewer", kind: "t2" in candidate ? "time_range" : "time" });
   }
   assert.equal(readAnchor(serializeAnchor(null)), undefined, "an empty field became an anchor");
 });
@@ -218,12 +247,26 @@ test("through the real write path: moments and stretches stored exactly; a craft
   assert.ok((await write("Stretch.", 3, serializeAnchor({ kind: "time", t: 1.25, t2: 3.5 }))).ok);
   assert.deepEqual(await anchorOf("Stretch."), { kind: "time", t: 1.25, t2: 3.5 });
 
+  // The video, through the same field and the same write.
+  assert.ok((await write("Video moment.", 2, serializeAnchor({ kind: "time", t: 4.125 }))).ok);
+  assert.deepEqual(await anchorOf("Video moment."), { kind: "time", t: 4.125 });
+  assert.ok((await write("Video stretch.", 2, serializeAnchor({ kind: "time", t: 0.5, t2: 6 }))).ok);
+  assert.deepEqual(await anchorOf("Video stretch."), { kind: "time", t: 0.5, t2: 6 });
+
   // What the panel can never make, sent anyway, is refused by the server.
   for (const [position, field, why] of [
     [3, '{"kind":"time","t":5,"t2":3}', "a stretch that ends first"],
     [3, '{"kind":"time","t":-1}', "a negative time"],
     [3, '{"kind":"time","t":1,"region":{"x":0,"y":0,"w":1,"h":1}}', "a frame area on audio"],
     [3, '{"kind":"point","x":0.5,"y":0.5}', "a point on audio"],
+    [2, '{"kind":"point","x":0.5,"y":0.5}', "a point on a video"],
+    [2, '{"kind":"region","x":0.1,"y":0.1,"w":0.2,"h":0.2}', "an area on a video"],
+    [2, '{"kind":"time","t":1,"region":{"x":0.9,"y":0.9,"w":0.5,"h":0.5}}', "a frame area leaving the video"],
+    [2, '{"kind":"time","t":4,"t2":4}', "a video stretch that ends where it starts"],
+    [2, '{"kind":"time","t":-0.5}', "a negative time on a video"],
+    [2, '{"kind":"time","t":1e999}', "an infinite time on a video"],
+    [2, '{"kind":"time","t":"2"}', "a time that is not a number"],
+    [2, '{"kind":"time","t":2,"frame":48}', "a frame number"],
     [1, '{"kind":"time","t":2}', "a time on a picture"],
     [4, '{"kind":"time","t":2}', "a time on a PDF"],
     [0, '{"kind":"time","t":2}', "a time on a written note"],
@@ -241,18 +284,27 @@ test("through the real write path: moments and stretches stored exactly; a craft
 });
 
 test("the draft is kept in the form and nowhere else", () => {
-  for (const file of ["components/workrooms/ReviewStage.tsx", "components/workrooms/ReviewComposer.tsx", "lib/workrooms/audio-capture.ts"]) {
+  for (const file of ["components/workrooms/ReviewStage.tsx", "components/workrooms/ReviewComposer.tsx", "lib/workrooms/time-capture.ts"]) {
     const source = readFileSync(file, "utf8");
     assert.doesNotMatch(source, /localStorage|sessionStorage|document\.cookie|history\.(push|replace)State|router\.(push|replace)/, file);
   }
 });
 
-test("capture offers audio only: nothing for video or pictures anywhere yet", () => {
+test("capture is one system for both players: one module, one panel, one element per block, nothing for pictures", () => {
   const composer = readFileSync("components/workrooms/ReviewComposer.tsx", "utf8");
   assert.match(composer, /capturesTime\(about\)/);
-  const capture = readFileSync("lib/workrooms/audio-capture.ts", "utf8");
-  assert.match(capture, /return subject\?\.capture === "audio";/);
   const subjects = readFileSync("lib/workrooms/presentation-view.ts", "utf8");
-  assert.match(subjects, /item\.file\.viewer === "audio" \? \{ capture: "audio" as const \}/);
-  assert.doesNotMatch(subjects, /capture: "video"|capture: "image"/);
+  assert.match(subjects, /takesTime\(item\.file\.viewer\) \? \{ capture: "time" as const \}/);
+  assert.doesNotMatch(subjects, /capture: "(audio|video|image|point)"/);
+
+  // The panel reads the block's own player — a video's or a recording's —
+  // and there is no second capture module or panel for video.
+  const stage = readFileSync("components/workrooms/ReviewStage.tsx", "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/^\s*\/\/.*$/gm, "");
+  assert.match(stage, /const PLAYER = "video, audio";/);
+  assert.doesNotMatch(stage, /querySelector<HTMLMediaElement>\("audio"\)/);
+  assert.equal((stage.match(/function CapturePanel\(/g) ?? []).length, 1);
+  assert.doesNotMatch(stage, /\.play\(\)/, "something in the stage plays media");
+  assert.doesNotMatch(stage, /<video|<audio|requestFullscreen|webkitEnterFullscreen/, "the stage renders or drives a player of its own");
 });

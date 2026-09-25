@@ -28,7 +28,7 @@ import {
   takeStart,
   type CaptureState,
   type TimeCandidate,
-} from "@/lib/workrooms/audio-capture";
+} from "@/lib/workrooms/time-capture";
 import { seekPlan } from "@/lib/workrooms/review-locator";
 import type { ClientAnchor } from "@/lib/workrooms/review-view";
 import styles from "@/components/workrooms/ReviewStage.module.css";
@@ -57,8 +57,9 @@ import thread from "@/components/workrooms/ReviewThread.module.css";
  * render exactly the markup they always did.
  *
  * **Stage F3 adds capture, and nothing else.** The one root comment being
- * written may open a **capture session** on the recording it is about: a small
- * panel under that block's own native player that reads where the player is.
+ * written may open a **capture session** on the recording or video it is about:
+ * a small panel under that block's own native player that reads where the
+ * player is. F4.1 opens the same panel under a video's player, not a second one.
  * The session is the composer's, not the stage's — the stage only knows which
  * block it is on and whom to answer when it ends — and it is one more context
  * of the same kind: opening it puts away any locator's, and a locator pressed
@@ -542,23 +543,31 @@ export function ReviewLocator({
 
 type Player = { duration: number; current: number; failed: boolean };
 
+/** The one native player a block holds — a video's or a recording's. */
+const PLAYER = "video, audio";
+
 function readPlayer(media: HTMLMediaElement | null): Player {
   if (!media) return { duration: Number.NaN, current: 0, failed: true };
   return { duration: media.duration, current: media.currentTime, failed: media.error !== null };
 }
 
 /**
- * The panel under a recording while somebody chooses a time in it.
+ * The panel under a recording or a video while somebody chooses a time in it.
  *
  * **It reads the native player and nothing else.** No waveform, no scrubber,
  * no second player: the browser's own controls are how a person gets to the
  * place they mean, and these buttons only record where that is. Each press
- * goes through the pure rules in `audio-capture.ts`, so the panel can only
+ * goes through the pure rules in `time-capture.ts`, so the panel can only
  * ever hold a moment inside the file or a stretch that ends after it starts.
  *
  * Unavailable — with the reason said, not implied — until the file reports a
  * finite duration, and for good if it cannot load: ordinary feedback about the
- * recording is unaffected either way.
+ * file is unaffected either way.
+ *
+ * **The block's own player, whichever it is.** A video's `<video>` or a
+ * recording's `<audio>` — the one element inside this block — is read as it
+ * is at every press, so a video scrubbed in native fullscreen and brought back
+ * inline is read where it was left. Nothing is mirrored into a timeline.
  */
 function CapturePanel({
   box,
@@ -573,19 +582,19 @@ function CapturePanel({
   const heading = useId();
   // The panel only ever mounts after a press, in a browser, inside a block
   // that is already on the page — so the player can be read as it opens.
-  const media = (): HTMLMediaElement | null => box.current?.querySelector<HTMLMediaElement>("audio") ?? null;
+  const media = (): HTMLMediaElement | null => box.current?.querySelector<HTMLMediaElement>(PLAYER) ?? null;
   const [state, setState] = useState<CaptureState>(() => beginCapture(session.initial));
   const [player, setPlayer] = useState<Player>(() => readPlayer(media()));
   const [ranges] = useState(() => rangesOffered(window.matchMedia("(pointer: coarse)").matches));
 
   useEffect(() => {
-    const audio = box.current?.querySelector<HTMLMediaElement>("audio");
-    if (!audio) return;
-    const update = () => setPlayer(readPlayer(audio));
+    const element = box.current?.querySelector<HTMLMediaElement>(PLAYER);
+    if (!element) return;
+    const update = () => setPlayer(readPlayer(element));
     const events = ["loadedmetadata", "durationchange", "timeupdate", "seeked", "error"] as const;
-    for (const event of events) audio.addEventListener(event, update);
+    for (const event of events) element.addEventListener(event, update);
     return () => {
-      for (const event of events) audio.removeEventListener(event, update);
+      for (const event of events) element.removeEventListener(event, update);
     };
   }, [box]);
 
@@ -603,7 +612,7 @@ function CapturePanel({
   const reason = !media()
     ? "This block cannot take a precise time."
     : player.failed
-      ? "This recording could not be loaded here, so a precise time cannot be set. Your feedback can still be about it as a whole."
+      ? "This file could not be loaded here, so a precise time cannot be set. Your feedback can still be about it as a whole."
       : ready
         ? null
         : noticeText("not_ready");
@@ -678,7 +687,7 @@ function CapturePanel({
 }
 
 /**
- * The composer's half of capture: *Set precise time* for a recording, and the
+ * The composer's half of capture: *Set precise time* for a recording or a video, and the
  * choice once made — *At 0:42* — with *Change* and *Clear*.
  *
  * The anchor lives in the unsent draft and travels in the form's own `anchor`

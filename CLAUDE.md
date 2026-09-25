@@ -71,8 +71,12 @@ stretch (0:01–0:02) are chosen on the native player, sent through the existing
 `anchor` field and action, and found again by the client's and Studio's
 locators on the immutable Version 2, paused at 0:01 — which also exercised F2's
 audio return-to-context end to end. F2's image point display has not been
-walked on beta. Video, image and region capture are not built, and Stage F is
-not complete.
+walked on beta. **F4.0 — `video/quicktime` inline, by exact name — is manually
+accepted on beta**: IMG_0044.mov plays in the Files viewer in desktop Chrome and
+iPhone Safari. **F4.1 — video capture — is implemented and its automated tests
+pass, not manually accepted**: F3's one panel and rules (`time-capture.ts`) under
+the video's own native player, eligible only where the frozen viewer is `video`.
+Image and region capture are not built, and Stage F is not complete.
 Approvals has not begun. Build 005 is **not promoted**: production has no bucket, the sweep is
 unscheduled and there is no per-object backup strategy, so production remains
 Build 004.**

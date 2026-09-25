@@ -7,6 +7,7 @@ import {
   type FileBase,
   type PresentedFile,
 } from "./delivery-view.ts";
+import { takesTime } from "./time-capture.ts";
 
 /**
  * The only shape of a Presentation that reaches a client surface.
@@ -290,14 +291,14 @@ export function itemLabel(item: ClientRevisionItem): string {
 /** Every block a feedback point may be about, in the order they appear. */
 export function itemSubjects(
   items: ClientRevisionItem[],
-): { value: string; label: string; capture?: "audio" }[] {
+): { value: string; label: string; capture?: "time" }[] {
   // `capture` is read from the viewer this Revision froze, the same one the
-  // page renders it with — never from the live file or the draft. Only audio
-  // takes a precise time in this build.
+  // page renders it with — never from the live file or the draft. Audio and
+  // video take a precise time; a file frozen as a download never does.
   return items.map((item) => ({
     value: String(item.position),
     label: itemLabel(item),
-    ...(item.kind === "file" && item.file.viewer === "audio" ? { capture: "audio" as const } : {}),
+    ...(item.kind === "file" && takesTime(item.file.viewer) ? { capture: "time" as const } : {}),
   }));
 }
 

@@ -293,11 +293,11 @@ test("a precise time on a MOV frozen as a download is refused, as for any downlo
   assert.equal(quick.refusal, "This kind of file takes feedback as a whole, not at a point in it.");
 });
 
-test("no precise time is offered for a MOV in this slice — Review capture is unchanged", { skip }, async () => {
+test("a MOV frozen as video offers a precise time — F4.1; the capture itself is video-capture-browser's", { skip }, async () => {
   const { page, errors } = await open(`/workrooms/${fixture.room}/presentations/${quick.presentation}`);
   assert.ok((await clipBlock(page)).video, "the current version has no player");
   await page.getByLabel("About").selectOption({ label: "The phone clip" });
-  assert.equal(await page.getByRole("button", { name: /^Set precise time/ }).count(), 0, "video capture appeared early");
+  assert.equal(await page.getByRole("button", { name: "Set precise time on The phone clip", exact: true }).count(), 1);
   assert.deepEqual(errors, []);
   await page.context().close();
 });

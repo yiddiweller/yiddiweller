@@ -2,8 +2,9 @@
 
 import { useActionState, useId, useRef, useState } from "react";
 
-import { PrecisionControl } from "@/components/workrooms/ReviewStage";
-import { anchorAfterSubjectChange, capturesTime, type TimeCandidate } from "@/lib/workrooms/time-capture";
+import { PrecisionControl, type Candidate } from "@/components/workrooms/ReviewStage";
+import { capturesPoint } from "@/lib/workrooms/point-capture";
+import { anchorAfterSubjectChange, capturesTime } from "@/lib/workrooms/time-capture";
 import { BODY_MAX } from "@/lib/workrooms/review-input";
 import { type ActionResult } from "@/lib/studio-result";
 import styles from "@/components/workrooms/ReviewThread.module.css";
@@ -62,11 +63,12 @@ export default function ReviewComposer({
   const id = useId();
   const [open, setOpen] = useState(trigger === undefined);
   const area = useRef<HTMLTextAreaElement>(null);
-  // What the unsent point is about, and — for a recording or a video — the precise time
-  // chosen in it. Both belong to this draft only; sending or switching the
-  // subject is the end of them.
+  // What the unsent point is about, and — for a recording or a video — the
+  // precise time chosen in it, or — for a picture — the place on it. Both
+  // belong to this draft only; sending or switching the subject is the end of
+  // them.
   const [subject, setSubject] = useState("");
-  const [anchor, setAnchor] = useState<TimeCandidate | null>(null);
+  const [anchor, setAnchor] = useState<Candidate | null>(null);
   const about = subjects?.find((candidate) => candidate.value === subject);
   const [result, submit, pending] = useActionState<ActionResult | null, FormData>(
     async (previous, form) => {
@@ -147,9 +149,10 @@ export default function ReviewComposer({
           </select>
           {/* Keyed by the block, so moving to another file ends any
               capture still open on the last one. */}
-          {about && capturesTime(about) ? (
+          {about && (capturesTime(about) || capturesPoint(about)) ? (
             <PrecisionControl
               key={about.value}
+              kind={capturesPoint(about) ? "point" : "time"}
               subject={Number(about.value)}
               name={about.label}
               draft={anchor}

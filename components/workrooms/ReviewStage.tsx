@@ -14,8 +14,17 @@ import {
   type RefObject,
 } from "react";
 
-import { containRect, fromFraction } from "@/lib/workrooms/anchor-geometry";
+import type { Rect, Size } from "@/lib/workrooms/anchor-geometry";
 import { formatDuration } from "@/lib/workrooms/anchor-label";
+import {
+  beginPoint,
+  isArrowKey,
+  nudgePoint,
+  placePoint,
+  pointOnImage,
+  pointSummary,
+  type PointCandidate,
+} from "@/lib/workrooms/point-capture";
 import {
   beginCapture,
   candidateLabel,
@@ -65,12 +74,24 @@ import thread from "@/components/workrooms/ReviewThread.module.css";
  * of the same kind: opening it puts away any locator's, and a locator pressed
  * meanwhile cancels it. Once a comment is sent, showing its time again is F2's
  * job, done by F2's code.
+ *
+ * **Stage F5.2 adds a point, in the same session.** A capture is of a `time`
+ * or of a `point`; a point capture turns **the image's own stage** — the
+ * element `FileViewer` draws the picture in, and nothing around it — into the
+ * one surface a press can place a point on, for as long as the session is
+ * open. The panel, its buttons, the composer, *Download original* and every
+ * link are outside that surface, so nothing pressed there is ever a point or a
+ * press beside the picture. Every number is F5.1's: the page measures, the
+ * rules decide, and F2's one marker draws the draft.
  */
 
 type Active = { n: number; subject: number; anchor: ClientAnchor };
 
 /** One locator's request: the note, its block and precision, and its block's name. */
 export type LocatorRequest = Active & { name: string };
+
+/** Anything the composer's one precision control can hold: a time or a point. */
+export type Candidate = TimeCandidate | PointCandidate;
 
 /**
  * One capture, opened by the composer for the block its comment is about.
@@ -79,10 +100,12 @@ export type LocatorRequest = Active & { name: string };
  */
 export type CaptureSession = {
   owner: symbol;
+  /** What is being chosen: a time in a player, or a point on a picture. */
+  kind: "time" | "point";
   subject: number;
   name: string;
-  initial: TimeCandidate | null;
-  done: (anchor: TimeCandidate) => void;
+  initial: Candidate | null;
+  done: (anchor: Candidate) => void;
   cancel: () => void;
   /** Stamped by the stage, so each opening starts a fresh panel. */
   serial?: number;
@@ -97,7 +120,7 @@ type Stage = {
   capture: CaptureSession | null;
   openCapture: (session: CaptureSession) => void;
   /** Done with a candidate, or Cancel with null. Answers the composer. */
-  endCapture: (anchor: TimeCandidate | null) => void;
+  endCapture: (anchor: Candidate | null) => void;
   /** Closes the owner's session without answering — its subject changed. */
   abandonCapture: (owner: symbol) => void;
 };
@@ -200,15 +223,19 @@ export function ReviewStage({ children }: { children: ReactNode }) {
   }, []);
 
   const endCapture = useCallback(
-    (anchor: TimeCandidate | null) => {
+    (anchor: Candidate | null) => {
       const open = session.current;
       if (!open) return;
       setSession(null);
       if (anchor) {
-        setMessage(`Precise time set: ${candidateLabel(anchor) ?? ""}.`);
+        setMessage(
+          anchor.kind === "point"
+            ? `${pointSummary(open.name)} is set.`
+            : `Precise time set: ${candidateLabel(anchor) ?? ""}.`,
+        );
         open.done(anchor);
       } else {
-        setMessage("The precise time was left as it was.");
+        setMessage(open.kind === "point" ? "The point was left as it was." : "The precise time was left as it was.");
         open.cancel();
       }
     },
@@ -408,7 +435,9 @@ function Target({ stage, position, children }: { stage: Stage; position: number;
     <div ref={box} className={styles.target} tabIndex={-1}>
       {children}
       {point ? <Marker box={box} x={point.x} y={point.y} /> : null}
-      {capturing ? (
+      {capturing?.kind === "point" ? (
+        <PointCapture key={capturing.serial} box={box} session={capturing} end={stage.endCapture} />
+      ) : capturing ? (
         <CapturePanel key={capturing.serial} box={box} session={capturing} end={stage.endCapture} />
       ) : null}
     </div>
@@ -418,16 +447,36 @@ function Target({ stage, position, children }: { stage: Stage; position: number;
 const px = (value: string): number => Number.parseFloat(value) || 0;
 
 /**
+ * The picture's content box, measured: its bounding rectangle less its own
+ * border and padding, in the same CSS pixel space a pointer event reports.
+ * Measuring only — what the box *means* is `point-capture.ts`'s to decide.
+ */
+function contentBox(image: HTMLImageElement): Rect {
+  const style = window.getComputedStyle(image);
+  const rect = image.getBoundingClientRect();
+  const left = px(style.borderLeftWidth) + px(style.paddingLeft);
+  const right = px(style.borderRightWidth) + px(style.paddingRight);
+  const top = px(style.borderTopWidth) + px(style.paddingTop);
+  const bottom = px(style.borderBottomWidth) + px(style.paddingBottom);
+  return { left: rect.left + left, top: rect.top + top, width: rect.width - left - right, height: rect.height - top - bottom };
+}
+
+/** The picture's own size, as the browser decoded it — after EXIF orientation. */
+const natural = (image: HTMLImageElement): Size => ({ width: image.naturalWidth, height: image.naturalHeight });
+
+/**
  * The point, on the picture — **placed through the content rectangle, never
  * against the page.**
  *
  * The image's content box is its bounding rectangle less its own border and
- * padding; F1's `containRect` fits the intrinsic aspect ratio inside it, the
- * way `object-fit: contain; object-position: 50% 50%` does; and the fraction
- * is placed in *that*. Then, and only then, it is expressed relative to this
- * block, which is what the marker is positioned in. Measured again whenever
- * the image or the block changes size, so a rotation or a resize moves it with
- * the work.
+ * padding; `pointOnImage` — F1's `containRect` then `fromFraction` — fits the
+ * intrinsic aspect ratio inside it, the way `object-fit: contain;
+ * object-position: 50% 50%` does, and places the fraction in *that*. Then, and
+ * only then, it is expressed relative to this block, which is what the marker
+ * is positioned in. Measured again whenever the image or the block changes
+ * size, so a rotation or a resize moves it with the work.
+ *
+ * The one marker, for a locator's point (F2) and for a point being chosen (F5).
  */
 function Marker({ box, x, y }: { box: RefObject<HTMLDivElement | null>; x: number; y: number }) {
   const [at, setAt] = useState<{ left: number; top: number } | null>(null);
@@ -438,20 +487,7 @@ function Marker({ box, x, y }: { box: RefObject<HTMLDivElement | null>; x: numbe
     if (!block || !image) return;
 
     const place = () => {
-      if (!image.naturalWidth || !image.naturalHeight) return setAt(null);
-
-      const style = window.getComputedStyle(image);
-      const rect = image.getBoundingClientRect();
-      const left = px(style.borderLeftWidth) + px(style.paddingLeft);
-      const right = px(style.borderRightWidth) + px(style.paddingRight);
-      const top = px(style.borderTopWidth) + px(style.paddingTop);
-      const bottom = px(style.borderBottomWidth) + px(style.paddingBottom);
-
-      const content = containRect(
-        { width: image.naturalWidth, height: image.naturalHeight },
-        { left: rect.left + left, top: rect.top + top, width: rect.width - left - right, height: rect.height - top - bottom },
-      );
-      const spot = content ? fromFraction({ x, y }, content) : null;
+      const spot = pointOnImage({ x, y }, natural(image), contentBox(image));
       if (!spot) return setAt(null);
 
       const origin = block.getBoundingClientRect();
@@ -686,9 +722,154 @@ function CapturePanel({
   );
 }
 
+/* --------------------------------------------------------- F5.2: a point */
+
+/** Why a press on the picture's stage did not place a point. */
+type PointNotice = "beside" | "not_ready";
+
 /**
- * The composer's half of capture: *Set precise time* for a recording or a video, and the
- * choice once made — *At 0:42* — with *Change* and *Clear*.
+ * A point being chosen on a picture: its stage made the one surface a press
+ * can land on, F2's marker on the draft, and a panel under it saying what is
+ * held.
+ *
+ * **The surface is the image's own stage and nothing else** — the element
+ * `FileViewer` draws the picture in (`img.parentElement`), which holds the
+ * picture and any space around it and none of the controls. Its click and key
+ * listeners exist only while this session is open, and they are native
+ * listeners on that element, so a press anywhere else — Done, Cancel, the
+ * composer, *Download original*, a link, the next block — never reaches them,
+ * by bubbling or otherwise. A press on the stage that is not on the picture is
+ * refused and said, and a point already chosen stays where it was.
+ *
+ * `click`, not `pointerdown`: a phone does not fire one for a scroll, so the
+ * page scrolls under a finger exactly as it always does, and nothing here ever
+ * prevents a touch. While it is open the picture cannot be dragged, selected
+ * or long-pressed into a menu, and the stage takes focus so the arrow keys can
+ * place a point too — F5.1's `nudgePoint`: the first puts it in the middle,
+ * each moves it a little, Shift further, and Enter keeps it. Escape is the
+ * stage's, as for every capture: Cancel.
+ */
+function PointCapture({
+  box,
+  session,
+  end,
+}: {
+  box: RefObject<HTMLDivElement | null>;
+  session: CaptureSession;
+  end: (anchor: Candidate | null) => void;
+}) {
+  const heading = useId();
+  const instructions = useId();
+  const [point, setPoint] = useState<PointCandidate | null>(() => beginPoint(session.initial));
+  const [notice, setNotice] = useState<PointNotice | null>(null);
+  const [touch] = useState(() => window.matchMedia("(pointer: coarse)").matches);
+  const verb = touch ? "tap" : "click";
+  const { name } = session;
+
+  // The stage, made a surface for as long as this session is open — and
+  // given back exactly as it was when it closes.
+  useEffect(() => {
+    const image = box.current?.querySelector("img");
+    const surface = image?.parentElement;
+    if (!image || !surface) return;
+
+    const draggable = image.draggable;
+    image.draggable = false;
+    surface.classList.add(styles.pointSurface);
+    surface.tabIndex = 0;
+    surface.setAttribute("role", "application");
+    surface.setAttribute("aria-label", `Place a point on ${name}`);
+    surface.setAttribute("aria-describedby", instructions);
+    surface.focus({ preventScroll: true });
+
+    return () => {
+      image.draggable = draggable;
+      surface.classList.remove(styles.pointSurface);
+      surface.removeAttribute("tabindex");
+      surface.removeAttribute("role");
+      surface.removeAttribute("aria-label");
+      surface.removeAttribute("aria-describedby");
+    };
+  }, [box, name, instructions]);
+
+  // What a press on that surface does. Re-attached as the point changes, so
+  // Enter always keeps the point that is showing.
+  useEffect(() => {
+    const image = box.current?.querySelector("img");
+    const surface = image?.parentElement;
+    if (!image || !surface) return;
+
+    const onClick = (event: MouseEvent) => {
+      if (!image.naturalWidth || !image.naturalHeight) return setNotice("not_ready");
+      const placed = placePoint({ x: event.clientX, y: event.clientY }, natural(image), contentBox(image));
+      if (!placed) return setNotice("beside");
+      setPoint(placed);
+      setNotice(null);
+    };
+
+    const onKey = (event: KeyboardEvent) => {
+      if (isArrowKey(event.key)) {
+        // The arrows move the point, not the page.
+        event.preventDefault();
+        const key = event.key;
+        setPoint((previous) => nudgePoint(previous, key, event.shiftKey));
+        setNotice(null);
+      } else if (event.key === "Enter" && point) {
+        event.preventDefault();
+        end(point);
+      }
+    };
+
+    surface.addEventListener("click", onClick);
+    surface.addEventListener("keydown", onKey);
+    return () => {
+      surface.removeEventListener("click", onClick);
+      surface.removeEventListener("keydown", onKey);
+    };
+  }, [box, point, end]);
+
+  const status =
+    notice === "beside"
+      ? `That is beside the image — ${verb} the picture itself.`
+      : notice === "not_ready"
+        ? "Available once the image has loaded."
+        : point
+          ? `Point placed — ${verb} again to move it.`
+          : "Nothing chosen yet.";
+
+  return (
+    <>
+      {point ? <Marker box={box} x={point.x} y={point.y} /> : null}
+      <div className={`${styles.capture} ${thread.sizes}`} role="group" aria-labelledby={heading}>
+        <p id={heading} className={styles.captureTitle}>
+          {`Point on ${name}`}
+        </p>
+        <p className={styles.captureHint}>{touch ? "Tap the image where you mean." : "Click the image where you mean."}</p>
+        <p id={instructions} className={styles.announce}>
+          Or, with the picture focused, use the arrow keys: the first puts a point in the middle, each moves it a
+          little, Shift moves it further, and Enter keeps it.
+        </p>
+        {/* The choice in words, never numbers, and why a press did not make one. */}
+        <p className={styles.captureChoice} role="status" aria-live="polite">
+          {status}
+        </p>
+        <div className={thread.controls}>
+          <button type="button" className={thread.button} disabled={point === null} onClick={() => point && end(point)}>
+            Done
+          </button>
+          <button type="button" className={thread.buttonQuiet} onClick={() => end(null)}>
+            Cancel
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
+/**
+ * The composer's half of capture: *Set precise time* for a recording or a
+ * video, *Point to it* for a picture (F5.2), and the choice once made — *At
+ * 0:42*, *A point on The board* — with *Change* and *Clear*.
  *
  * The anchor lives in the unsent draft and travels in the form's own `anchor`
  * field when it is sent, through the same action, reader, parser and domain as
@@ -696,16 +877,19 @@ function CapturePanel({
  * it again from scratch.
  */
 export function PrecisionControl({
+  kind,
   subject,
   name,
   draft,
   onDraft,
   composer,
 }: {
+  /** What this block takes: a time, or a point. */
+  kind: "time" | "point";
   subject: number;
   name: string;
-  draft: TimeCandidate | null;
-  onDraft: (anchor: TimeCandidate | null) => void;
+  draft: Candidate | null;
+  onDraft: (anchor: Candidate | null) => void;
   /** Where focus goes when a chosen time comes back: the words being written. */
   composer: RefObject<HTMLTextAreaElement | null>;
 }) {
@@ -728,6 +912,7 @@ export function PrecisionControl({
   const open = () =>
     stage.openCapture({
       owner,
+      kind,
       subject,
       name,
       initial: draft,
@@ -739,7 +924,9 @@ export function PrecisionControl({
     });
 
   const capturing = stage.capture?.owner === owner;
-  const chosen = candidateLabel(draft);
+  const point = kind === "point";
+  const chosen = point ? (draft?.kind === "point" ? pointSummary(name) : null) : candidateLabel(draft);
+  const what = point ? "the point" : "the precise time";
 
   return (
     <div className={styles.precision}>
@@ -750,7 +937,7 @@ export function PrecisionControl({
             ref={opener}
             type="button"
             className={thread.buttonQuiet}
-            aria-label={`Change the precise time on ${name}`}
+            aria-label={`Change ${what} on ${name}`}
             aria-expanded={capturing}
             onClick={open}
           >
@@ -759,7 +946,7 @@ export function PrecisionControl({
           <button
             type="button"
             className={thread.buttonQuiet}
-            aria-label={`Clear the precise time on ${name}`}
+            aria-label={`Clear ${what} on ${name}`}
             onClick={() => onDraft(null)}
           >
             Clear
@@ -770,11 +957,11 @@ export function PrecisionControl({
           ref={opener}
           type="button"
           className={thread.buttonQuiet}
-          aria-label={`Set precise time on ${name}`}
+          aria-label={point ? `Point to a place on ${name}` : `Set precise time on ${name}`}
           aria-expanded={capturing}
           onClick={open}
         >
-          Set precise time
+          {point ? "Point to it" : "Set precise time"}
         </button>
       )}
       {/* The draft's anchor, in the form, and nowhere else. */}

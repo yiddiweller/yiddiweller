@@ -2222,9 +2222,49 @@ before. The parser, the projection, the domain, the schema and `FileViewer` are
 untouched: `point` was already accepted on an image only, exact keys, 0–1
 inclusive, and everything else is refused.
 
-**Still not built:** visible point capture (F5.2), regions, frame-region
-display, PDF precision, signed-URL recovery (F6), Stage G. Stage F is not
-complete.
+**F5.2 — a point, chosen on the picture. Implemented, automated tests pass,
+not yet walked on beta.** The composer offers **Point to it** (named *Point to a
+place on {name}*) for a block whose frozen viewer is `image`, beside **Set
+precise time** for audio and video, through the one `PrecisionControl`; the
+capture session gains a `kind`, and a point session renders `PointCapture` in
+place of the time panel. Opening it puts away any locator's point, scrolls to
+that picture and focuses its stage; the panel sits under the picture — *Point
+on {name}*, *Tap* or *Click the image where you mean.*, *Nothing chosen yet.* /
+*Point placed — tap again to move it.*, **Done** (off until there is a point)
+and **Cancel**. F2's one marker draws the draft. **Done** gives the composer
+*A point on {name}* with **Change** and **Clear**; **Cancel** and Escape give
+back exactly what was there.
+
+**The surface is the image's stage, and only while the session is open.**
+`img.parentElement` — the element `FileViewer` draws the picture in — gets a
+native `click` and `keydown` listener, a class, `tabindex="0"`, `role` and a
+description, all removed when the session ends; `FileViewer` itself is
+unchanged. A press on the picture is `placePoint`'s; a press on the stage beside
+it is refused with *That is beside the image — tap* (or *click*) *the picture
+itself.* and moves nothing. The panel, its buttons, the composer, *Download
+original*, links and other pictures are outside the stage, so no press there is
+ever a point or a press beside one — tested press by press, with every status
+the panel shows recorded.
+
+**Touch.** `click`, not `pointerdown`, so a finger dragging the page from the
+picture scrolls it and places nothing — tested with a real touch sequence.
+While capturing, the stage has `touch-action: manipulation` (pan and pinch
+stay, double-tap zoom goes), a crosshair, and the picture cannot be dragged,
+selected or long-pressed into a menu. Nothing prevents a touch.
+
+**Keyboard.** The stage is focused when capture opens and described for a
+screen reader: the first arrow centres the point, arrows move it 0.02, Shift
+0.10, it stops at the edge, the arrows never scroll the page, Enter is Done and
+Escape is Cancel. No number is ever said.
+
+**Geometry stays in F5.1.** The component measures the picture's content box
+and natural size and nothing else; `placePoint` decides a press, and the F2
+marker now places itself through `pointOnImage`, the same path. Locators, the
+Studio draft link and historical Revisions are F2's, unchanged, and a
+submission is the existing action: the server parses the point from scratch.
+
+**Still not built:** regions, frame-region display, PDF precision, signed-URL
+recovery (F6), Stage G. Stage F is not complete.
 
 ## Reviews are verified on beta
 

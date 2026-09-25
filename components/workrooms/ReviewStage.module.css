@@ -140,3 +140,31 @@
   font-size: var(--fs-ui);
   color: var(--white);
 }
+
+/* ------------------------------------------------------- F5.2: a point */
+
+/* The picture's stage while a point is being chosen on it — and only then.
+   A crosshair says a press means something; `manipulation` keeps pan and
+   pinch and only stops a double tap zooming; and the picture cannot be
+   dragged, selected or long-pressed into a menu. Nothing here changes the
+   stage for anybody who is not choosing a point. */
+.pointSurface {
+  cursor: crosshair;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.pointSurface img {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.pointSurface:focus {
+  outline: none;
+}
+
+.pointSurface:focus-visible {
+  outline: 1px solid var(--white);
+  outline-offset: 4px;
+}

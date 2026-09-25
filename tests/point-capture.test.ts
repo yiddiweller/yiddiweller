@@ -369,13 +369,26 @@ test("a picture frozen as a download takes no point, however it reads today", as
   assert.equal(refused.message, "This kind of file takes feedback as a whole, not at a point in it.");
 });
 
-/* ------------------------------------------------------------ not yet seen */
+/* ------------------------------------------------------------ the wiring */
 
-test("nothing offers a point yet: F5.1 is rules and eligibility, and F5.2 draws them", () => {
+test("the page measures and these rules decide: no geometry in the component, and only the stage listens", () => {
   const composer = readFileSync("components/workrooms/ReviewComposer.tsx", "utf8");
-  // The one precision control still opens only for a time.
-  assert.match(composer, /capturesTime\(about\) \?/);
-  assert.doesNotMatch(composer, /capturesPoint|Point to it/);
-  const stage = readFileSync("components/workrooms/ReviewStage.tsx", "utf8");
-  assert.doesNotMatch(stage, /point-capture|Point to it|placePoint|nudgePoint/);
+  assert.match(composer, /capturesTime\(about\) \|\| capturesPoint\(about\)/);
+
+  const stage = readFileSync("components/workrooms/ReviewStage.tsx", "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/^\s*\/\/.*$/gm, "");
+  // Placement, the marker and the keys all go through F5.1's rules…
+  for (const rule of ["placePoint(", "pointOnImage(", "nudgePoint(", "beginPoint(", "pointSummary("]) {
+    assert.ok(stage.includes(rule), `${rule} is not how the page does it`);
+  }
+  // …and the component does no geometry of its own.
+  assert.doesNotMatch(stage, /containRect|fromFraction|toFraction|roundFraction|naturalWidth \*|\/ content\.width/);
+
+  // The one surface: the image's own stage, and its listeners only while a
+  // point is being chosen.
+  assert.match(stage, /const surface = image\?\.parentElement;/);
+  assert.match(stage, /surface\.addEventListener\("click", onClick\)/);
+  assert.doesNotMatch(stage, /box\.current\??\.addEventListener|document\.addEventListener\("click"|window\.addEventListener\("click"/);
+  assert.doesNotMatch(stage, /preventDefault\(\)[^;]*touch|addEventListener\("touch/, "a touch was intercepted");
 });

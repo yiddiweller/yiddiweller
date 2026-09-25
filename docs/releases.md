@@ -390,7 +390,16 @@ recorded in [`delivery.md`](./delivery.md) under *Reviews are verified on beta*.
   point until F5.2. The F5 decisions — the copy, keyboard placement, and that
   only a press on the picture itself is ever a placement — are locked in
   `docs/delivery.md`.
-- **Still not built:** visible image point capture, region capture, and Stage G,
+- **Stage F5.2 — visible image point capture: implemented, automated tests
+  pass, not yet walked on beta.** *Point to it* on a picture the Revision froze
+  as an image; a press on the picture places F2's marker, a second press moves
+  it, a press beside it is refused and said; arrow keys work too; *Done* gives
+  the composer *A point on {name}* with *Change* and *Clear*, and the point is
+  sent through the existing action and found again by the existing locators.
+  Only the picture's own stage is a placement surface, and only while a point
+  is being chosen — never Done, Cancel, a link, the composer or another
+  picture.
+- **Still not built:** region capture, and Stage G,
   notifications.
 
 **Stage A beta acceptance.** Migration `0004` deployed and applied. `npm run

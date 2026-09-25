@@ -211,10 +211,11 @@ function sources(dir: string): string[] {
   });
 }
 
-test("capture exists for audio alone: its words live in the coordinator, and nothing captures a picture", () => {
-  // F3 added the audio controls. Everything else stays uncreatable.
-  const never = ["Point to it", "Change anchor", "Clear anchor draft"];
-  const audioOnly = ["Set precise time", "Use this moment", "Start here", "End here"];
+test("capture's words live in the one coordinator, and nowhere else", () => {
+  // F3 added the time controls, F5.2 the point. Everything else stays
+  // uncreatable, and no page grows a capture of its own.
+  const never = ["Change anchor", "Clear anchor draft"];
+  const audioOnly = ["Set precise time", "Use this moment", "Start here", "End here", "Point to it", "Point to a place on"];
   for (const file of [...sources("app"), ...sources("components")]) {
     const text = readFileSync(file, "utf8");
     for (const words of never) {

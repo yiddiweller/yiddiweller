@@ -324,9 +324,13 @@ test("a time never follows the comment to another block", { skip }, async () => 
   assert.equal(await page.getByText("At 0:02", { exact: true }).count(), 0);
   assert.equal(await page.locator('input[name="anchor"]').inputValue(), "");
 
-  // To a picture, and back: nothing carried either way.
+  // To a picture, and back: nothing carried either way. Since F5.2 a picture
+  // has its own control — for a point — and its field starts empty.
   await about(page).selectOption({ label: "The board" });
-  assert.equal(await page.locator('input[name="anchor"]').count(), 0);
+  assert.equal(await setTime(page, "The board").count(), 0);
+  assert.equal(await page.getByRole("button", { name: "Point to a place on The board", exact: true }).count(), 1);
+  assert.equal(await page.locator('input[name="anchor"]').inputValue(), "");
+  assert.equal(await page.getByText("At 0:02", { exact: true }).count(), 0);
   await about(page).selectOption({ label: "The sound" });
   assert.equal(await setTime(page, "The sound").count(), 1);
 

@@ -330,18 +330,24 @@ recorded in [`delivery.md`](./delivery.md) under *Reviews are verified on beta*.
 - **F2 passed a real-beta regression smoke** — Brand Direction, reorder,
   historical Version 2 and its Review, tombstone all intact. Not acceptance of
   precise anchors.
-- **Stage F3 is built: audio capture.** A client's new point about a recording
-  can carry a moment or a stretch, chosen on the native player with *Use this
-  moment* or *Start here* / *End here*, kept in the draft with *Change* and
-  *Clear*, and sent through the existing action. Browser-tested locally at
-  desktop and 390px; **not manually accepted on beta**.
+- **Stage F3 — audio capture: implemented, automated tests pass, real-beta
+  manual acceptance pass.** A client's new point about a recording can carry a
+  moment or a stretch, chosen on the native player with *Use this moment* or
+  *Start here* / *End here*, kept in the draft with *Change* and *Clear*, and
+  sent through the existing action. Walked on a real iPhone against
+  *Schick's Take Home Foods.m4a*: a moment at 0:01 and a stretch 0:01–0:02
+  were each kept in the composer, sent, and found again by their locators —
+  the client's and Studio's, which opened the immutable Version 2 — seeking to
+  0:01 and staying paused. The range interaction was usable on the phone.
+  Record: *F3 is verified on beta* in `docs/delivery.md`.
 - **Dates and times are New York's, on a 12-hour clock**, everywhere a person
   reads one, in both worlds, through one formatter
   and one component, identical on the server and in the browser. Display only —
   stored timestamps are untouched.
 - **Dates are month first**, the U.S. order: *September 24, 2026 · 11:26 PM*
   wherever somebody reads, *Sep 24, 2026 · 11:26 PM* only in Studio's dense list
-  rows and board cards. Same zone, same clock, display only.
+  rows and board cards. Same zone, same clock, display only. Visually accepted
+  on real beta during the F3 walk.
 - **A Lead's follow-up is now read as New York time.** It was `new Date(raw)`,
   which reads a `datetime-local` in the server's zone (UTC on Railway): a time
   typed in New York was stored four or five hours early and moved again on
@@ -355,7 +361,8 @@ recorded in [`delivery.md`](./delivery.md) under *Reviews are verified on beta*.
   Chromium declare for an M4A. It is now on the list, by exact name, so the
   one native `<audio>` renders it and F3 can capture on it. Files show the
   player at once; a Presentation shows it from its next published Revision,
-  because each Revision keeps the viewer it froze.
+  because each Revision keeps the viewer it froze. **Cleared on a real iPhone**
+  in the F3 walk.
 - **Still not built:** video, image and region capture, and Stage G,
   notifications.
 

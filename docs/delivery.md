@@ -2092,10 +2092,38 @@ nothing of its time). Three deliberately broken builds — Cancel keeping the
 new time, a time surviving a change of subject, video offered capture — each
 failed the test written for it.
 
+**Status: IMPLEMENTED · AUTOMATED TESTS PASS · REAL-BETA MANUAL ACCEPTANCE
+PASS.**
+
+**F3 is verified on beta.** Walked by hand on the real Railway beta deployment,
+the client on a real iPhone, Studio on a desktop, on *Schick's Take Home
+Foods.m4a* in Brand Direction's Version 2:
+
+- **The M4A plays inline** in the native `<audio>` on the iPhone — the blocker
+  the same walk had found earlier (`audio/x-m4a` missing from the viewer's exact
+  list) is cleared.
+- **The recording can be chosen as the subject**, and *Set precise time* opens
+  its panel against that exact native player.
+- **A moment**: captured at *0:01*; the composer kept *At 0:01*; the sent root
+  kept its locator; the client's locator sought back to 0:01 and stayed paused;
+  Studio received the same precise note, and Studio's locator opened the
+  immutable Version 2, sought to 0:01 and stayed paused.
+- **A stretch**: captured *0:01–0:02* with *Start here* / *End here*; **the range
+  interaction was usable on the real iPhone**, so `RANGES_ON_COARSE_POINTERS`
+  stays `true`; the composer kept *0:01–0:02*; the sent root kept its locator;
+  the client's locator sought to 0:01 — the start — and stayed paused; Studio
+  received the same stretch, and its locator opened the immutable Version 2,
+  sought to 0:01 and stayed paused.
+- **U.S. month-first New York dates** were visually accepted during the same
+  walk.
+
+The walk also exercised **F2's audio return-to-context** end to end, in both
+worlds and across the draft-to-Revision link. F2's **image point** display has
+not been walked on beta — nothing yet creates one.
+
 **Still not built:** video capture, image point capture, regions, frame-region
-display, PDF precision, signed-URL recovery (F6), Stage G. **F3 is not
-manually accepted on beta** until we walk it, on a desktop and a real phone.
-Stage F is not complete.
+display, PDF precision, signed-URL recovery (F6), Stage G. Stage F is not
+complete.
 
 ## Reviews are verified on beta
 

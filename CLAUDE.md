@@ -64,11 +64,15 @@ locator shows its image point or pauses its player at the moment, on that
 note's own Revision only, through one small client coordinator
 (`components/workrooms/ReviewStage.tsx`) and no change to `FileViewer`;
 Studio's draft page links to `/revisions/{N}?note={n}` instead. F2 passed a
-real-beta regression smoke. **F3 — audio capture — is built and locally
-browser-tested, not manually accepted**: a client's new point about a recording
-can carry a moment or a stretch, chosen on the native player, sent through the
-existing `anchor` field and action. Video, image and region capture are not
-built, and Stage F is not complete.
+real-beta regression smoke. **F3 — audio capture — is implemented, its
+automated tests pass, and it is manually accepted on the real Railway beta
+deployment** on a real iPhone: an M4A plays inline, a moment (0:01) and a
+stretch (0:01–0:02) are chosen on the native player, sent through the existing
+`anchor` field and action, and found again by the client's and Studio's
+locators on the immutable Version 2, paused at 0:01 — which also exercised F2's
+audio return-to-context end to end. F2's image point display has not been
+walked on beta. Video, image and region capture are not built, and Stage F is
+not complete.
 Approvals has not begun. Build 005 is **not promoted**: production has no bucket, the sweep is
 unscheduled and there is no per-object backup strategy, so production remains
 Build 004.**

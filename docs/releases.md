@@ -399,6 +399,16 @@ recorded in [`delivery.md`](./delivery.md) under *Reviews are verified on beta*.
   Only the picture's own stage is a placement surface, and only while a point
   is being chosen — never Done, Cancel, a link, the composer or another
   picture.
+- **F5.2 walked on a real iPhone** in *Image review test*: Point to it, a
+  finger tap, Done, the comment and its point sent and shown afterwards. The
+  walk asked for one refinement, F5.2A.
+- **Stage F5.2A — drag to fine-tune: implemented, automated tests pass, not
+  yet walked on beta.** While a point is being chosen, its marker can be
+  pressed and dragged; the ring stays 22px and an invisible 44px handle takes
+  the press. Only a gesture that starts on the marker drags it — anywhere else
+  still scrolls or taps — and a drag off the picture leaves the point at the
+  last place on it. A sent point's marker is never draggable. Arrows, lines,
+  shapes, freehand, colours and several points per comment stay deferred.
 - **Still not built:** region capture, and Stage G,
   notifications.
 

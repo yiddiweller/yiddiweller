@@ -10,6 +10,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type PointerEvent as ReactPointerEvent,
   type ReactNode,
   type RefObject,
 } from "react";
@@ -477,8 +478,26 @@ const natural = (image: HTMLImageElement): Size => ({ width: image.naturalWidth,
  * size, so a rotation or a resize moves it with the work.
  *
  * The one marker, for a locator's point (F2) and for a point being chosen (F5).
+ *
+ * **Only a point being chosen can be dragged (F5.2A).** Given `onDrag`, the
+ * marker gains a handle: an invisible 44px circle centred on the same spot,
+ * over the same 22px ring, which a finger, a mouse or a pen can press and
+ * drag to fine-tune the point. The ring looks exactly as it always does. A
+ * locator's marker — the client's, Studio's, a replaced version's — is never
+ * given `onDrag`, so it has no handle and nothing to drag.
  */
-function Marker({ box, x, y }: { box: RefObject<HTMLDivElement | null>; x: number; y: number }) {
+function Marker({
+  box,
+  x,
+  y,
+  onDrag,
+}: {
+  box: RefObject<HTMLDivElement | null>;
+  x: number;
+  y: number;
+  /** Present only while this point is being chosen: where a drag moved it. */
+  onDrag?: (point: PointCandidate) => void;
+}) {
   const [at, setAt] = useState<{ left: number; top: number } | null>(null);
 
   useLayoutEffect(() => {
@@ -508,11 +527,95 @@ function Marker({ box, x, y }: { box: RefObject<HTMLDivElement | null>; x: numbe
   if (!at) return null;
 
   return (
+    <>
+      <span
+        className={styles.marker}
+        style={{ left: at.left, top: at.top }}
+        aria-hidden="true"
+        data-anchor-marker=""
+      />
+      {onDrag ? <DragHandle box={box} left={at.left} top={at.top} onDrag={onDrag} /> : null}
+    </>
+  );
+}
+
+/**
+ * The invisible handle a point being chosen is dragged by.
+ *
+ * **Only a gesture that begins on it is a drag.** It is the one element with
+ * `touch-action: none`, so a finger that starts here moves the point and a
+ * finger that starts anywhere else on the page scrolls it, exactly as before.
+ * Everything it listens for is its own element's — pointer capture keeps the
+ * rest of the gesture on it, and there is no document or window listener to
+ * forget — and it is gone the moment the session ends, taking any capture
+ * with it.
+ *
+ * The press keeps its offset from the point, so the point never jumps to the
+ * finger; each move is judged by F5.1's `placePoint` against the picture's
+ * content box, exactly as a tap is. A position off the picture is no point, so
+ * the point simply stays at the last place that was on it until the finger
+ * comes back — never pulled onto an edge. A press that does not move leaves
+ * the point where it is. It sits beside the picture's stage rather than inside
+ * it, so nothing pressed here is ever also a tap on the picture.
+ */
+function DragHandle({
+  box,
+  left,
+  top,
+  onDrag,
+}: {
+  box: RefObject<HTMLDivElement | null>;
+  left: number;
+  top: number;
+  onDrag: (point: PointCandidate) => void;
+}) {
+  const grab = useRef<{ id: number; dx: number; dy: number } | null>(null);
+
+  const centre = (handle: HTMLElement) => {
+    const r = handle.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  };
+
+  const end = (event: ReactPointerEvent<HTMLSpanElement>) => {
+    if (grab.current?.id !== event.pointerId) return;
+    grab.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  };
+
+  return (
     <span
-      className={styles.marker}
-      style={{ left: at.left, top: at.top }}
+      className={styles.markerHandle}
+      style={{ left, top }}
       aria-hidden="true"
-      data-anchor-marker=""
+      data-marker-handle=""
+      onPointerDown={(event) => {
+        if (event.button !== 0 || grab.current) return;
+        // Keeps focus on the picture's stage, so the arrow keys still work
+        // after a drag, and stops a mouse starting a text selection.
+        event.preventDefault();
+        const at = centre(event.currentTarget);
+        grab.current = { id: event.pointerId, dx: event.clientX - at.x, dy: event.clientY - at.y };
+        event.currentTarget.setPointerCapture(event.pointerId);
+      }}
+      onPointerMove={(event) => {
+        const held = grab.current;
+        if (held?.id !== event.pointerId) return;
+        const image = box.current?.querySelector("img");
+        if (!image) return;
+        const next = placePoint(
+          { x: event.clientX - held.dx, y: event.clientY - held.dy },
+          natural(image),
+          contentBox(image),
+        );
+        if (next) onDrag(next);
+      }}
+      onPointerUp={end}
+      onPointerCancel={end}
+      onLostPointerCapture={() => {
+        grab.current = null;
+      }}
     />
   );
 }
@@ -748,6 +851,10 @@ type PointNotice = "beside" | "not_ready";
  * place a point too — F5.1's `nudgePoint`: the first puts it in the middle,
  * each moves it a little, Shift further, and Enter keeps it. Escape is the
  * stage's, as for every capture: Cancel.
+ *
+ * A point placed can also be dragged by its marker to fine-tune it (F5.2A) —
+ * see `DragHandle`. Only the draft's marker can be; the point a drag leaves is
+ * the one Done keeps and Cancel throws away.
  */
 function PointCapture({
   box,
@@ -839,7 +946,17 @@ function PointCapture({
 
   return (
     <>
-      {point ? <Marker box={box} x={point.x} y={point.y} /> : null}
+      {point ? (
+        <Marker
+          box={box}
+          x={point.x}
+          y={point.y}
+          onDrag={(next) => {
+            setPoint(next);
+            setNotice(null);
+          }}
+        />
+      ) : null}
       <div className={`${styles.capture} ${thread.sizes}`} role="group" aria-labelledby={heading}>
         <p id={heading} className={styles.captureTitle}>
           {`Point on ${name}`}

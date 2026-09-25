@@ -34,6 +34,29 @@
   pointer-events: none;
 }
 
+/* A point being chosen is dragged by this, never by the ring: an invisible
+   44px circle — a thumb's worth — centred on the same spot, so the marker
+   still looks as small and exact as it is. It alone refuses to pan, so a
+   gesture that starts on it moves the point and one that starts anywhere
+   else scrolls the page. It exists only while a point is being chosen. */
+.markerHandle {
+  position: absolute;
+  width: 44px;
+  height: 44px;
+  margin: -22px 0 0 -22px;
+  border-radius: 50%;
+  touch-action: none;
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.markerHandle:active {
+  cursor: grabbing;
+}
+
 /* Said to a screen reader, drawn for nobody. */
 .announce {
   position: absolute;

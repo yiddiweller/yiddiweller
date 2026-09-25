@@ -650,6 +650,280 @@ test("L. at 390px with a finger: a tap places it, a scroll does not, nothing ove
   await page.context().close();
 });
 
+/* -------------------------------------------- F5.2A: drag to fine-tune */
+
+const handle = (page: Page) => page.locator("[data-marker-handle]");
+
+/** The handle's exact centre — where the ring's centre, the point, is drawn. */
+async function handleCentre(page: Page): Promise<{ x: number; y: number }> {
+  return handle(page).evaluate((element: HTMLElement) => {
+    const r = element.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  });
+}
+
+/**
+ * The fraction a pointer position is on a picture, computed here independently
+ * of the app — or null when it is not on the picture.
+ */
+async function fractionAt(page: Page, alt: string, px: number, py: number) {
+  return page.evaluate(
+    ({ alt, px, py }: { alt: string; px: number; py: number }) => {
+      const image = document.querySelector<HTMLImageElement>(`img[alt="${alt}"]`)!;
+      const s = getComputedStyle(image);
+      const n = (value: string) => parseFloat(value) || 0;
+      const r = image.getBoundingClientRect();
+      const bw = r.width - n(s.borderLeftWidth) - n(s.paddingLeft) - n(s.borderRightWidth) - n(s.paddingRight);
+      const bh = r.height - n(s.borderTopWidth) - n(s.paddingTop) - n(s.borderBottomWidth) - n(s.paddingBottom);
+      const scale = Math.min(bw / image.naturalWidth, bh / image.naturalHeight);
+      const w = image.naturalWidth * scale;
+      const h = image.naturalHeight * scale;
+      const left = r.left + n(s.borderLeftWidth) + n(s.paddingLeft) + (bw - w) / 2;
+      const top = r.top + n(s.borderTopWidth) + n(s.paddingTop) + (bh - h) / 2;
+      const fx = (px - left) / w;
+      const fy = (py - top) / h;
+      if (fx < 0 || fx > 1 || fy < 0 || fy > 1) return null;
+      const round = (value: number) => Math.round(value * 10_000) / 10_000;
+      return { x: round(fx), y: round(fy) };
+    },
+    { alt, px, py },
+  );
+}
+
+/**
+ * A mouse drag from the handle to each of `to`, in turn, then a release: the
+ * press point's offset from the handle's centre is what the point keeps, so
+ * the point a position leaves is that position less the offset.
+ */
+async function dragMouse(page: Page, to: { x: number; y: number }[]) {
+  const centre = await handleCentre(page);
+  const from = { x: Math.round(centre.x), y: Math.round(centre.y) };
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  for (const target of to) await page.mouse.move(target.x, target.y, { steps: 6 });
+  await page.mouse.up();
+  return { dx: from.x - centre.x, dy: from.y - centre.y };
+}
+
+async function openBoard(page: Page) {
+  await about(page).selectOption({ label: "The board" });
+  await pointTo(page, "The board").click();
+  await panel(page).waitFor();
+  await settled(page, "Board.png");
+}
+
+test("N1. a placed point is dragged by its marker, the marker follows, and the point is where it was let go", { skip }, async () => {
+  const { page, errors } = await open(clientPage());
+  await openBoard(page);
+  await pressOn(page, "Board.png", 0.3, 0.3);
+  const before = await marker(page);
+
+  // Part of the way: the marker is already following.
+  const target = await spot(page, "Board.png", 0.6, 0.55);
+  const centre = await handleCentre(page);
+  const from = { x: Math.round(centre.x), y: Math.round(centre.y) };
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move((from.x + target.x) / 2, (from.y + target.y) / 2, { steps: 4 });
+  const midway = await marker(page);
+  assert.ok(midway && before && Math.abs(midway.x - before.x) > 20, "the marker did not follow the drag");
+  await page.mouse.move(target.x, target.y, { steps: 4 });
+  await page.mouse.up();
+
+  const expected = await fractionAt(page, "Board.png", target.x - (from.x - centre.x), target.y - (from.y - centre.y));
+  assert.ok(expected);
+  await pointIsOn(page, "Board.png", expected.x, expected.y);
+  assert.equal(await markers(page), 1);
+  assert.equal(await status(page), "Point placed — click again to move it.");
+  // The stage kept focus: the keys still move it.
+  assert.ok(await page.evaluate(() => document.activeElement === document.querySelector('img[alt="Board.png"]')!.parentElement));
+  await button(page, "Done").click();
+  assert.equal(await draft(page), JSON.stringify({ kind: "point", ...expected }));
+  assert.deepEqual(errors, []);
+  await page.context().close();
+});
+
+test("N2. the marker still looks 22px; its handle is a thumb's worth, on the same spot, and only while choosing", { skip }, async () => {
+  const { page, errors } = await open(clientPage());
+  await openBoard(page);
+  assert.equal(await handle(page).count(), 0, "a handle with no point");
+  await pressOn(page, "Board.png", 0.5, 0.5);
+
+  const sizes = await page.evaluate(() => {
+    const ring = document.querySelector<HTMLElement>("[data-anchor-marker]")!.getBoundingClientRect();
+    const grip = document.querySelector<HTMLElement>("[data-marker-handle]")!.getBoundingClientRect();
+    const shown = getComputedStyle(document.querySelector("[data-marker-handle]")!);
+    return {
+      ring: [ring.width, ring.height],
+      grip: [grip.width, grip.height],
+      offset: [ring.left + ring.width / 2 - (grip.left + grip.width / 2), ring.top + ring.height / 2 - (grip.top + grip.height / 2)],
+      ringEvents: getComputedStyle(document.querySelector("[data-anchor-marker]")!).pointerEvents,
+      visible: [shown.backgroundColor, shown.borderStyle, shown.boxShadow, shown.outlineStyle],
+      touchAction: shown.touchAction,
+    };
+  });
+  assert.deepEqual(sizes.ring, [22, 22], "the ring changed size");
+  assert.ok(sizes.grip[0]! >= 44 && sizes.grip[1]! >= 44, `the handle is ${sizes.grip.join("×")}`);
+  assert.ok(Math.abs(sizes.offset[0]!) < 0.5 && Math.abs(sizes.offset[1]!) < 0.5, "the handle is not on the point");
+  assert.equal(sizes.ringEvents, "none", "the ring takes presses");
+  assert.deepEqual(sizes.visible, ["rgba(0, 0, 0, 0)", "none", "none", "none"], "the handle can be seen");
+  assert.equal(sizes.touchAction, "none");
+
+  await button(page, "Done").click();
+  assert.equal(await handle(page).count(), 0, "the handle outlived its panel");
+  assert.deepEqual(errors, []);
+  await page.context().close();
+});
+
+test("N3. with a finger: a drag that starts on the marker moves it and not the page; one that starts elsewhere scrolls and moves nothing", { skip }, async () => {
+  const { page, errors } = await open(clientPage(), { viewport: { width: 390, height: 844 }, mobile: true });
+  await about(page).selectOption({ label: "The board" });
+  await pointTo(page, "The board").tap();
+  await panel(page).waitFor();
+  await pressOn(page, "Board.png", 0.4, 0.5, true);
+  const cdp = await page.context().newCDPSession(page);
+  const touch = async (points: { x: number; y: number }[]) => {
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [points[0]!] });
+    for (const at of points.slice(1)) await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [at] });
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    await page.waitForTimeout(400);
+  };
+
+  // On the marker: the point moves with the finger and the page stays still.
+  const centre = await handleCentre(page);
+  const from = { x: Math.round(centre.x), y: Math.round(centre.y) };
+  const scrolled = await page.evaluate(() => window.scrollY);
+  const path = Array.from({ length: 8 }, (_, i) => ({ x: from.x + (i + 1) * 5, y: from.y + (i + 1) * 3 }));
+  await touch([from, ...path]);
+  assert.equal(await page.evaluate(() => window.scrollY), scrolled, "dragging the marker scrolled the page");
+  const last = path[path.length - 1]!;
+  const moved = await fractionAt(page, "Board.png", last.x - (from.x - centre.x), last.y - (from.y - centre.y));
+  assert.ok(moved);
+  await pointIsOn(page, "Board.png", moved.x, moved.y);
+
+  // Anywhere else on the picture: a scroll, and the point stays.
+  const away = await spot(page, "Board.png", 0.1, 0.5);
+  await touch([{ x: away.x, y: away.y }, ...Array.from({ length: 10 }, (_, i) => ({ x: away.x, y: away.y - (i + 1) * 20 }))]);
+  assert.notEqual(await page.evaluate(() => window.scrollY), scrolled, "a finger elsewhere no longer scrolls the page");
+  await pointIsOn(page, "Board.png", moved.x, moved.y);
+
+  await button(page, "Done").tap();
+  assert.equal(await draft(page), JSON.stringify({ kind: "point", ...moved }));
+  assert.deepEqual(errors, []);
+  await page.context().close();
+});
+
+test("N4. Cancel throws a drag away: after Change the old point comes back exactly; after a new capture, none", { skip }, async () => {
+  const { page, errors } = await open(clientPage());
+  await openBoard(page);
+  const kept = await pressOn(page, "Board.png", 0.25, 0.25);
+  await button(page, "Done").click();
+  const held = JSON.stringify({ kind: "point", ...kept });
+
+  await button(page, "Change the point on The board").click();
+  await panel(page).waitFor();
+  await settled(page, "Board.png");
+  await pointIsOn(page, "Board.png", kept.x, kept.y);
+  const target = await spot(page, "Board.png", 0.7, 0.7);
+  await dragMouse(page, [target]);
+  assert.ok((await marker(page)) !== null);
+  await button(page, "Cancel").click();
+  assert.equal(await draft(page), held, "Cancel after a drag kept the drag");
+
+  await button(page, "Clear the point on The board").click();
+  await pointTo(page, "The board").click();
+  await panel(page).waitFor();
+  await settled(page, "Board.png");
+  await pressOn(page, "Board.png", 0.5, 0.5);
+  await dragMouse(page, [await spot(page, "Board.png", 0.8, 0.2)]);
+  await button(page, "Cancel").click();
+  assert.equal(await draft(page), "", "a new capture, dragged and cancelled, left a point");
+  assert.deepEqual(errors, []);
+  await page.context().close();
+});
+
+test("N5. a dragged point is what Done keeps and what is sent", { skip }, async () => {
+  const { page, errors } = await open(clientPage());
+  await openBoard(page);
+  await pressOn(page, "Board.png", 0.5, 0.5);
+  const target = await spot(page, "Board.png", 0.35, 0.65);
+  const { dx, dy } = await dragMouse(page, [target]);
+  const expected = (await fractionAt(page, "Board.png", target.x - dx, target.y - dy))!;
+  await button(page, "Done").click();
+  assert.equal(await page.getByText("A point on The board", { exact: true }).count(), 1);
+  await send(page, "F5A dragged, here.");
+  assert.deepEqual(await stored("F5A dragged, here."), { position: 1, anchor: { kind: "point", ...expected } });
+  assert.deepEqual(errors, []);
+  await page.context().close();
+});
+
+test("N6. dragged off the picture — beside it, or off the page — the point stays at the last place on it", { skip }, async () => {
+  const { page, errors } = await open(clientPage());
+
+  // The board, dragged right past its edge and far beyond.
+  await openBoard(page);
+  await pressOn(page, "Board.png", 0.9, 0.5);
+  const inside = await spot(page, "Board.png", 0.97, 0.4);
+  const { dx, dy } = await dragMouse(page, [inside, { x: inside.x + 600, y: inside.y - 900 }]);
+  const lastOn = (await fractionAt(page, "Board.png", inside.x - dx, inside.y - dy))!;
+  await button(page, "Done").click();
+  const board = JSON.parse(await draft(page));
+  assert.deepEqual(board, { kind: "point", ...lastOn }, "the point went somewhere the finger was not on the picture");
+  assert.ok(board.x <= 1 && board.y <= 1 && board.x >= 0 && board.y >= 0);
+
+  // The poster, dragged into the space beside it on its own stage.
+  await about(page).selectOption({ label: "The poster" });
+  await pointTo(page, "The poster").click();
+  await panel(page).waitFor();
+  await settled(page, "Poster.png");
+  await pressOn(page, "Poster.png", 0.9, 0.5);
+  const near = await spot(page, "Poster.png", 0.95, 0.5);
+  const beside = await page.locator('img[alt="Poster.png"]').evaluate((image: HTMLElement) => {
+    const i = image.getBoundingClientRect();
+    const s = image.parentElement!.getBoundingClientRect();
+    return { x: Math.round((i.right + s.right) / 2), y: Math.round(i.top + i.height / 2) };
+  });
+  const moved = await dragMouse(page, [near, beside]);
+  const posterLast = (await fractionAt(page, "Poster.png", near.x - moved.dx, near.y - moved.dy))!;
+  assert.equal(await fractionAt(page, "Poster.png", beside.x - moved.dx, beside.y - moved.dy), null, "the letterbox is on the picture");
+  assert.equal(await status(page), "Point placed — click again to move it.", "a drag said something a tap would");
+  await button(page, "Done").click();
+  assert.deepEqual(JSON.parse(await draft(page)), { kind: "point", ...posterLast });
+  assert.deepEqual(errors, []);
+  await page.context().close();
+});
+
+test("N7. a sent point's marker is never draggable — for the client, in Studio, or on a replaced version", { skip }, async () => {
+  const sent = (await stored("F5 the board, here.")).anchor as { x: number; y: number };
+  const tryToDrag = async (page: Page) => {
+    assert.equal(await handle(page).count(), 0, "a locator's marker has a handle");
+    const ring = (await marker(page))!;
+    await page.mouse.move(Math.round(ring.x), Math.round(ring.y));
+    await page.mouse.down();
+    await page.mouse.move(Math.round(ring.x) + 120, Math.round(ring.y) + 60, { steps: 6 });
+    await page.mouse.up();
+    await pointIsOn(page, "Board.png", sent.x, sent.y);
+  };
+
+  {
+    const { page, errors } = await open(clientPage());
+    await page.getByRole("button", { name: "On The board · Point", exact: true }).first().click();
+    await pointIsOn(page, "Board.png", sent.x, sent.y);
+    await tryToDrag(page);
+    assert.deepEqual(errors, []);
+    await page.context().close();
+  }
+  {
+    const { page, errors } = await open(studioPage());
+    const href = (await page.getByRole("link", { name: "On The board · Point", exact: true }).first().getAttribute("href"))!;
+    await page.goto(`${process.env.REVIEW_SERVER_URL}${href}`);
+    await pointIsOn(page, "Board.png", sent.x, sent.y);
+    await tryToDrag(page);
+    assert.deepEqual(errors, []);
+    await page.context().close();
+  }
+});
+
 /* --------------------------------------------------------------- history */
 
 test("K. after a newer version, the old version's points are drawn exactly where they were, read-only", { skip }, async () => {
@@ -663,6 +937,8 @@ test("K. after a newer version, the old version's points are drawn exactly where
     assert.equal(await page.getByRole("button", { name: /^Point to a place on / }).count(), 0);
     await page.getByRole("button", { name: "On The board · Point", exact: true }).first().click();
     await pointIsOn(page, "Board.png", boardPoint.x, boardPoint.y);
+    // A replaced version's point is read-only: nothing to drag it by.
+    assert.equal(await page.locator("[data-marker-handle]").count(), 0, `${path} made a sent point draggable`);
     await page.getByRole("button", { name: "On The poster · Point", exact: true }).click();
     await pointIsOn(page, "Poster.png", posterPoint.x, posterPoint.y);
     assert.deepEqual(errors, [], path);

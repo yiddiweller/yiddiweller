@@ -84,7 +84,12 @@ by F2's one marker, *A point on {name}* with Change and Clear. **The placement
 surface is the image's own stage (`img.parentElement`), only while a point is
 being chosen**: a press on Done, Cancel, Change, Clear, *Download original*, a
 link, a button, the composer or another picture is never a point and never a
-press beside one. Region capture is not built, and Stage F is not complete.
+press beside one. F5.2's point flow worked on a real iPhone. **F5.2A — drag the
+draft point's marker to fine-tune it — is implemented and its automated tests
+pass, not manually accepted**: an invisible 44px handle on the unchanged 22px
+ring, the only `touch-action: none` element, present only while a point is
+being chosen; a locator's marker is never draggable. Region capture is not
+built, and Stage F is not complete.
 Approvals has not begun. Build 005 is **not promoted**: production has no bucket, the sweep is
 unscheduled and there is no per-object backup strategy, so production remains
 Build 004.**

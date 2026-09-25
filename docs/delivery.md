@@ -2263,6 +2263,33 @@ marker now places itself through `pointOnImage`, the same path. Locators, the
 Studio draft link and historical Revisions are F2's, unchanged, and a
 submission is the existing action: the server parses the point from scratch.
 
+**F5.2 on a real iPhone.** Walked by hand on beta: *Image review test*
+rendered, the *Stage & Decor* banner could be chosen, **Point to it** worked, a
+finger tap placed a point, **Done** returned to the composer, the words and the
+point were sent, and the saved point displayed correctly afterwards. The walk
+found one thing to refine — a point could only be moved by lifting the finger
+and tapping again — which is F5.2A.
+
+**F5.2A — drag to fine-tune. Implemented, automated tests pass, not yet walked
+on beta.** While a point is being chosen, its marker can be pressed and dragged
+— finger, mouse or pen — and the point is where it is let go. The ring looks
+exactly as it did, 22px; a `DragHandle`, an invisible 44px circle on the same
+spot, is what is pressed. It is the only element with `touch-action: none`, so a
+gesture that starts on the marker moves the point and one that starts anywhere
+else still scrolls the page or places a point by tapping. Its pointer events
+are its own element's, held with pointer capture for the one gesture — no
+document or window listener — and it disappears with the session. The press
+keeps its offset from the point, so the point never jumps to the finger; each
+move is F5.1's `placePoint`, so a position off the picture, beside it or off the
+page, updates nothing and the point stays at the last place that was on it —
+never pulled onto an edge. Focus stays on the stage, so the arrow keys still
+work after a drag. Done keeps the dragged point; Cancel throws it away exactly
+as it throws away a tap. **Only the draft is draggable**: a locator's marker —
+the client's, Studio's, a replaced version's — is never given a handle.
+
+**Still deferred:** arrows, lines, rectangles, freehand, colours, several
+points in one comment, zoom and any annotation toolbar.
+
 **Still not built:** regions, frame-region display, PDF precision, signed-URL
 recovery (F6), Stage G. Stage F is not complete.
 

@@ -133,7 +133,7 @@ export default async function StudioLeads({
                                 <p className={styles.cardMeta}>
                                   {lead.followUpAt ? (
                                     <>
-                                      Follow up <Moment iso={lead.followUpAt.toISOString()} />
+                                      Follow up <Moment iso={lead.followUpAt.toISOString()} style="compact" />
                                     </>
                                   ) : (
                                     (lead.nextStep || "No next step")
@@ -229,7 +229,7 @@ export default async function StudioLeads({
                         </span>
                         <span className={styles.tag}> {label(lead.source)}</span>
                       </span>
-                      <Moment className={styles.rowMeta} iso={lead.updatedAt.toISOString()} style="day" />
+                      <Moment className={styles.rowMeta} iso={lead.updatedAt.toISOString()} style="compactDay" />
                     </li>
                   ))}
                 </ul>

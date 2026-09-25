@@ -153,7 +153,7 @@ export default async function StudioWorkrooms({
                     </span>
                     <span className={styles.tag}> {label(room.projectStatus)}</span>
                   </span>
-                  <Moment className={styles.rowMeta} iso={room.updatedAt.toISOString()} style="day" />
+                  <Moment className={styles.rowMeta} iso={room.updatedAt.toISOString()} style="compactDay" />
                 </li>
               ))}
             </ul>

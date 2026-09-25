@@ -133,7 +133,7 @@ export default async function StudioHome() {
                   <span className={styles.rowMeta}>
                     <span className={styles.tag}>Follow up due</span>
                   </span>
-                  <Moment className={styles.rowMeta} iso={lead.followUpAt!.toISOString()} />
+                  <Moment className={styles.rowMeta} iso={lead.followUpAt!.toISOString()} style="compact" />
                 </li>
               ))}
 
@@ -149,7 +149,7 @@ export default async function StudioHome() {
                     <span className={styles.tag}>Past target</span>
                     <span className={styles.tag}> {label(project.status)}</span>
                   </span>
-                  <span className={styles.rowMeta}>{formatDate(project.targetOn)}</span>
+                  <span className={styles.rowMeta}>{formatDate(project.targetOn, "compactDay")}</span>
                 </li>
               ))}
             </ul>

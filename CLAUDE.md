@@ -470,9 +470,11 @@ broken by accident:
   Cancel · Publish.*
 - **Spacing** comes from `--page-x` and `--page-y`, so the gutter matches on
   every page.
-- **Time is New York's, on a 12-hour clock.** Every user-facing date and time,
-  in Studio and the client world alike, is presented in `America/New_York` with
-  `AM`/`PM` — *24 Sep 2026 · 12:05 AM* — through the one formatter,
+- **Time is New York's, on a 12-hour clock, month first.** Every user-facing
+  date and time, in Studio and the client world alike, is presented in
+  `America/New_York` with `AM`/`PM` and U.S. month-first dates — *September 24,
+  2026 · 12:05 AM*; *Sep 24, 2026 · 12:05 AM* only in dense list rows, never
+  day first — through the one formatter,
   `lib/studio-format.ts`, and the one component, `<Moment>`. Never an offset or
   `EST`/`EDT`, and never the runtime's zone. **A `datetime-local` value is read
   as New York wall-clock time** by `readWallTime` — never `new Date(raw)`,

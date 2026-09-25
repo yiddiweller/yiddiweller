@@ -135,7 +135,7 @@ export default async function StudioPresentations({
                           ? "Withdrawn"
                           : "Draft"}
                     </span>{" "}
-                    {presentation.publishedAt ? <Moment iso={presentation.publishedAt.toISOString()} /> : null}
+                    {presentation.publishedAt ? <Moment iso={presentation.publishedAt.toISOString()} style="compact" /> : null}
                   </span>
                   <span className={styles.rowActions}>
                     <Link
@@ -160,7 +160,7 @@ export default async function StudioPresentations({
               <div key={presentation.id} className={styles.row}>
                 <span className={styles.rowPrimary}>{presentation.title}</span>
                 <span className={styles.rowMeta}>
-                  <Moment iso={presentation.archivedAt!.toISOString()} />
+                  <Moment iso={presentation.archivedAt!.toISOString()} style="compact" />
                 </span>
                 <span className={styles.rowActions}>
                   {staff?.role === "owner" ? (

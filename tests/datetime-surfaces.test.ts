@@ -31,7 +31,10 @@ const skip =
     ? false
     : "set REVIEW_SERVER_URL (a server sharing this DATABASE_URL and bucket), BUCKET_*, CLIENT_AUTH_SECRET and BETTER_AUTH_SECRET";
 
-const HOUSE = /^\d{1,2} (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) \d{4}( · \d{1,2}:\d{2} (AM|PM))?$|^\d{1,2}:\d{2} (AM|PM)$/;
+const MONTHS = "January|February|March|April|May|June|July|August|September|October|November|December";
+const SHORT = "Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec";
+/** Month first: the month written out, or — in a dense row — abbreviated. */
+const HOUSE = new RegExp(`^(${MONTHS}|${SHORT}) \\d{1,2}, \\d{4}( · \\d{1,2}:\\d{2} (AM|PM))?$|^\\d{1,2}:\\d{2} (AM|PM)$`);
 
 let revisionTimes = new Map<number, Date>();
 let notes: { body: string; createdAt: Date; revision: number; reply: boolean }[] = [];
@@ -110,11 +113,16 @@ function allInHouseStyle(html: string, path: string): string[] {
   for (const { iso, text } of found) {
     assert.match(text, HOUSE, `${path}: "${text}" is not the house style`);
     assert.ok(
-      [formatMoment(iso, "exact"), formatMoment(iso, "day"), formatMoment(iso, "time")].includes(text),
+      (["exact", "day", "time", "compact", "compactDay"] as const).some((style) => formatMoment(iso, style) === text),
       `${path}: "${text}" is not ${iso} in New York`,
     );
   }
-  assert.doesNotMatch(html, /\d Sept\b/, `${path} still says Sept`);
+  // No day-first date anywhere in the page's text, formatted by anything.
+  assert.doesNotMatch(
+    html,
+    new RegExp(`>[^<]*\\b\\d{1,2} (${MONTHS}|${SHORT}|Sept)\\b`),
+    `${path} still has a day-first date`,
+  );
   return found.map((entry) => entry.text);
 }
 

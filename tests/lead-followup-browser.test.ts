@@ -136,7 +136,7 @@ test("a follow-up typed in the Edit dialog is stored as that time in New York, a
   assert.equal(await followUp(leadId), "2026-09-24T18:30:00.000Z", "not 2:30 PM in New York");
 
   await page.reload();
-  assert.equal(await page.getByText("24 Sep 2026 · 2:30 PM", { exact: true }).count(), 1, "the lead does not say what was typed");
+  assert.equal(await page.getByText("September 24, 2026 · 2:30 PM", { exact: true }).count(), 1, "the lead does not say what was typed");
 
   // The field comes back holding exactly what was typed.
   await page.getByRole("button", { name: "Edit", exact: true }).click();
@@ -146,8 +146,8 @@ test("a follow-up typed in the Edit dialog is stored as that time in New York, a
 
 test("saving anything else on the lead leaves the follow-up exactly where it was — summer and winter", { skip }, async () => {
   for (const [typed, instant, shown] of [
-    ["2026-07-15T14:00", "2026-07-15T18:00:00.000Z", "15 Jul 2026 · 2:00 PM"],
-    ["2026-01-15T14:00", "2026-01-15T19:00:00.000Z", "15 Jan 2026 · 2:00 PM"],
+    ["2026-07-15T14:00", "2026-07-15T18:00:00.000Z", "July 15, 2026 · 2:00 PM"],
+    ["2026-01-15T14:00", "2026-01-15T19:00:00.000Z", "January 15, 2026 · 2:00 PM"],
   ] as const) {
     const page = await open(`/studio/leads/${leadId}`);
     await edit(page, (dialog) => field(dialog).fill(typed));

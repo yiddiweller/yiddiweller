@@ -244,15 +244,30 @@ why. It was verified by changing a status without deleting the session.
 
 **Every user-facing date and time in Yiddi Weller — Studio and the client world
 alike — is presented in `America/New_York`, on a 12-hour clock with `AM` and
-`PM`.** Yiddi Weller is a New York studio; a reader anywhere sees the studio's
-time, until the product ever chooses to offer a personal setting.
+`PM`, with U.S. month-first dates.** Yiddi Weller is a New York studio; a reader
+anywhere sees the studio's time, until the product ever chooses to offer a
+personal setting.
 
 ```
-exact  →  "24 Sep 2026 · 12:05 AM"
-day    →  "24 Sep 2026"
-time   →  "12:05 AM"
-markup →  <time dateTime="2026-09-24T04:05:00.000Z">
+exact       →  "September 24, 2026 · 12:05 AM"
+day         →  "September 24, 2026"
+time        →  "12:05 AM"
+compact     →  "Sep 24, 2026 · 12:05 AM"
+compactDay  →  "Sep 24, 2026"
+markup      →  <time dateTime="2026-09-24T04:05:00.000Z">
 ```
+
+**The month is written out wherever somebody reads**: Presentations and their
+versions, Review comments and replies, the Review's *Open since* line, Workroom
+activity in both worlds, the Lead's follow-up, record details, the client
+Workroom. **The abbreviated month is for dense metadata only** — Studio's list
+rows (`.rowMeta`: Clients, Contacts, Leads, Projects, Workrooms, a Workroom's
+Presentations and Files, Home, the audit trail) and the Leads board cards
+(`.cardMeta`), where the date sits in an uppercase, unwrapped column beside
+everything else on the line. Never day first — not *24 Sep 2026*, not *24
+September 2026*, not *2026-09-24* — anywhere a person reads; a test refuses a
+day-first date on the real pages of both worlds. Studio's label style
+uppercases those columns in CSS; the text itself is month first either way.
 
 **Display only.** The database keeps `timestamptz` in UTC and that does not
 change — no column, value, ordering, audit record or expiry was touched to
@@ -279,7 +294,7 @@ Rules for every module, in both worlds:
 
 A `date` column is simpler: `starts_on` and `target_on` name a day, not an
 instant, so there is no zone to resolve. `formatDate` writes it in the same
-house style — *1 Sep 2026*.
+house style — *September 1, 2026*, or *Sep 1, 2026* in a dense row.
 
 ### Three things, kept apart
 
@@ -290,7 +305,7 @@ house style — *1 Sep 2026*.
 | **Storage** | A canonical instant in `timestamptz`, UTC. Never a naive wall-clock string |
 
 **A `datetime-local` value carries no zone, so the product supplies one.**
-`2026-09-24T14:30` means *24 Sep 2026 · 2:30 PM in New York*, stored as
+`2026-09-24T14:30` means *September 24, 2026 · 2:30 PM in New York*, stored as
 `2026-09-24T18:30:00Z`, and prefilled back into the field as `2026-09-24T14:30`
 by `momentInputValue` — the same rule both ways, so saving a form without
 touching the field stores the same instant. `readWallTime` in

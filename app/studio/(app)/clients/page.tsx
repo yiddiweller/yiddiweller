@@ -152,7 +152,7 @@ export default async function StudioClients({
                       </span>
                     ) : null}
                   </span>
-                  <Moment className={styles.rowMeta} iso={client.updatedAt.toISOString()} style="day" />
+                  <Moment className={styles.rowMeta} iso={client.updatedAt.toISOString()} style="compactDay" />
                 </li>
               ))}
             </ul>

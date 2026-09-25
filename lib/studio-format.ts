@@ -2,10 +2,10 @@
  * How Yiddi Weller writes dates and times — **both worlds, one place**, so two
  * screens cannot disagree about what a moment looks like.
  *
- * **New York, on a 12-hour clock, for everybody.** Yiddi Weller is a New York
- * studio; every user-facing instant is presented in `America/New_York` with
- * AM and PM — *24 Sep 2026 · 12:05 AM* — whoever is reading and wherever the
- * code runs. The zone is the IANA name, never an offset or an abbreviation, so
+ * **New York, on a 12-hour clock, month first, for everybody.** Yiddi Weller
+ * is a New York studio; every user-facing instant is presented in
+ * `America/New_York`, with AM and PM and the U.S. date order — *September 24,
+ * 2026 · 12:05 AM* — whoever is reading and wherever the code runs. The zone is the IANA name, never an offset or an abbreviation, so
  * daylight saving moves with the calendar rather than with a constant somebody
  * has to remember to change.
  *
@@ -19,34 +19,45 @@
  * that way; nothing here reads or writes the database.
  *
  * The parts are assembled by hand from `formatToParts` rather than trusting a
- * locale's whole pattern: `en-GB` writes *Sept*, `en-US` puts the month first
- * and adds commas, and neither is the house style. The pieces — a short month,
- * a numeric hour with no leading zero, two-digit minutes, `AM`/`PM` — are the
- * same in every engine.
+ * locale's whole pattern, which varies between engines in its separators and
+ * in whether it puts *at* between the date and the time. The pieces — the
+ * month's name, the day, the year, a numeric hour with no leading zero,
+ * two-digit minutes, `AM`/`PM` — are the same everywhere.
  */
 
 /** The studio's zone. The only one any user-facing date or time is shown in. */
 export const DISPLAY_ZONE = "America/New_York";
 
 /**
- * - `exact` — *24 Sep 2026 · 12:05 AM*, for things that happened.
- * - `day` — *24 Sep 2026*, where the hour does not matter.
+ * - `exact` — *September 24, 2026 · 12:05 AM*, for things that happened.
+ * - `day` — *September 24, 2026*, where the hour does not matter.
  * - `time` — *12:05 AM*, beside a date already said.
+ * - `compact` — *Sep 24, 2026 · 12:05 AM*, and `compactDay` — *Sep 24, 2026* —
+ *   **only** for dense metadata: Studio's list rows, where the date sits in an
+ *   uppercase, unwrapped column beside everything else on the line. Everywhere
+ *   a person is reading rather than scanning, the month is written out.
  */
-export type MomentStyle = "exact" | "day" | "time";
+export type MomentStyle = "exact" | "day" | "time" | "compact" | "compactDay";
 
-const PARTS = new Intl.DateTimeFormat("en-US", {
-  timeZone: DISPLAY_ZONE,
-  year: "numeric",
-  month: "short",
-  day: "numeric",
-  hour: "numeric",
-  minute: "2-digit",
-  hour12: true,
-});
+const partsIn = (month: "long" | "short") =>
+  new Intl.DateTimeFormat("en-US", {
+    timeZone: DISPLAY_ZONE,
+    year: "numeric",
+    month,
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
 
-function pieces(value: Date): Record<"year" | "month" | "day" | "hour" | "minute" | "dayPeriod", string> {
-  const parts = PARTS.formatToParts(value);
+const LONG = partsIn("long");
+const SHORT = partsIn("short");
+
+function pieces(
+  value: Date,
+  month: "long" | "short",
+): Record<"year" | "month" | "day" | "hour" | "minute" | "dayPeriod", string> {
+  const parts = (month === "long" ? LONG : SHORT).formatToParts(value);
   const part = (type: Intl.DateTimeFormatPartTypes) =>
     parts.find((candidate) => candidate.type === type)?.value ?? "";
   return {
@@ -64,11 +75,12 @@ export function formatMoment(iso: string, style: MomentStyle = "exact"): string 
   const value = new Date(iso);
   if (Number.isNaN(value.getTime())) return "";
 
-  const { year, month, day, hour, minute, dayPeriod } = pieces(value);
-  const date = `${day} ${month} ${year}`;
+  const compact = style === "compact" || style === "compactDay";
+  const { year, month, day, hour, minute, dayPeriod } = pieces(value, compact ? "short" : "long");
+  const date = `${month} ${day}, ${year}`;
   const time = `${hour}:${minute} ${dayPeriod}`;
 
-  if (style === "day") return date;
+  if (style === "day" || style === "compactDay") return date;
   if (style === "time") return time;
   return `${date} · ${time}`;
 }
@@ -100,28 +112,28 @@ export function momentInputValue(iso: string, timeZone: string = DISPLAY_ZONE): 
   return `${part("year")}-${part("month")}-${part("day")}T${hour}:${part("minute")}`;
 }
 
-const DAY_PARTS = new Intl.DateTimeFormat("en-US", {
-  timeZone: "UTC",
-  year: "numeric",
-  month: "short",
-  day: "numeric",
-});
+const dayPartsIn = (month: "long" | "short") =>
+  new Intl.DateTimeFormat("en-US", { timeZone: "UTC", year: "numeric", month, day: "numeric" });
+
+const DAY_LONG = dayPartsIn("long");
+const DAY_SHORT = dayPartsIn("short");
 
 /**
- * A date with no clock on it: `2026-09-01` → `1 Sep 2026`.
+ * A date with no clock on it: `2026-09-01` → `September 1, 2026`, or
+ * `Sep 1, 2026` in a dense row.
  *
  * `starts_on` and `target_on` are `date` columns: they name a day rather than
  * an instant, so there is no zone to resolve and it reads the same in New York
  * as anywhere. Written in the same house style as `formatMoment`'s `day`.
  */
-export function formatDate(value: string | null | undefined): string {
+export function formatDate(value: string | null | undefined, style: "day" | "compactDay" = "day"): string {
   if (!value) return "—";
   const [year, month, day] = value.split("-").map(Number);
   if (!year || !month || !day) return value;
-  const parts = DAY_PARTS.formatToParts(new Date(Date.UTC(year, month - 1, day)));
+  const parts = (style === "compactDay" ? DAY_SHORT : DAY_LONG).formatToParts(new Date(Date.UTC(year, month - 1, day)));
   const part = (type: Intl.DateTimeFormatPartTypes) =>
     parts.find((candidate) => candidate.type === type)?.value ?? "";
-  return `${part("day")} ${part("month")} ${part("year")}`;
+  return `${part("month")} ${part("day")}, ${part("year")}`;
 }
 
 /* ------------------------------------------------ New York wall-clock input */

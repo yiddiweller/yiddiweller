@@ -139,7 +139,7 @@ export default async function StudioContacts({
                       <span className={styles.tag}> {contact.projectCount} live</span>
                     ) : null}
                   </span>
-                  <Moment className={styles.rowMeta} iso={contact.updatedAt.toISOString()} style="day" />
+                  <Moment className={styles.rowMeta} iso={contact.updatedAt.toISOString()} style="compactDay" />
                 </li>
               ))}
             </ul>

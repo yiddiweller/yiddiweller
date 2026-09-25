@@ -128,7 +128,7 @@ export default async function StudioWorkroomFiles({
                   <span className={file.visibility === "shared" ? styles.tagStrong : styles.tag}>
                     {file.visibility === "shared" ? "Shared" : "Internal"}
                   </span>{" "}
-                  <Moment iso={file.createdAt.toISOString()} />
+                  <Moment iso={file.createdAt.toISOString()} style="compact" />
                 </span>
 
                 <span className={styles.rowActions}>
@@ -229,7 +229,7 @@ export default async function StudioWorkroomFiles({
                   {fileKind(file.contentType)} · {formatBytes(file.byteSize ?? 0)}
                 </span>
                 <span className={styles.rowMeta}>
-                  <Moment iso={file.archivedAt!.toISOString()} />
+                  <Moment iso={file.archivedAt!.toISOString()} style="compact" />
                 </span>
                 <span className={styles.rowActions}>
                   {staff?.role === "owner" ? (

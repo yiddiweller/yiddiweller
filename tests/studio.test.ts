@@ -66,8 +66,8 @@ const EVENING_IN_UTC = new Date(Date.UTC(2026, 8, 4, 22, 20)).toISOString();
 
 test("a moment is written in New York, on a 12-hour clock, whatever zone the code runs in", () => {
   // 22:20 UTC on 4 September is 6:20 PM in New York (EDT).
-  assert.equal(formatMoment(EVENING_IN_UTC, "exact"), "4 Sep 2026 · 6:20 PM");
-  assert.equal(formatMoment(EVENING_IN_UTC, "day"), "4 Sep 2026");
+  assert.equal(formatMoment(EVENING_IN_UTC, "exact"), "September 4, 2026 · 6:20 PM");
+  assert.equal(formatMoment(EVENING_IN_UTC, "day"), "September 4, 2026");
   assert.equal(formatMoment(EVENING_IN_UTC, "time"), "6:20 PM");
   assert.equal(DISPLAY_ZONE, "America/New_York");
 });
@@ -75,8 +75,8 @@ test("a moment is written in New York, on a 12-hour clock, whatever zone the cod
 test("a date can belong to a different day in New York than in UTC", () => {
   // 02:30 UTC on 5 September is still the evening of the 4th in New York.
   const late = new Date(Date.UTC(2026, 8, 5, 2, 30)).toISOString();
-  assert.equal(formatMoment(late, "day"), "4 Sep 2026");
-  assert.equal(formatMoment(late, "exact"), "4 Sep 2026 · 10:30 PM");
+  assert.equal(formatMoment(late, "day"), "September 4, 2026");
+  assert.equal(formatMoment(late, "exact"), "September 4, 2026 · 10:30 PM");
 });
 
 test("a value that is not a date renders as nothing rather than as Invalid Date", () => {
@@ -87,8 +87,9 @@ test("a value that is not a date renders as nothing rather than as Invalid Date"
 // ------------------------------------------------------- dates without a clock
 
 test("a date column names a day, and says so the same way everywhere", () => {
-  assert.equal(formatDate("2026-09-01"), "1 Sep 2026");
-  assert.equal(formatDate("2026-12-31"), "31 Dec 2026");
+  assert.equal(formatDate("2026-09-01"), "September 1, 2026");
+  assert.equal(formatDate("2026-09-01", "compactDay"), "Sep 1, 2026");
+  assert.equal(formatDate("2026-12-31"), "December 31, 2026");
   // Nothing set is nothing shown, not "Invalid Date" and not today.
   assert.equal(formatDate(null), "—");
   assert.equal(formatDate(""), "—");

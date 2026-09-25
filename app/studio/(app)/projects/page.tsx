@@ -147,9 +147,9 @@ export default async function StudioProjects({
                     {project.ownerName ? <span className={styles.tag}> {project.ownerName}</span> : null}
                   </span>
                   {project.targetOn ? (
-                    <span className={styles.rowMeta}>Target {formatDate(project.targetOn)}</span>
+                    <span className={styles.rowMeta}>Target {formatDate(project.targetOn, "compactDay")}</span>
                   ) : (
-                    <Moment className={styles.rowMeta} iso={project.updatedAt.toISOString()} style="day" />
+                    <Moment className={styles.rowMeta} iso={project.updatedAt.toISOString()} style="compactDay" />
                   )}
                 </li>
               ))}

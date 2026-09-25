@@ -96,7 +96,7 @@ export default function AuditTrail({
                 deliberately different tables. */}
             {event.actorKind === "client_user" ? <span className={styles.tag}> Client</span> : null}
           </span>
-          <Moment className={styles.rowMeta} iso={event.occurredAt.toISOString()} />
+          <Moment className={styles.rowMeta} iso={event.occurredAt.toISOString()} style="compact" />
         </li>
       ))}
     </ul>

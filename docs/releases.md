@@ -336,9 +336,12 @@ recorded in [`delivery.md`](./delivery.md) under *Reviews are verified on beta*.
   *Clear*, and sent through the existing action. Browser-tested locally at
   desktop and 390px; **not manually accepted on beta**.
 - **Dates and times are New York's, on a 12-hour clock**, everywhere a person
-  reads one: *24 Sep 2026 · 12:05 AM*, in both worlds, through one formatter
+  reads one, in both worlds, through one formatter
   and one component, identical on the server and in the browser. Display only —
   stored timestamps are untouched.
+- **Dates are month first**, the U.S. order: *September 24, 2026 · 11:26 PM*
+  wherever somebody reads, *Sep 24, 2026 · 11:26 PM* only in Studio's dense list
+  rows and board cards. Same zone, same clock, display only.
 - **A Lead's follow-up is now read as New York time.** It was `new Date(raw)`,
   which reads a `datetime-local` in the server's zone (UTC on Railway): a time
   typed in New York was stored four or five hours early and moved again on

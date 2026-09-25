@@ -127,7 +127,7 @@ test("a stored instant, prefilled and saved untouched, is the same instant — w
 
 test("a time typed in the field reads back as exactly what was typed, and says the same thing", () => {
   const instant = stored("2026-09-24T14:30")!;
-  assert.equal(formatMoment(instant, "exact"), "24 Sep 2026 · 2:30 PM");
+  assert.equal(formatMoment(instant, "exact"), "September 24, 2026 · 2:30 PM");
   assert.equal(momentInputValue(instant), "2026-09-24T14:30");
 });
 

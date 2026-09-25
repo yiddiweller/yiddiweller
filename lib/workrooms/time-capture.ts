@@ -1,6 +1,7 @@
 import type { ViewerKind } from "../storage/policy.ts";
 import { roundSeconds } from "./anchor-geometry.ts";
 import { momentLabel, rangeLabel } from "./anchor-label.ts";
+import type { PointCandidate } from "./point-capture.ts";
 import type { ReviewAnchor } from "./review-anchor.ts";
 
 /**
@@ -44,7 +45,7 @@ export function takesTime(viewer: ViewerKind | null): boolean {
  * snapshot — its viewer, as it was published — so a file changed since, or a
  * draft reordered since, cannot make a block take precision it did not have.
  */
-export function capturesTime(subject: { capture?: "time" } | undefined): boolean {
+export function capturesTime(subject: { capture?: "time" | "point" } | undefined): boolean {
   return subject?.capture === "time";
 }
 
@@ -175,8 +176,13 @@ export function anchorAfterSubjectChange<T>(previous: string, next: string, anch
   return previous === next ? anchor : null;
 }
 
-/** The form's `anchor` field: compact, deterministic, and empty for none. */
-export function serializeAnchor(anchor: TimeCandidate | null): string {
+/**
+ * The form's `anchor` field: compact, deterministic, and empty for none. One
+ * field for every precise anchor the composer can hold — a time (F3, F4.1) or
+ * a point (F5) — written in the canonical key order and nothing else.
+ */
+export function serializeAnchor(anchor: TimeCandidate | PointCandidate | null): string {
   if (!anchor) return "";
+  if (anchor.kind === "point") return JSON.stringify({ kind: "point", x: anchor.x, y: anchor.y });
   return JSON.stringify("t2" in anchor ? { kind: "time", t: anchor.t, t2: anchor.t2 } : { kind: "time", t: anchor.t });
 }

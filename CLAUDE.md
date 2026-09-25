@@ -76,7 +76,13 @@ accepted on beta**: IMG_0044.mov plays in the Files viewer in desktop Chrome and
 iPhone Safari. **F4.1 — video capture — is implemented and its automated tests
 pass, not manually accepted**: F3's one panel and rules (`time-capture.ts`) under
 the video's own native player, eligible only where the frozen viewer is `video`.
-Image and region capture are not built, and Stage F is not complete.
+**F5.1 — image point rules and eligibility — is implemented and tested, and
+nothing visible**: `point-capture.ts`, pure, over F1's geometry; a frozen
+`image` is marked `capture: "point"` and the composer does not offer it yet.
+F5.2 will draw it, and may treat only a press on the picture itself as a
+placement — never one on Done, Cancel, Change, Clear, a link or a button.
+Visible image point capture and region capture are not built, and Stage F is
+not complete.
 Approvals has not begun. Build 005 is **not promoted**: production has no bucket, the sweep is
 unscheduled and there is no per-object backup strategy, so production remains
 Build 004.**

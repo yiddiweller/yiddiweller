@@ -295,7 +295,10 @@ test("capture is one system for both players: one module, one panel, one element
   assert.match(composer, /capturesTime\(about\)/);
   const subjects = readFileSync("lib/workrooms/presentation-view.ts", "utf8");
   assert.match(subjects, /takesTime\(item\.file\.viewer\) \? \{ capture: "time" as const \}/);
-  assert.doesNotMatch(subjects, /capture: "(audio|video|image|point)"/);
+  // A capture is named for what it records — a time, or (F5) a point — never
+  // for a media kind, and a point is offered only through `takesPoint`.
+  assert.doesNotMatch(subjects, /capture: "(audio|video|image|pdf|download)"/);
+  assert.match(subjects, /takesPoint\(item\.file\.viewer\) \? \{ capture: "point" as const \}/);
 
   // The panel reads the block's own player — a video's or a recording's —
   // and there is no second capture module or panel for video.

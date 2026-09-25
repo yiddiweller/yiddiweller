@@ -149,7 +149,7 @@ let seq = 0;
  * storage stub to do it. The marker strings go in the columns a projection must
  * never reach.
  */
-async function file(workroomId: string, name: string, contentType: string): Promise<string> {
+export async function file(workroomId: string, name: string, contentType: string): Promise<string> {
   const id = uuidv7();
   await db().insert(workroomFiles).values({
     id,

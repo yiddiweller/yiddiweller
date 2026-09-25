@@ -7,6 +7,7 @@ import {
   type FileBase,
   type PresentedFile,
 } from "./delivery-view.ts";
+import { takesPoint } from "./point-capture.ts";
 import { takesTime } from "./time-capture.ts";
 
 /**
@@ -291,14 +292,16 @@ export function itemLabel(item: ClientRevisionItem): string {
 /** Every block a feedback point may be about, in the order they appear. */
 export function itemSubjects(
   items: ClientRevisionItem[],
-): { value: string; label: string; capture?: "time" }[] {
+): { value: string; label: string; capture?: "time" | "point" }[] {
   // `capture` is read from the viewer this Revision froze, the same one the
   // page renders it with — never from the live file or the draft. Audio and
-  // video take a precise time; a file frozen as a download never does.
+  // video take a precise time, a picture a point (F5; nothing offers it until
+  // F5.2); a file frozen as a download never takes either.
   return items.map((item) => ({
     value: String(item.position),
     label: itemLabel(item),
     ...(item.kind === "file" && takesTime(item.file.viewer) ? { capture: "time" as const } : {}),
+    ...(item.kind === "file" && takesPoint(item.file.viewer) ? { capture: "point" as const } : {}),
   }));
 }
 

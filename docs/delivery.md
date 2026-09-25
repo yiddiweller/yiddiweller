@@ -2189,8 +2189,42 @@ start refused, the client's and Studio's locators seeking and staying paused,
 a replaced version's notes, 390px on a touch screen, and the server's refusals
 — plus the whole F3 audio suite unchanged. **Not yet walked on beta.**
 
-**Still not built:** image point capture, regions, frame-region display, PDF
-precision, signed-URL recovery (F6), Stage G. Stage F is not complete.
+#### F5 — a point on a picture
+
+**Locked before any of it is drawn:**
+
+- **The words.** The composer says **A point on {name}** — not *At a point on
+  {name}* — with **Change** and **Clear**; the locator keeps *On {name} ·
+  Point*. No coordinate is ever shown to anybody.
+- **Keyboard placement is in scope.** In capture mode the first arrow puts the
+  point in the middle of the picture; each arrow moves it 0.02 of the picture,
+  0.10 with Shift, and stops at the edge. Enter as Done is F5.2's wiring.
+- **Event scoping (F5.2).** Only a press on the picture's own interaction
+  surface is ever a placement attempt. A press on Done, Cancel, Change, Clear,
+  *Download original*, any link, any button or anything in the capture panel is
+  **never** treated as a point — and never as a press *beside* the picture
+  either.
+- **The marker is F2's**: the one 22px double ring, drawn while capturing and
+  while a locator is active, and nowhere else.
+
+**F5.1 — the rules and eligibility, and nothing visible.**
+`lib/workrooms/point-capture.ts` is pure: `takesPoint(viewer)` is true for a
+frozen `image` only; `placePoint(pointer, natural size, content box)` is
+`containRect`, then `toFraction`, then `roundFraction` — null anywhere off the
+picture, letterbox included, and never clamped; `pointOnImage` is the inverse
+through `fromFraction`; `nudgePoint` is the keyboard rule; `pointSummary` is
+the sentence. No geometry of its own and no second rounding rule. `itemSubjects`
+marks a frozen image `capture: "point"` and `ReviewSubject.capture` is `"time" |
+"point"`, but the composer still opens its control only for a time, so nothing
+on any page changes. `serializeAnchor` writes `{"kind":"point","x":…,"y":…}` in
+the one `anchor` field beside the time shapes, which it writes exactly as
+before. The parser, the projection, the domain, the schema and `FileViewer` are
+untouched: `point` was already accepted on an image only, exact keys, 0–1
+inclusive, and everything else is refused.
+
+**Still not built:** visible point capture (F5.2), regions, frame-region
+display, PDF precision, signed-URL recovery (F6), Stage G. Stage F is not
+complete.
 
 ## Reviews are verified on beta
 

@@ -13,7 +13,7 @@ import styles from "@/components/workrooms/ReviewThread.module.css";
  * `capture` marks a block that takes a precise time — read from the frozen
  * Revision the page is rendering, never from anything the browser inspects.
  */
-export type ReviewSubject = { value: string; label: string; capture?: "time" };
+export type ReviewSubject = { value: string; label: string; capture?: "time" | "point" };
 
 /**
  * Somewhere to write: a new point, a reply, or a correction to your own words.

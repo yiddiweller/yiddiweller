@@ -381,7 +381,16 @@ recorded in [`delivery.md`](./delivery.md) under *Reviews are verified on beta*.
   through the same action, and found again by the same locators, paused. A MOV
   frozen as a download before F4.0 never takes a time. The capture module is
   renamed `time-capture.ts`. Audio behaviour is unchanged.
-- **Still not built:** image and region capture, and Stage G,
+- **Stage F5.1 — image point rules and eligibility: implemented, automated
+  tests pass; nothing visible.** One pure module, `point-capture.ts`, turns a
+  press into a point on the picture through F1's geometry — refusing the
+  letterbox rather than clamping into it — moves one by arrow key, and says it
+  as *A point on {name}*. A block whose Revision froze it as an image is marked
+  as taking a point; an image frozen as a download never is. No page offers a
+  point until F5.2. The F5 decisions — the copy, keyboard placement, and that
+  only a press on the picture itself is ever a placement — are locked in
+  `docs/delivery.md`.
+- **Still not built:** visible image point capture, region capture, and Stage G,
   notifications.
 
 **Stage A beta acceptance.** Migration `0004` deployed and applied. `npm run

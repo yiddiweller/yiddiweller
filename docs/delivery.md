@@ -2097,7 +2097,7 @@ PASS.**
 
 **F3 is verified on beta.** Walked by hand on the real Railway beta deployment,
 the client on a real iPhone, Studio on a desktop, on *Schick's Take Home
-Foods.m4a* in Brand Direction's Version 2:
+Foods.m4a* in the Presentation **Audio review test**, Version 2:
 
 - **The M4A plays inline** in the native `<audio>` on the iPhone — the blocker
   the same walk had found earlier (`audio/x-m4a` missing from the viewer's exact

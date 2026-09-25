@@ -630,7 +630,7 @@ decides how a file is rendered, and nothing accepts a hint from the request:
 | --- | --- | --- | --- |
 | `image` | `image/jpeg`, `png`, `webp`, `gif`, `avif` | `<img>`, `object-fit: contain` | Download |
 | `pdf` | `application/pdf` | `<iframe>`, the browser's own viewer | Download |
-| `video` | `video/mp4`, `webm`, `ogg` | `<video controls preload="metadata">` | Download |
+| `video` | `video/mp4`, `webm`, `ogg`, `quicktime` | `<video controls preload="metadata" playsInline>` | Download |
 | `audio` | `audio/mpeg`, `mp4`, `x-m4a`, `aac`, `wav`, `ogg`, `webm`, `flac` | `<audio controls preload="metadata">` | Download |
 | `download` | **everything else**, SVG included | A typed, sized card | Download |
 
@@ -653,6 +653,22 @@ Chromium's was measured, and the beta symptom is exactly an `audio/*` type
 missing from this list). It is the same MPEG-4 audio as `audio/mp4`, added by
 exact name; `audio/m4a`, which nothing observed emits, is not. A test asserts
 that every audio type the label names and a browser plays is also a viewer.
+
+**`video/quicktime` is on the list because every iPhone video is an `.mov`
+(F4.0).** Beta's *IMG_0044.mov*, about 15 MB, read *video* in the Files list and
+was a download card everywhere, for the same reason the M4A was. It is added by
+exact name; `video/quicktime; codecs=…`, `video/x-quicktime`, any other `video/*`
+and an `.mov` declared `application/octet-stream` all stay downloads, and the
+policy never sees a filename. **The type is the container, not the codec.** An
+iPhone records H.264 or HEVC inside it, and whether a browser decodes that is
+the native player's question: Safari plays both; a desktop Chrome's HEVC
+depends on its hardware. Measured locally, Chromium plays by the bytes and not
+the declared type — a WebM or MP4 served as `video/quicktime`, `nosniff`
+included, loads — and the bundled test Chromium has no H.264 or HEVC decoder at
+all, so the automated tests prove the policy, the routes, the frozen Revisions
+and the one `FileViewer` on a playable stand-in declared as a MOV, **not** that
+a real MOV decodes. That is the real-beta walk, on a real iPhone and a real
+desktop Chrome, before any precise video time is built.
 
 **A Revision published before a type is added keeps its download card.** Each
 Revision freezes the `viewer` its files had at publication, and that frozen
@@ -2612,7 +2628,7 @@ useless on a Tuesday.
 
 - **Accept almost anything.** Recorded, downloadable.
 - **Render inline only** the five outcomes of `viewerKind()` — raster images,
-  PDF, `video/mp4|webm|ogg`, and the browser-native audio types. The exact
+  PDF, `video/mp4|webm|ogg|quicktime`, and the browser-native audio types. The exact
   list, and why it is exact matches rather than prefixes, is in *The viewer*.
 - **Refuse outright** only the genuinely hostile: `.exe`, `.dll`, `.bat`,
   `.cmd`, `.sh`, `.msi`, `.app`, `.scr`, and anything declaring `text/html`.

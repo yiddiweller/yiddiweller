@@ -363,6 +363,16 @@ recorded in [`delivery.md`](./delivery.md) under *Reviews are verified on beta*.
   player at once; a Presentation shows it from its next published Revision,
   because each Revision keeps the viewer it froze. **Cleared on a real iPhone**
   in the F3 walk.
+- **Stage F4.0 — an `.mov` plays inline: implemented, automated tests pass,
+  not yet walked on beta.** Every iPhone video is an `.mov`, declared
+  `video/quicktime`; beta's *IMG_0044.mov* read *video* in Files and was a
+  download card everywhere. `video/quicktime` is now on the viewer's list by
+  exact name — no parameters, no `video/x-quicktime`, never a file extension —
+  so the one native `<video>` renders it. Whether a browser can decode the
+  codec inside is the browser's to say; the Download link stays under every
+  file. Files show the player at once; a Presentation from its next published
+  Revision. **No precise video time yet** — that is F4.1, after IMG_0044.mov
+  is watched on a real iPhone and a real desktop Chrome.
 - **Still not built:** video, image and region capture, and Stage G,
   notifications.
 

@@ -996,6 +996,9 @@ test("what may render inline is an exact list, never a prefix", () => {
     ["application/pdf", "pdf"],
     ["video/mp4", "video"],
     ["video/webm", "video"],
+    ["video/ogg", "video"],
+    // What Safari and Chromium declare for an `.mov` — every iPhone video.
+    ["video/quicktime", "video"],
     ["audio/mpeg", "audio"],
     ["audio/wav", "audio"],
     ["audio/ogg", "audio"],
@@ -1021,7 +1024,19 @@ test("what may render inline is an exact list, never a prefix", () => {
     "application/octet-stream",
     "text/html",
     "text/plain",
-    "video/quicktime",
+    // Video names that are not the one on the list, a parameter bolted onto
+    // the real one, and a family nothing here plays: still exact matches only.
+    "video/quicktime; codecs=hvc1",
+    "video/quicktime;codecs=avc1",
+    "video/x-quicktime",
+    "video/quicktime-and-more",
+    "video/mov",
+    "video/x-msvideo",
+    "video/x-matroska",
+    "video/mpeg",
+    "video/3gpp",
+    "video/*",
+    "video/",
     // Audio names nothing here emits, and a parameter bolted onto a real one:
     // still exact matches only.
     "audio/m4a",
@@ -1044,9 +1059,9 @@ test("a file's label and its viewer are two different answers", () => {
   assert.equal(fileKind("image/svg+xml"), "image");
   assert.equal(viewerKind("image/svg+xml"), "download");
 
-  // A codec a browser will not play is still a video, and still a download.
-  assert.equal(fileKind("video/quicktime"), "video");
-  assert.equal(viewerKind("video/quicktime"), "download");
+  // A container this build does not render is still a video, and still a download.
+  assert.equal(fileKind("video/x-msvideo"), "video");
+  assert.equal(viewerKind("video/x-msvideo"), "download");
 
   assert.equal(fileKind("audio/mpeg"), "audio");
 });
@@ -1061,6 +1076,51 @@ test("an M4A is audio in the list and audio in the viewer — the two no longer 
   assert.equal(viewerKind(" AUDIO/X-M4A "), "audio");
   for (const type of ["audio/mpeg", "audio/mp4", "audio/aac", "audio/wav", "audio/x-wav", "audio/ogg", "audio/webm", "audio/flac", "audio/x-m4a"]) {
     assert.equal(fileKind(type), viewerKind(type), type);
+  }
+});
+
+test("a MOV is video in the list and video in the viewer — by its declared type, never its name", () => {
+  // Every iPhone video is an `.mov`, declared `video/quicktime`; it read
+  // *video* in the Files list and rendered as a download card. The exact name
+  // is now a viewer. Nothing else about QuickTime is.
+  assert.equal(fileKind("video/quicktime"), "video");
+  assert.equal(viewerKind("video/quicktime"), "video");
+  assert.equal(viewerKind(" VIDEO/QUICKTIME "), "video");
+  assert.equal(viewable("video/quicktime"), true);
+  for (const type of ["video/mp4", "video/webm", "video/ogg", "video/quicktime"]) {
+    assert.equal(fileKind(type), viewerKind(type), type);
+  }
+
+  // The policy is a function of the declared type alone: it has no filename
+  // to be talked round by. An `.mov` whose browser declared nothing useful is
+  // a download, and so is anything that merely looks like one.
+  assert.equal(viewerKind.length, 1);
+  for (const type of ["application/octet-stream", "application/x-quicktime", "application/quicktime", ".mov", "mov", "quicktime"]) {
+    assert.equal(viewerKind(type), "download", type);
+  }
+});
+
+test("a MOV is offered inline by its type, and an .mov that declared nothing is not", async () => {
+  const r = await room("Q", "Quince & Co", "Quinn Quince", "quinn@quince.test");
+  const mov = await upload(r, { filename: "IMG_0044.mov", contentType: "video/quicktime", displayName: "Phone cut" });
+  const unnamed = await upload(r, { filename: "IMG_0045.mov", contentType: "application/octet-stream", displayName: "Undeclared cut" });
+  const lookalike = await upload(r, { filename: "trailer.mov.pdf.mov", contentType: "video/x-quicktime", displayName: "Lookalike" });
+  for (const file of [mov, unnamed, lookalike]) {
+    assert.ok((await setFileVisibility(actor, file.id, file.version, "shared")).ok);
+  }
+
+  const views = (await filesForViewer(r.contactId, r.publicId)).map((row) => toClientFile(row, r.publicId));
+  const by = (name: string) => views.find((view) => view.name === name)!;
+
+  assert.equal(by("Phone cut").kind, "video");
+  assert.equal(by("Phone cut").viewer, "video");
+  assert.equal(by("Phone cut").sourcePath, `/workrooms/${r.publicId}/files/${by("Phone cut").id}/view`);
+
+  for (const name of ["Undeclared cut", "Lookalike"]) {
+    assert.equal(by(name).viewer, "download", name);
+    assert.equal(by(name).viewPath, undefined, `${name} was given a viewer`);
+    assert.equal(by(name).sourcePath, undefined, `${name} was given inline bytes`);
+    assert.match(by(name).downloadPath, /\/download$/, name);
   }
 });
 

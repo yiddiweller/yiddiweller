@@ -95,7 +95,7 @@ function signed(token: string, secret: string): string {
 }
 
 /** A ready file row with real bytes at its storage key. */
-async function file(workroomId: string, name: string, contentType: string, bytes: Buffer): Promise<string> {
+export async function file(workroomId: string, name: string, contentType: string, bytes: Buffer): Promise<string> {
   const id = uuidv7();
   const storageKey = `w/${workroomId}/f/${id}/original`;
   const put = await fetch(`${endpoint}/${bucket}/${storageKey}`, {

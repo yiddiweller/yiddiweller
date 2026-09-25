@@ -42,7 +42,18 @@ const REFUSED_TYPES = ["text/html", "application/x-msdownload", "application/x-m
  * file *is*, the other says what we are willing to *do* with it.
  */
 const INLINE_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif", "image/avif"];
-const INLINE_VIDEO_TYPES = ["video/mp4", "video/webm", "video/ogg"];
+const INLINE_VIDEO_TYPES = [
+  "video/mp4",
+  "video/webm",
+  "video/ogg",
+  // `.mov` — what Safari and Chromium declare for every video an iPhone's
+  // camera records, whichever codec it chose. Without it no phone video could
+  // ever play in place. Whether a given browser can decode the codec inside is
+  // the browser's question, answered by the native player; the Download link
+  // under every file stays the way to it either way. Added by exact name, like
+  // everything here — no parameters, no `x-` spelling, no extension.
+  "video/quicktime",
+];
 const INLINE_AUDIO_TYPES = [
   "audio/mpeg",
   "audio/mp4",

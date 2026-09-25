@@ -346,6 +346,13 @@ recorded in [`delivery.md`](./delivery.md) under *Reviews are verified on beta*.
   wall-clock time in any process or browser zone, and refuses a time the clocks
   skip or repeat. No migration; **historical follow-ups were not rewritten** —
   `docs/studio.md` has a query for reviewing them by hand.
+- **An `.m4a` plays inline.** Beta found an iPhone recording labelled *audio*
+  in Files and shown as a download card in the Presentation: the viewer's
+  exact list had `audio/mp4` but not `audio/x-m4a`, the type Safari and
+  Chromium declare for an M4A. It is now on the list, by exact name, so the
+  one native `<audio>` renders it and F3 can capture on it. Files show the
+  player at once; a Presentation shows it from its next published Revision,
+  because each Revision keeps the viewer it froze.
 - **Still not built:** video, image and region capture, and Stage G,
   notifications.
 

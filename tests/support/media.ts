@@ -11,6 +11,11 @@ import { deflateSync } from "node:zlib";
  *
  * - **PNG** and **WAV** are written here, byte by byte, because both are simple
  *   enough to need nothing else.
+ * - **M4A** is one committed fixture, `tests/fixtures/six-seconds.m4a`: an
+ *   MPEG-4 container (`ftyp isom`), 6.14 s of a quiet tone, recorded once by
+ *   Chromium's `MediaRecorder`. Its audio is Opus rather than a phone's AAC,
+ *   because the bundled Chromium has no AAC decoder; the container, the
+ *   extension and the declared type are exactly a phone recording's.
  * - **WebM** is one committed fixture, `tests/fixtures/eight-seconds.webm`:
  *   8.00 s of VP8 at 320×180, four frames a second with a keyframe every
  *   second, each frame showing its own time. Rendered once in Chromium and
@@ -87,6 +92,11 @@ export function wav(seconds: number): Buffer {
   head.write("data", 36, "ascii");
   head.writeUInt32LE(data.length, 40);
   return Buffer.concat([head, data]);
+}
+
+/** Six seconds of MPEG-4 audio — see above. */
+export function m4a(): Buffer {
+  return readFileSync(new URL("../fixtures/six-seconds.m4a", import.meta.url));
 }
 
 /** Eight seconds of VP8 — see above. */

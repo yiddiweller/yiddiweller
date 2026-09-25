@@ -46,6 +46,12 @@ const INLINE_VIDEO_TYPES = ["video/mp4", "video/webm", "video/ogg"];
 const INLINE_AUDIO_TYPES = [
   "audio/mpeg",
   "audio/mp4",
+  // `.m4a` — the same MPEG-4 audio as `audio/mp4`, under the name Safari and
+  // Chromium actually declare for it (Voice Memos, most phone recordings).
+  // Without it an M4A read as "audio" in the Files list and still fell through
+  // to the download card, because the label takes a prefix and this list does
+  // not. Added by exact name, like everything here.
+  "audio/x-m4a",
   "audio/aac",
   "audio/wav",
   "audio/x-wav",

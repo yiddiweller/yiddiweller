@@ -999,6 +999,9 @@ test("what may render inline is an exact list, never a prefix", () => {
     ["audio/mpeg", "audio"],
     ["audio/wav", "audio"],
     ["audio/ogg", "audio"],
+    ["audio/mp4", "audio"],
+    // What Safari and Chromium declare for an `.m4a` — Voice Memos included.
+    ["audio/x-m4a", "audio"],
   ] as const) {
     assert.equal(viewerKind(type), expected, type);
     assert.equal(viewable(type), true, type);
@@ -1019,6 +1022,12 @@ test("what may render inline is an exact list, never a prefix", () => {
     "text/html",
     "text/plain",
     "video/quicktime",
+    // Audio names nothing here emits, and a parameter bolted onto a real one:
+    // still exact matches only.
+    "audio/m4a",
+    "audio/x-aiff",
+    "audio/x-m4a; codecs=mp4a.40.2",
+    "audio/x-m4a-and-more",
     "",
   ]) {
     assert.equal(viewerKind(type), "download", type || "(empty)");
@@ -1040,6 +1049,19 @@ test("a file's label and its viewer are two different answers", () => {
   assert.equal(viewerKind("video/quicktime"), "download");
 
   assert.equal(fileKind("audio/mpeg"), "audio");
+});
+
+test("an M4A is audio in the list and audio in the viewer — the two no longer disagree", () => {
+  // Beta found an `.m4a` labelled *audio · 70 KB* and rendered as a download
+  // card: the label read the `audio/` prefix, the viewer's exact list did not
+  // have the name the browser declared. Every type the label calls audio that
+  // a browser plays is now a viewer too.
+  assert.equal(fileKind("audio/x-m4a"), "audio");
+  assert.equal(viewerKind("audio/x-m4a"), "audio");
+  assert.equal(viewerKind(" AUDIO/X-M4A "), "audio");
+  for (const type of ["audio/mpeg", "audio/mp4", "audio/aac", "audio/wav", "audio/x-wav", "audio/ogg", "audio/webm", "audio/flac", "audio/x-m4a"]) {
+    assert.equal(fileKind(type), viewerKind(type), type);
+  }
 });
 
 test("the projection offers a viewer only where one exists, and download always", async () => {

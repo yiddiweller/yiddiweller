@@ -631,7 +631,7 @@ decides how a file is rendered, and nothing accepts a hint from the request:
 | `image` | `image/jpeg`, `png`, `webp`, `gif`, `avif` | `<img>`, `object-fit: contain` | Download |
 | `pdf` | `application/pdf` | `<iframe>`, the browser's own viewer | Download |
 | `video` | `video/mp4`, `webm`, `ogg` | `<video controls preload="metadata">` | Download |
-| `audio` | `audio/mpeg`, `mp4`, `aac`, `wav`, `ogg`, `webm`, `flac` | `<audio controls preload="metadata">` | Download |
+| `audio` | `audio/mpeg`, `mp4`, `x-m4a`, `aac`, `wav`, `ogg`, `webm`, `flac` | `<audio controls preload="metadata">` | Download |
 | `download` | **everything else**, SVG included | A typed, sized card | Download |
 
 **The list is exact matches, never prefixes, and that is the whole security
@@ -643,6 +643,22 @@ client's session cookie. **Raw SVG is never put in an `<iframe>`, an `<img>`, an
 `<object>` or an `<embed>`, and is never decoded for a preview.** It is a
 download card, deliberately, and a test asserts that every route refuses to
 serve it inline rather than trusting the UI not to ask.
+
+**`audio/x-m4a` is on the list because beta needed it.** An iPhone upload of
+*Schick's Take Home Foods.m4a* read *audio · 70 KB* in the Files list — the
+label's `audio/` prefix — and rendered as the download card, because the exact
+list had `audio/mp4` and not `audio/x-m4a`, which is what Safari and Chromium
+declare for an `.m4a` (the upload records the browser's own `file.type`;
+Chromium's was measured, and the beta symptom is exactly an `audio/*` type
+missing from this list). It is the same MPEG-4 audio as `audio/mp4`, added by
+exact name; `audio/m4a`, which nothing observed emits, is not. A test asserts
+that every audio type the label names and a browser plays is also a viewer.
+
+**A Revision published before a type is added keeps its download card.** Each
+Revision freezes the `viewer` its files had at publication, and that frozen
+value is what renders and what anchors are judged against — see *F1* below. The
+Files pages read the policy live and show the player at once; a Presentation
+shows it from the next Revision published after the change.
 
 **Nothing the uploader controls can choose inline rendering.** The stored
 content type is the only input, the map is closed, and the view route refuses

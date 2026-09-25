@@ -25,7 +25,7 @@ import {
 } from "../../lib/db/reviews.ts";
 import { clientSession, session, workroomFiles, workrooms } from "../../lib/db/schema.ts";
 import { createWorkroom, publishWorkroom } from "../../lib/db/workrooms.ts";
-import { png, wav, webm } from "./media.ts";
+import { m4a, png, wav, webm } from "./media.ts";
 import { clearOwner, owner, person, seedOwner, staff } from "./review-stage.ts";
 
 /**
@@ -37,8 +37,11 @@ import { clearOwner, owner, person, seedOwner, staff } from "./review-stage.ts";
  * the pages are those of a server that shares this database and bucket.
  * Three published versions, a round on the second and on the third:
  *
- *   Version 2   0 Intro · 1 board · 2 motion · 3 sound · 4 poster · 5 voice · 6 deck
- *   Version 3   0 Intro · 1 motion · 2 board · 3 sound · 4 poster · 5 voice · 6 deck
+ *   Version 2   0 Intro · 1 board · 2 motion · 3 sound · 4 poster · 5 voice · 6 deck · 7 memo
+ *   Version 3   0 Intro · 1 motion · 2 board · 3 sound · 4 poster · 5 voice · 6 deck · 7 memo
+ *
+ * *The memo* is an `.m4a` declared `audio/x-m4a`, the way Safari and Chromium
+ * declare one — the file beta found rendered as a download card.
  *
  * The board is at 1 in Version 2 and the video at 1 in Version 3 on purpose: a
  * locator that looked at the wrong version finds the wrong thing. Version 3's
@@ -79,6 +82,7 @@ export const fixture = {
   presentationId: "",
   motionFile: "",
   voiceFile: "",
+  memoFile: "",
   clientCookie: "",
   staffCookie: "",
 };
@@ -166,6 +170,7 @@ export async function seed(): Promise<void> {
   const poster = await file(workroomId, "Poster.png", "image/png", png(400, 800));
   const voice = await file(workroomId, "Voice.wav", "audio/wav", wav(10));
   const deck = await file(workroomId, "Deck.pdf", "application/pdf", Buffer.from("%PDF-1.4\n%%EOF\n"));
+  const memo = await file(workroomId, "Take Home Foods.m4a", "audio/x-m4a", m4a());
 
   const presentation = await createPresentation(owner, workroomId, { title: "Locators", intro: "" });
   assert.ok(presentation.ok);
@@ -175,7 +180,7 @@ export async function seed(): Promise<void> {
   assert.ok((await addNoteItem(owner, pid, await version(pid), { caption: "Intro", body: "Words." })).ok);
   assert.ok((await publishPresentation(owner, pid, await version(pid))).ok);
 
-  // Version 2: 0 Intro, 1 board, 2 motion, 3 sound, 4 poster, 5 voice, 6 deck.
+  // Version 2: 0 Intro, 1 board, 2 motion, 3 sound, 4 poster, 5 voice, 6 deck, 7 memo.
   for (const [id, caption] of [
     [board, "The board"],
     [motion, "The motion"],
@@ -183,6 +188,7 @@ export async function seed(): Promise<void> {
     [poster, "The poster"],
     [voice, "The voice"],
     [deck, "The deck"],
+    [memo, "The memo"],
   ] as const) {
     assert.ok((await addFileItem(owner, pid, await version(pid), id, caption)).ok);
   }
@@ -249,6 +255,7 @@ export async function seed(): Promise<void> {
     presentationId: pid,
     motionFile: `f${motion.replace(/-/g, "").slice(0, 25)}`,
     voiceFile: `f${voice.replace(/-/g, "").slice(0, 25)}`,
+    memoFile: `f${memo.replace(/-/g, "").slice(0, 25)}`,
     clientCookie: signed(clientToken, clientSecret!),
     staffCookie: signed(staffToken, staffSecret!),
   });

@@ -124,7 +124,7 @@ const focused = (page: Page) =>
 
 /* ---------------------------------------------------------- eligibility */
 
-test("only a recording offers a precise time — not the version, a note, a picture, a video or a PDF", { skip }, async () => {
+test("only a recording offers a precise time — an M4A included — not the version, a note, a picture, a video or a PDF", { skip }, async () => {
   const { page, errors } = await open(clientPage());
 
   for (const [label, offered] of [
@@ -136,6 +136,7 @@ test("only a recording offers a precise time — not the version, a note, a pict
     ["The poster", false],
     ["The voice", true],
     ["The deck", false],
+    ["The memo", true],
   ] as const) {
     await about(page).selectOption({ label });
     const control = page.getByRole("button", { name: /^Set precise time/ });

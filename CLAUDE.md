@@ -78,18 +78,23 @@ pass, not manually accepted**: F3's one panel and rules (`time-capture.ts`) unde
 the video's own native player, eligible only where the frozen viewer is `video`.
 **F5.1 — image point rules and eligibility — is implemented and tested**:
 `point-capture.ts`, pure, over F1's geometry; a frozen `image` is marked
-`capture: "point"`. **F5.2 — visible point capture — is implemented and its
-automated tests pass, not manually accepted**: *Point to it*, the draft drawn
-by F2's one marker, *A point on {name}* with Change and Clear. **The placement
+`capture: "point"`. **F5.2 — visible point capture — is implemented, its
+automated tests pass, and it is manually accepted on beta**: *Point to it*, the
+draft drawn by F2's one marker, *A point on {name}* with Change and Clear. **The placement
 surface is the image's own stage (`img.parentElement`), only while a point is
 being chosen**: a press on Done, Cancel, Change, Clear, *Download original*, a
 link, a button, the composer or another picture is never a point and never a
-press beside one. F5.2's point flow worked on a real iPhone. **F5.2A — drag the
-draft point's marker to fine-tune it — is implemented and its automated tests
-pass, not manually accepted**: an invisible 44px handle on the unchanged 22px
-ring, the only `touch-action: none` element, present only while a point is
-being chosen; a locator's marker is never draggable. Region capture is not
-built, and Stage F is not complete.
+press beside one. **F5.2A — drag the draft point's marker to fine-tune it — is
+implemented, its automated tests pass, and it is manually accepted on beta**:
+an invisible 44px handle on the unchanged 22px ring, the only `touch-action:
+none` element, present only while a point is being chosen; a locator's marker
+is never draggable. **Stage F5 is closed**: walked on a real iPhone in *Image
+review test* — placement, submission, the saved point, drag-to-fine-tune and a
+read-only sent marker; keyboard, letterbox, history, event scoping and
+malformed anchors rest on the automated suites. Arrows, lines, shapes,
+freehand, colours, image regions, several points per comment, spatial video
+annotation and PDF precision stay deferred. Region capture is not built, and
+Stage F is not complete.
 Approvals has not begun. Build 005 is **not promoted**: production has no bucket, the sweep is
 unscheduled and there is no per-object backup strategy, so production remains
 Build 004.**

@@ -391,7 +391,7 @@ recorded in [`delivery.md`](./delivery.md) under *Reviews are verified on beta*.
   only a press on the picture itself is ever a placement — are locked in
   `docs/delivery.md`.
 - **Stage F5.2 — visible image point capture: implemented, automated tests
-  pass, not yet walked on beta.** *Point to it* on a picture the Revision froze
+  pass, real-beta manual acceptance pass.** *Point to it* on a picture the Revision froze
   as an image; a press on the picture places F2's marker, a second press moves
   it, a press beside it is refused and said; arrow keys work too; *Done* gives
   the composer *A point on {name}* with *Change* and *Clear*, and the point is
@@ -402,13 +402,23 @@ recorded in [`delivery.md`](./delivery.md) under *Reviews are verified on beta*.
 - **F5.2 walked on a real iPhone** in *Image review test*: Point to it, a
   finger tap, Done, the comment and its point sent and shown afterwards. The
   walk asked for one refinement, F5.2A.
-- **Stage F5.2A — drag to fine-tune: implemented, automated tests pass, not
-  yet walked on beta.** While a point is being chosen, its marker can be
+- **Stage F5.2A — drag to fine-tune: implemented, automated tests pass,
+  real-beta manual acceptance pass.** While a point is being chosen, its marker can be
   pressed and dragged; the ring stays 22px and an invisible 44px handle takes
   the press. Only a gesture that starts on the marker drags it — anywhere else
   still scrolls or taps — and a drag off the picture leaves the point at the
   last place on it. A sent point's marker is never draggable. Arrows, lines,
   shapes, freehand, colours and several points per comment stay deferred.
+- **Stage F5 — image point feedback: closed.** F5.1, F5.2 and F5.2A are
+  implemented, their automated tests pass, and they pass real-beta manual
+  acceptance on a real iPhone in *Image review test*: a point placed with a
+  finger, sent with a comment, shown correctly afterwards, fine-tuned by
+  dragging the marker, and read-only once sent. Keyboard placement, the
+  letterbox, history, event scoping and malformed anchors rest on the
+  automated suites, not the walk. Record: *F5 is verified on beta* in
+  `docs/delivery.md`. Arrows, lines, rectangles, freehand, colours, image
+  regions, several points per comment, spatial video annotation and PDF
+  precision stay deferred.
 - **Still not built:** region capture, and Stage G,
   notifications.
 

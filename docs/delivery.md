@@ -2223,7 +2223,7 @@ untouched: `point` was already accepted on an image only, exact keys, 0–1
 inclusive, and everything else is refused.
 
 **F5.2 — a point, chosen on the picture. Implemented, automated tests pass,
-not yet walked on beta.** The composer offers **Point to it** (named *Point to a
+real-beta manual acceptance pass** (the record is below). The composer offers **Point to it** (named *Point to a
 place on {name}*) for a block whose frozen viewer is `image`, beside **Set
 precise time** for audio and video, through the one `PrecisionControl`; the
 capture session gains a `kind`, and a point session renders `PointCapture` in
@@ -2270,8 +2270,8 @@ point were sent, and the saved point displayed correctly afterwards. The walk
 found one thing to refine — a point could only be moved by lifting the finger
 and tapping again — which is F5.2A.
 
-**F5.2A — drag to fine-tune. Implemented, automated tests pass, not yet walked
-on beta.** While a point is being chosen, its marker can be pressed and dragged
+**F5.2A — drag to fine-tune. Implemented, automated tests pass, real-beta
+manual acceptance pass.** While a point is being chosen, its marker can be pressed and dragged
 — finger, mouse or pen — and the point is where it is let go. The ring looks
 exactly as it did, 22px; a `DragHandle`, an invisible 44px circle on the same
 spot, is what is pressed. It is the only element with `touch-action: none`, so a
@@ -2287,8 +2287,38 @@ work after a drag. Done keeps the dragged point; Cancel throws it away exactly
 as it throws away a tap. **Only the draft is draggable**: a locator's marker —
 the client's, Studio's, a replaced version's — is never given a handle.
 
-**Still deferred:** arrows, lines, rectangles, freehand, colours, several
-points in one comment, zoom and any annotation toolbar.
+#### F5 is verified on beta
+
+Walked by hand on the real Railway beta deployment, the client on a real
+iPhone, in the Presentation **Image review test**, on its *Stage & Decor*
+banner:
+
+- **F5.2.** The Presentation rendered correctly; *Stage & Decor* could be chosen
+  under **About**; **Point to it** opened point capture; a real finger tap
+  placed the point, and the marker appeared where it was meant; **Done**
+  returned to the composer, which took the words *Please adjust this area.*;
+  the comment and its point were sent; the saved point displayed correctly
+  afterwards; and the sent marker could not be moved.
+- **F5.2A.** Tapping placed the point; pressing and holding the marker began a
+  drag; the marker followed the finger smoothly and allowed fine positioning;
+  releasing left it where it was meant; the marker stayed small and precise;
+  and the product behaved as it should throughout.
+
+**What the walk proves, and what it does not.** By hand, on a real device:
+placement, submission, the saved point's display, drag-to-fine-tune on a
+finger, and that a sent point is read-only. **Not walked by hand**, and proven
+by the automated suites instead: keyboard placement, the letterbox, historical
+Revisions, event scoping, the refusal of malformed and misplaced anchors, and
+every cross-surface regression. The comment's words are in this record and in
+the Review, as a client's words are; no audit event carries them.
+
+**Stage F5 — image point feedback — is closed:** F5.1 rules and eligibility,
+F5.2 visible capture and F5.2A drag-to-fine-tune are implemented, their
+automated tests pass, and they pass real-beta manual acceptance.
+
+**Still deferred:** arrows, lines, rectangles, freehand drawing, colours, image
+regions, several points in one comment, spatial annotation on video, PDF
+precision, zoom and any annotation toolbar.
 
 **Still not built:** regions, frame-region display, PDF precision, signed-URL
 recovery (F6), Stage G. Stage F is not complete.

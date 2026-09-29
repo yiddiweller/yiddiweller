@@ -93,8 +93,13 @@ review test* — placement, submission, the saved point, drag-to-fine-tune and a
 read-only sent marker; keyboard, letterbox, history, event scoping and
 malformed anchors rest on the automated suites. Arrows, lines, shapes,
 freehand, colours, image regions, several points per comment, spatial video
-annotation and PDF precision stay deferred. Region capture is not built, and
-Stage F is not complete.
+annotation and PDF precision stay deferred. **F6.1 — the signed-media recovery
+foundation — is implemented and tested, and nothing visible**: the view URL
+lives fifteen minutes through one function, `effectiveViewTtlSeconds()`, which
+`VIEW_TTL_OVERRIDE_SECONDS` can only shorten and only where `SITE_ENV=preview`
+(`env:check` refuses it elsewhere); `media-recovery.ts` holds the rules — one
+refresh per window, never a loop, **always ending paused**. Region capture is
+not built, and Stage F is not complete.
 Approvals has not begun. Build 005 is **not promoted**: production has no bucket, the sweep is
 unscheduled and there is no per-object backup strategy, so production remains
 Build 004.**

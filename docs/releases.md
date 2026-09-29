@@ -419,6 +419,15 @@ recorded in [`delivery.md`](./delivery.md) under *Reviews are verified on beta*.
   `docs/delivery.md`. Arrows, lines, rectangles, freehand, colours, image
   regions, several points per comment, spatial video annotation and PDF
   precision stay deferred.
+- **Stage F6.1 — signed media recovery foundation: implemented, automated
+  tests pass; nothing visible.** The view URL's lifetime now comes from one
+  function, still fifteen minutes, with a beta-only override that can only
+  shorten it (honoured only where `SITE_ENV=preview`, and refused by
+  `env:check` anywhere else). The rules for recovering a player whose URL has
+  expired — one refresh, never a loop, always ending paused — are written and
+  tested as data, and the test bucket now lets a signed URL expire. F6.2 will
+  wire them to the players. Images and PDFs stay outside automatic recovery;
+  `ResponseCacheControl` hardening is deferred.
 - **Still not built:** region capture, and Stage G,
   notifications.
 

@@ -1843,6 +1843,57 @@ per operation and never twice at the same time for one element; no error
 listener outside an operation ever reloads anything. Nothing stores, reads back
 or passes on a signed address — the element is only ever given our route.
 
+**Measured in F6, and what it changes above.** In Chromium, against two origins
+standing in for the app and the bucket: a player asks `/view` **once**; every
+later byte-range request goes straight to the signed bucket URL, so the browser
+never re-authorizes by itself. An open stream keeps flowing past expiry, and
+playing straight through was unaffected; what fails is a **new** range request —
+a seek into bytes not yet fetched — which the bucket refuses with 403 and the
+element reports as `MEDIA_ERR_NETWORK`, *the same error a server fault gives*:
+expiry cannot be told apart, so recovery is **one** attempt after a network
+failure on a player that had loaded. `load()` and a fresh `src` both go back
+through `/view` and recover, paused; access withdrawn in the meantime is
+refused there and nothing is signed. **An image needs nothing** once loaded (the
+page's image cache serves even a new element with the same `src`), and a
+**PDF** gives the page no failure signal at all — both stay outside automatic
+recovery. Two lines above are therefore stale: the error listener must live
+with the player, since a native scrub on the Files page is an operation only
+the `error` event reveals — bounded by the window below rather than by "an
+operation somebody started"; and images need no throwaway parameter.
+
+**Locked for F6.** Recovery restores **where** a player was and **never
+whether it was playing**: it always ends paused, and nothing calls `play()` — a
+recovery runs from an error, not a press, and a phone refuses audible playback
+without one. One automatic refresh per window, the window being the view URL's
+own lifetime, so a second failure inside it is not expiry and stops. One safe
+log line in F6.2 when a refresh reaches the route — `file.view_refreshed`, with
+the route (client or studio) and the viewer kind, and never a file, key, URL,
+signature, email, Review body or anchor. `ResponseCacheControl` hardening on
+the presigner is **deferred** until recovery itself is proven, as a separate
+change that needs the Railway bucket to be checked first.
+
+**F6.1 — the foundation, and nothing visible.** Implemented, automated tests
+pass; no player, page or route behaves differently.
+
+- **One TTL function.** `effectiveViewTtlSeconds()` in
+  `lib/storage/view-ttl.ts` is the view URL's lifetime: **900 seconds**, as
+  before. `VIEW_TTL_OVERRIDE_SECONDS` can only shorten it — a whole number of
+  seconds from 30 to 900 — and is honoured **only where `SITE_ENV=preview`** at
+  the moment of use; anything else (blank, zero, negative, a fraction, words,
+  above 900) is ignored and 900 applies. Downloads (60 seconds) and uploads (15
+  minutes) are untouched. `npm run env:check` refuses the variable by name
+  anywhere but the preview, without printing its value. It is set nowhere.
+- **The recovery rules** are `lib/workrooms/media-recovery.ts`, pure: `ready →
+  refreshing → restoring → ready`, or `failed` — a failure before metadata or
+  one that is not a network error never qualifies, a second failure inside the
+  window stops, a failed refresh or restore stops, and only a person's *Try
+  again* restarts. A restore can only say `playback: "paused"`. It holds a time
+  and a clock reading: no URL, file, person, Review or anchor.
+- **The test bucket expires.** `tests/support/s3-stub.ts` now refuses a
+  presigned request past `X-Amz-Date` plus `X-Amz-Expires` with S3's own 403
+  *Request has expired*, on a clock a test can move — so nothing waits fifteen
+  minutes. Requests the SDK signs with a header never expire there.
+
 #### Stretches on a phone
 
 A stretch is kept, and it is harder than a moment: two deliberate presses

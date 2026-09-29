@@ -47,6 +47,17 @@ const STORAGE = [
 // the bootstrap variables are read once, by hand, and then removed.
 const OPTIONAL = ["SITE_ENV", "STUDIO_HOST"];
 
+/**
+ * A beta test aid, from Build 005 Stage F6: it shortens how long a signed view
+ * URL lives, so an expiry can be watched in seconds instead of fifteen
+ * minutes. It can only shorten, and lib/storage/view-ttl.ts honours it only
+ * where SITE_ENV=preview — but production must never carry it at all, so its
+ * mere presence outside the preview is refused here, by name, with no value
+ * printed. The rule for what it may say lives in view-ttl.ts alone; this only
+ * decides where it may exist.
+ */
+const PREVIEW_ONLY = ["VIEW_TTL_OVERRIDE_SECONDS"];
+
 const missing = REQUIRED.filter((key) => !process.env[key]?.trim());
 
 for (const key of REQUIRED) {
@@ -61,6 +72,24 @@ for (const key of STORAGE) {
 
 for (const key of OPTIONAL) {
   console.log(`${process.env[key]?.trim() ? "present " : "unset   "} ${key} (optional)`);
+}
+
+const isPreview = process.env.SITE_ENV?.trim() === "preview";
+const previewOnlySet = PREVIEW_ONLY.filter((key) => process.env[key] !== undefined);
+
+for (const key of PREVIEW_ONLY) {
+  const set = previewOnlySet.includes(key);
+  console.log(`${set ? "present " : "unset   "} ${key} (beta test aid${set && isPreview ? ": view URLs shortened, 30–900 seconds" : ""})`);
+}
+
+if (previewOnlySet.length > 0 && !isPreview) {
+  // Production, or anything not marked as the preview. Refused outright: a
+  // test aid in production is a mistake whatever it says.
+  console.error(
+    `\n${previewOnlySet.join(", ")} is set outside the preview. It is a beta test aid and must ` +
+      "never be present in production. Remove it from this service.",
+  );
+  process.exit(1);
 }
 
 if (storageMissing.length > 0 && storageMissing.length < STORAGE.length) {

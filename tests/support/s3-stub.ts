@@ -15,6 +15,13 @@ import { createServer, type Server } from "node:http";
  * nothing about whether a signed URL would satisfy a real provider. Only the
  * beta bucket can answer that, and the report says so rather than implying
  * otherwise.
+ *
+ * **It does honour a presigned URL's lifetime (F6.1)**, because a signed view
+ * URL expiring mid-session is exactly what Stage F6 recovers from. A request
+ * carrying `X-Amz-Date` and `X-Amz-Expires` after that moment is refused with
+ * 403 and S3's own *Request has expired*, measured against `now()` — the real
+ * clock unless a test moves it. Requests the SDK signs with an `Authorization`
+ * header carry neither, and are unaffected.
  */
 
 type StoredObject = { body: Buffer; contentType: string; etag: string };
@@ -27,6 +34,9 @@ export class S3Stub {
 
   /** Every request this stub saw, so a test can assert what was never asked. */
   readonly seen: { method: string; key: string }[] = [];
+
+  /** The stub's clock, in milliseconds. A test moves it to expire a URL at once. */
+  now: () => number = () => Date.now();
 
   async start(): Promise<string> {
     this.server = createServer((request, response) => {
@@ -72,6 +82,13 @@ export class S3Stub {
     headers: Record<string, string | string[] | undefined>,
     response: import("node:http").ServerResponse,
   ): void {
+    if (presignedExpired(url, this.now())) {
+      response
+        .writeHead(403, { "content-type": "application/xml" })
+        .end('<?xml version="1.0"?><Error><Code>AccessDenied</Code><Message>Request has expired</Message></Error>');
+      return;
+    }
+
     const uploadId = url.searchParams.get("uploadId");
     const partNumber = url.searchParams.get("partNumber");
 
@@ -210,6 +227,24 @@ function md5(buffer: Buffer): string {
 }
 
 /** Points the application's storage adapter at a stub for the current test. */
+/**
+ * Whether a presigned URL is past its lifetime at `now`: `X-Amz-Date` (as
+ * `YYYYMMDDTHHMMSSZ`) plus `X-Amz-Expires` seconds. A URL without both is not a
+ * presigned one and never expires here. One that names a date it cannot parse
+ * is treated as expired, as a real provider refuses it.
+ */
+export function presignedExpired(url: URL, now: number): boolean {
+  const date = url.searchParams.get("X-Amz-Date");
+  const expires = url.searchParams.get("X-Amz-Expires");
+  if (date === null || expires === null) return false;
+  const match = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z$/.exec(date);
+  const seconds = Number(expires);
+  if (!match || !Number.isInteger(seconds) || seconds <= 0) return true;
+  const [, y, mo, d, h, mi, s] = match.map(Number) as number[];
+  const signedAt = Date.UTC(y!, mo! - 1, d!, h!, mi!, s!);
+  return now > signedAt + seconds * 1000;
+}
+
 export function useStub(endpoint: string): void {
   process.env.BUCKET_ENDPOINT = endpoint;
   process.env.BUCKET_NAME = "test-bucket";

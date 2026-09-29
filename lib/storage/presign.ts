@@ -11,6 +11,7 @@ import {
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 import { storage } from "./client.ts";
+import { effectiveViewTtlSeconds } from "./view-ttl.ts";
 
 /**
  * Every operation this build performs against object storage.
@@ -27,7 +28,7 @@ import { storage } from "./client.ts";
 /** Long enough to follow a redirect, short enough to be worthless if copied. */
 const DOWNLOAD_TTL_SECONDS = 60;
 
-/**
+/*
  * Viewing is a session, not a fetch.
  *
  * A download is one redirect followed once, so sixty seconds is generous. A
@@ -36,10 +37,10 @@ const DOWNLOAD_TTL_SECONDS = 60;
  * URL makes a five-minute video unseekable after the first minute, which reads
  * as a broken player rather than as a security setting.
  *
- * Fifteen minutes is still short-lived and still worthless once it lapses. It
- * is not a permanent URL and must never become one.
+ * Fifteen minutes, decided in one place: `effectiveViewTtlSeconds()` in
+ * `view-ttl.ts`, which only the beta preview may shorten (F6.1) and nothing
+ * may lengthen.
  */
-const VIEW_TTL_SECONDS = 15 * 60;
 /** Long enough to upload a 16 MiB part on a poor connection. */
 const UPLOAD_TTL_SECONDS = 15 * 60;
 
@@ -162,7 +163,7 @@ export async function presignInline(key: string, contentType: string): Promise<s
       ResponseContentDisposition: "inline",
       ResponseContentType: contentType,
     }),
-    { expiresIn: VIEW_TTL_SECONDS },
+    { expiresIn: effectiveViewTtlSeconds() },
   );
 }
 

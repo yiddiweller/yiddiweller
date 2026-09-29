@@ -113,10 +113,14 @@ async function edit(page: Page, fill: (dialog: Page) => Promise<void>): Promise<
   await dialog.waitFor();
   await fill(dialog);
   await dialog.getByRole("button", { name: "Save", exact: true }).click();
+  // Until the save is answered: the dialog closes, or says one of the three
+  // refusals. Not any mention of New York — the field's own hint, *New York
+  // time.*, is in the dialog from the start, and matching it pressed Escape on
+  // a save still in flight whenever the server was slower than the test.
   await page.waitForFunction(
     () => {
       const open = document.querySelector("dialog[open]");
-      return !open || /New York|date and time/.test(open.textContent ?? "");
+      return !open || /does not happen in New York|happens twice in New York|is not a date and time/.test(open.textContent ?? "");
     },
     undefined,
     { timeout: 10_000 },

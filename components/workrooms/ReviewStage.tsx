@@ -39,6 +39,13 @@ import {
   type CaptureState,
   type TimeCandidate,
 } from "@/lib/workrooms/time-capture";
+import {
+  BROWSER_RETRY_MS,
+  RECOVERED_EVENT,
+  RECOVERY_ATTRIBUTE,
+  RECOVERY_FAILED_EVENT,
+  RECOVERY_TIMEOUT_MS,
+} from "@/lib/workrooms/media-recovery";
 import { seekPlan } from "@/lib/workrooms/review-locator";
 import type { ClientAnchor } from "@/lib/workrooms/review-view";
 import styles from "@/components/workrooms/ReviewStage.module.css";
@@ -146,16 +153,24 @@ function focusQuietly(element: HTMLElement | null): boolean {
   return document.activeElement === element;
 }
 
+/** Whether the player is fetching a fresh address for itself right now (F6.2). */
+const refreshing = (media: HTMLMediaElement): boolean => media.getAttribute(RECOVERY_ATTRIBUTE) === "refreshing";
+
 /**
  * Resolves true once the player knows its duration, false if it never does.
  *
  * Listeners are added and removed by hand, one pair per wait, and `cancel`
  * removes them too — so pressing a locator five times while a slow file loads
  * leaves one wait behind, not five.
+ *
+ * **An error while the player is refreshing its address is not the end**
+ * (F6.2): the player is fetching a fresh one through our route, and its
+ * metadata will come; only its own *recovery failed* is. So a locator pressed
+ * on an expired player waits for the recovery rather than giving up on it.
  */
 function whenMetadata(media: HTMLMediaElement): { ready: Promise<boolean>; cancel: () => void } {
   if (media.readyState >= HAVE_METADATA) return { ready: Promise.resolve(true), cancel: () => {} };
-  if (media.error) return { ready: Promise.resolve(false), cancel: () => {} };
+  if (media.error && !refreshing(media)) return { ready: Promise.resolve(false), cancel: () => {} };
 
   let settle: (value: boolean) => void = () => {};
   const ready = new Promise<boolean>((resolve) => {
@@ -163,18 +178,23 @@ function whenMetadata(media: HTMLMediaElement): { ready: Promise<boolean>; cance
   });
 
   const onReady = () => finish(true);
-  const onError = () => finish(false);
-  const timer = window.setTimeout(() => finish(false), METADATA_TIMEOUT_MS);
+  const onError = () => {
+    if (!refreshing(media)) finish(false);
+  };
+  const onFailed = () => finish(false);
+  const timer = window.setTimeout(() => finish(false), METADATA_TIMEOUT_MS + RECOVERY_TIMEOUT_MS);
 
   function finish(value: boolean) {
     window.clearTimeout(timer);
     media.removeEventListener("loadedmetadata", onReady);
     media.removeEventListener("error", onError);
+    media.removeEventListener(RECOVERY_FAILED_EVENT, onFailed);
     settle(value);
   }
 
   media.addEventListener("loadedmetadata", onReady);
   media.addEventListener("error", onError);
+  media.addEventListener(RECOVERY_FAILED_EVENT, onFailed);
 
   return { ready, cancel: () => finish(false) };
 }
@@ -362,6 +382,30 @@ export function ReviewStage({ children }: { children: ReactNode }) {
         media.pause();
         media.currentTime = plan.seek;
         setMessage(`${name}, paused at ${formatDuration(plan.seek) ?? "that moment"}.`);
+
+        // If that seek needs bytes the player's address can no longer fetch,
+        // the player refreshes it and puts back the time it had (F6.2). The
+        // locator's own time wins: once the player says it has recovered, it
+        // is put back here, paused — and if the player cannot recover, the
+        // note says so. Bounded — past the browser's own retrying, which
+        // comes before the player even knows — and cancelled by the next press.
+        const onRecovered = () => {
+          if (stale()) return;
+          media.pause();
+          media.currentTime = plan.seek;
+        };
+        const onFailed = () => {
+          if (!stale()) setMessage(`${name} could not be loaded here.`);
+        };
+        const done = () => {
+          window.clearTimeout(bound);
+          media.removeEventListener(RECOVERED_EVENT, onRecovered);
+          media.removeEventListener(RECOVERY_FAILED_EVENT, onFailed);
+        };
+        const bound = window.setTimeout(done, BROWSER_RETRY_MS + 2 * RECOVERY_TIMEOUT_MS);
+        media.addEventListener(RECOVERED_EVENT, onRecovered, { once: true });
+        media.addEventListener(RECOVERY_FAILED_EVENT, onFailed, { once: true });
+        pending.current = done;
       })();
     },
     [endCapture, show, stop],
@@ -687,7 +731,10 @@ const PLAYER = "video, audio";
 
 function readPlayer(media: HTMLMediaElement | null): Player {
   if (!media) return { duration: Number.NaN, current: 0, failed: true };
-  return { duration: media.duration, current: media.currentTime, failed: media.error !== null };
+  // A player fetching a fresh address (F6.2) has not failed; it is not ready
+  // yet, and says so, until its metadata comes back.
+  const failed = media.error !== null && !refreshing(media);
+  return { duration: media.duration, current: media.currentTime, failed };
 }
 
 /**

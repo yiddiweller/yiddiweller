@@ -90,7 +90,7 @@ export const fixture = {
 /* ------------------------------------------------------------- seeding */
 
 /** Better Auth's signed cookie value: the token, a dot, its HMAC — URI-encoded. */
-function signed(token: string, secret: string): string {
+export function signed(token: string, secret: string): string {
   return encodeURIComponent(`${token}.${createHmac("sha256", secret).update(token).digest("base64")}`);
 }
 
@@ -294,16 +294,23 @@ export async function open(
     fail?: string;
     /** A phone: touch, and a coarse pointer. */
     mobile?: boolean;
+    /** Another server sharing this database — F6.2's preview-mode one. */
+    base?: string;
+    /** Another client's session cookie in place of the fixture's. */
+    clientCookie?: string;
+    /** Called with the page before it navigates — to hear its first requests. */
+    onPage?: (page: Page) => void;
   } = {},
 ): Promise<{ page: Page; errors: string[]; release: () => void }> {
+  const origin = options.base ?? base!;
   const context = await browser.newContext({
     viewport: options.viewport ?? { width: 1280, height: 900 },
     reducedMotion: options.reducedMotion ?? "no-preference",
     ...(options.mobile ? { isMobile: true, hasTouch: true } : {}),
   });
-  const host = new URL(base!).hostname;
+  const host = new URL(origin).hostname;
   await context.addCookies([
-    { name: "__Secure-yw_client.session_token", value: fixture.clientCookie, domain: host, path: "/", secure: true, httpOnly: true, sameSite: "Lax" },
+    { name: "__Secure-yw_client.session_token", value: options.clientCookie ?? fixture.clientCookie, domain: host, path: "/", secure: true, httpOnly: true, sameSite: "Lax" },
     { name: "__Secure-yw_studio.session_token", value: fixture.staffCookie, domain: host, path: "/", secure: true, httpOnly: true, sameSite: "Lax" },
   ]);
 
@@ -327,6 +334,7 @@ export async function open(
   const page = await context.newPage();
   const errors: string[] = [];
   page.on("pageerror", (error: Error) => errors.push(error.message));
+  options.onPage?.(page);
 
   let release = () => {};
   if (options.hold) {
@@ -343,7 +351,7 @@ export async function open(
     await page.route(`**${options.fail}`, (route: { abort: () => Promise<void> }) => route.abort());
   }
 
-  const response = await page.goto(`${base}${path}`, { waitUntil: "domcontentloaded" });
+  const response = await page.goto(`${origin}${path}`, { waitUntil: "domcontentloaded" });
   assert.equal(response.status(), 200, `${path} answered ${response.status()}`);
   await page.waitForLoadState("load").catch(() => {});
   // Hydrated: React has attached to the locators (and to the players), so a

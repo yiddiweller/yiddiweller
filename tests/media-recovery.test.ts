@@ -7,6 +7,8 @@ import {
   MEDIA_ERR_NETWORK,
   qualifies,
   recover,
+  refreshSource,
+  restoreSeek,
   windowOpen,
   type MediaFailure,
   type RecoveryEvent,
@@ -170,4 +172,30 @@ test("K. nothing in any state is a URL, a credential, a person or a Review", () 
   const source = readFileSync("lib/workrooms/media-recovery.ts", "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
   assert.doesNotMatch(source, /^import /m, "the rules import something");
   assert.doesNotMatch(source, /document|window\.|HTMLMediaElement|fetch\(|useState|process\.env/);
+});
+
+/* ------------------------------------------------ F6.2: the player's side */
+
+test("a refresh is our own route with a refresh marker — never anything else", () => {
+  const view = "/workrooms/w1/files/f1/view";
+  assert.equal(refreshSource(view, 0), view, "generation 0 is the path exactly as given");
+  assert.equal(refreshSource(view, 1), `${view}?refresh=1`);
+  assert.equal(refreshSource(view, 2), `${view}?refresh=2`);
+  // A query it already had is kept, and a stale marker is replaced, not repeated.
+  assert.equal(refreshSource(`${view}?a=b`, 3), `${view}?a=b&refresh=3`);
+  assert.equal(refreshSource(`${view}?refresh=1`, 2), `${view}?refresh=2`);
+  assert.equal(refreshSource(`${view}#t`, 1), `${view}?refresh=1#t`);
+  for (const generation of [-1, 0.5, Number.NaN]) assert.equal(refreshSource(view, generation), view);
+  // It is always the path it was given: nothing it builds leaves our origin.
+  assert.ok(refreshSource(view, 9).startsWith(view));
+});
+
+test("the time is put back where the file has it; a time past the end is declined, not clamped", () => {
+  assert.equal(restoreSeek(42.5, 600), 42.5);
+  assert.equal(restoreSeek(600, 600), 600);
+  assert.equal(restoreSeek(42.5, Number.NaN), 42.5, "an unknown duration is no reason to refuse");
+  assert.equal(restoreSeek(42.5, Number.POSITIVE_INFINITY), 42.5);
+  assert.equal(restoreSeek(601, 600), null);
+  assert.equal(restoreSeek(Number.NaN, 600), 0);
+  assert.equal(restoreSeek(-3, 600), 0);
 });

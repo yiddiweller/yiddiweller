@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { currentViewer } from "@/lib/client-auth/guard";
 import { fileForViewer } from "@/lib/db/files";
 import { presignInline } from "@/lib/storage/presign";
+import { logViewRefresh } from "@/lib/storage/view-refresh-log";
 import { viewable } from "@/lib/storage/policy";
 import { isPublicId } from "@/lib/workrooms/id";
 
@@ -30,7 +31,7 @@ export const dynamic = "force-dynamic";
  * contents.
  */
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string; fileId: string }> },
 ) {
   const viewer = await currentViewer();
@@ -42,6 +43,9 @@ export async function GET(
   const file = await fileForViewer(viewer.contactId, id, fileId);
   if (!file || !viewable(file.contentType)) return notFound();
 
+  // A player recovering from an expired address (F6.2): logged only now,
+  // authorized, and with nothing but the route and the viewer kind.
+  logViewRefresh(request, "client", file.contentType);
   const url = await presignInline(file.storageKey, file.contentType);
 
   return new Response(null, {

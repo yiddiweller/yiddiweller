@@ -98,8 +98,19 @@ foundation — is implemented and tested, and nothing visible**: the view URL
 lives fifteen minutes through one function, `effectiveViewTtlSeconds()`, which
 `VIEW_TTL_OVERRIDE_SECONDS` can only shorten and only where `SITE_ENV=preview`
 (`env:check` refuses it elsewhere); `media-recovery.ts` holds the rules — one
-refresh per window, never a loop, **always ending paused**. Region capture is
-not built, and Stage F is not complete.
+refresh per window, never a loop, **always ending paused**. **F6.2 — visible
+audio and video recovery — is implemented, its automated tests pass, and it is
+not manually accepted**: `MediaPlayer` (inside `FileViewer`, same native markup)
+goes back through the same `/view` route with `?refresh=N` — authorized afresh,
+never `currentSrc` — restores the time paused and never calls `play()`, shows
+*This preview couldn't be refreshed. Try again, or download the original.* with
+**Try again** when it stops, and tells `ReviewStage` through the element's
+`data-recovery` and `media-recovered`/`media-recovery-failed`, so a locator's
+own time wins and a capture keeps its draft. `file.view_refreshed` logs `{ route,
+viewer }` and nothing else. Images and PDFs are untouched; `ResponseCacheControl`
+is still deferred. Chromium reports a lapsed range about thirty seconds after
+the seek (ORB withholds the bucket's XML 403 and the loader retries), so
+recovery starts then. Region capture is not built, and Stage F is not complete.
 Approvals has not begun. Build 005 is **not promoted**: production has no bucket, the sweep is
 unscheduled and there is no per-object backup strategy, so production remains
 Build 004.**

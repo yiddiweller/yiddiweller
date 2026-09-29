@@ -1,4 +1,6 @@
+import MediaPlayer from "@/components/workrooms/MediaPlayer";
 import { type ViewerKind } from "@/lib/storage/policy";
+import { effectiveViewTtlSeconds } from "@/lib/storage/view-ttl";
 import styles from "@/app/workrooms/workroom.module.css";
 
 /**
@@ -18,6 +20,12 @@ import styles from "@/app/workrooms/workroom.module.css";
  *
  * Used by the client's viewer page and by Studio's, which differ only in which
  * routes they are handed.
+ *
+ * **A recording or a video is `MediaPlayer`'s** (Stage F6.2): the same native
+ * element, which also recovers — once, paused — when its signed address runs
+ * out. It is given only the view URL's lifetime, as the window for that, and
+ * a new player per source. An image, a PDF and a download card are exactly
+ * as they were: nothing recovers them automatically.
  */
 
 export default function FileViewer({
@@ -66,26 +74,5 @@ export default function FileViewer({
     );
   }
 
-  if (kind === "video") {
-    return (
-      <div className={styles.viewerStage}>
-        {/* Native controls, no autoplay and `preload="metadata"`: a client
-            opening a Workroom on a phone should not start downloading a
-            gigabyte, and should never be surprised by sound. */}
-        <video className={styles.viewerVideo} src={source} controls preload="metadata" playsInline>
-          <p>
-            This video cannot play in your browser. Download it to watch it in another player.
-          </p>
-        </video>
-      </div>
-    );
-  }
-
-  return (
-    <div className={styles.viewerAudio}>
-      <audio className={styles.viewerAudioPlayer} src={source} controls preload="metadata">
-        <p>This audio cannot play in your browser. Download it to listen another way.</p>
-      </audio>
-    </div>
-  );
+  return <MediaPlayer key={source} kind={kind} source={source} windowSeconds={effectiveViewTtlSeconds()} />;
 }

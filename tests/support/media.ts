@@ -103,3 +103,75 @@ export function m4a(): Buffer {
 export function webm(): Buffer {
   return readFileSync(new URL("../fixtures/eight-seconds.webm", import.meta.url));
 }
+
+/**
+ * A large, seekable video, made at test setup — F6.2's recovery tests need a
+ * file big enough that a seek after expiry asks the bucket for bytes the
+ * browser has not fetched yet, which the committed eight seconds never do.
+ *
+ * Twenty seconds of 640×360 noise at ten frames a second, about 14 MB: the
+ * frames are drawn in Chromium and exported as JPEG, then encoded to VP8 with
+ * the cues at the front by Playwright's own bundled ffmpeg — nothing is
+ * committed and nothing else is installed. `FFMPEG_PATH` names the binary, or
+ * the one under `/opt/pw-browsers` is used.
+ */
+export async function noiseWebm(): Promise<Buffer> {
+  const { execFileSync } = await import("node:child_process");
+  const { existsSync, mkdtempSync, readdirSync, writeFileSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+
+  const ffmpeg =
+    process.env.FFMPEG_PATH ??
+    (existsSync("/opt/pw-browsers")
+      ? readdirSync("/opt/pw-browsers")
+          .filter((name) => name.startsWith("ffmpeg-"))
+          .map((name) => join("/opt/pw-browsers", name, "ffmpeg-linux"))
+          .find((path) => existsSync(path))
+      : undefined);
+  if (!ffmpeg) throw new Error("set FFMPEG_PATH to Playwright's ffmpeg to make the recovery test's video");
+
+  const playwright = await import(process.env.PLAYWRIGHT_MODULE!);
+  const browser = await playwright.chromium.launch(
+    process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {},
+  );
+  try {
+    const page = await browser.newPage();
+    const frames: string[] = await page.evaluate(() => {
+      const canvas = document.createElement("canvas");
+      canvas.width = 640;
+      canvas.height = 360;
+      const context = canvas.getContext("2d")!;
+      const image = context.createImageData(640, 360);
+      let seed = 7;
+      const out: string[] = [];
+      for (let frame = 0; frame < 200; frame += 1) {
+        for (let i = 0; i < image.data.length; i += 4) {
+          seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+          const value = seed & 255;
+          image.data[i] = value;
+          image.data[i + 1] = value;
+          image.data[i + 2] = value;
+          image.data[i + 3] = 255;
+        }
+        context.putImageData(image, 0, 0);
+        out.push(canvas.toDataURL("image/jpeg", 0.9).split(",")[1]!);
+      }
+      return out;
+    });
+
+    const dir = mkdtempSync(join(tmpdir(), "noise-webm-"));
+    const input = join(dir, "frames.mjpeg");
+    const output = join(dir, "noise.webm");
+    writeFileSync(input, Buffer.concat(frames.map((frame) => Buffer.from(frame, "base64"))));
+    execFileSync(ffmpeg, [
+      "-hide_banner", "-loglevel", "error", "-y",
+      "-f", "image2pipe", "-c:v", "mjpeg", "-framerate", "10", "-i", input,
+      "-c:v", "libvpx", "-b:v", "8M", "-deadline", "realtime", "-cpu-used", "8",
+      "-cues_to_front", "1", "-f", "webm", output,
+    ]);
+    return readFileSync(output);
+  } finally {
+    await browser.close();
+  }
+}

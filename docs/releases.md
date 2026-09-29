@@ -428,6 +428,17 @@ recorded in [`delivery.md`](./delivery.md) under *Reviews are verified on beta*.
   tested as data, and the test bucket now lets a signed URL expire. F6.2 will
   wire them to the players. Images and PDFs stay outside automatic recovery;
   `ResponseCacheControl` hardening is deferred.
+- **Stage F6.2 — visible audio and video recovery: implemented, automated
+  tests pass, not manually accepted.** An audio or video player whose signed
+  address has lapsed goes back through our own view route — authorized afresh
+  every time, so withdrawn access is refused — and is put back where it was,
+  **always paused**. One automatic refresh per window; if it fails, one calm
+  line under that player offers *Try again* beside the download. Locators land
+  on their own moment and an open precise-time capture keeps its draft through
+  a recovery. A refresh leaves one log line with the route and the viewer kind
+  only. Images and PDFs are unchanged. In Chromium the lapse is reported about
+  thirty seconds after the seek that meets it, so that is when recovery
+  begins. The real-beta expiry walk (F6.3) is next.
 - **Still not built:** region capture, and Stage G,
   notifications.
 

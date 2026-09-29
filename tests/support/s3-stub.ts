@@ -38,9 +38,29 @@ export class S3Stub {
   /** The stub's clock, in milliseconds. A test moves it to expire a URL at once. */
   now: () => number = () => Date.now();
 
+  /**
+   * F6.2: every presigned URL dated in a whole second before this instant has
+   * run out of time, whatever its `X-Amz-Expires` says — its lifetime passed,
+   * as far as this bucket is concerned. Unlike moving `now`, it leaves a URL
+   * signed afterwards valid, which is what a recovery needs to prove.
+   */
+  expiredBefore = 0;
+
+  /** Keys containing any of these answer every GET with 500: a fault that persists. */
+  readonly failing = new Set<string>();
+
+  /**
+   * Keys containing any of these send their first `TRUNCATE_AT` bytes and then
+   * drop the connection, and every later range is dropped before a byte: a
+   * network failure **after data arrived but before the player could read its
+   * metadata** — the one case that is a network error yet never loaded.
+   */
+  readonly truncating = new Set<string>();
+
   async start(): Promise<string> {
     this.server = createServer((request, response) => {
       const url = new URL(request.url ?? "/", "http://stub");
+      if (url.pathname.startsWith("/__control/")) return void this.control(url, response);
       // Path style: /{bucket}/{key...}
       const key = decodeURIComponent(url.pathname.replace(/^\/[^/]+\//, ""));
       const method = request.method ?? "GET";
@@ -68,6 +88,29 @@ export class S3Stub {
     this.server = null;
   }
 
+  /**
+   * Test controls, over HTTP, for a stub running in another process — the one
+   * a local server is pointed at. Test infrastructure only: this stub is never
+   * anywhere but a test run.
+   *
+   * - `/__control/expire`: every URL signed so far has expired.
+   * - `/__control/fail?key=…`: GETs for keys containing that fail with 500.
+   * - `/__control/truncate?key=…`: GETs for those keys break off early.
+   * - `/__control/reset`: none of these.
+   */
+  private control(url: URL, response: import("node:http").ServerResponse): void {
+    const action = url.pathname.slice("/__control/".length);
+    if (action === "expire") this.expiredBefore = Date.now();
+    else if (action === "fail" && url.searchParams.get("key")) this.failing.add(url.searchParams.get("key")!);
+    else if (action === "truncate" && url.searchParams.get("key")) this.truncating.add(url.searchParams.get("key")!);
+    else if (action === "reset") {
+      this.expiredBefore = 0;
+      this.failing.clear();
+      this.truncating.clear();
+    } else return void response.writeHead(404).end();
+    response.writeHead(204).end();
+  }
+
   /** Puts bytes there without going through the API, to set a test up. */
   place(key: string, body: Buffer | string, contentType = "application/octet-stream"): void {
     const buffer = typeof body === "string" ? Buffer.from(body) : body;
@@ -82,7 +125,7 @@ export class S3Stub {
     headers: Record<string, string | string[] | undefined>,
     response: import("node:http").ServerResponse,
   ): void {
-    if (presignedExpired(url, this.now())) {
+    if (presignedExpired(url, this.now()) || signedBefore(url, this.expiredBefore)) {
       response
         .writeHead(403, { "content-type": "application/xml" })
         .end('<?xml version="1.0"?><Error><Code>AccessDenied</Code><Message>Request has expired</Message></Error>');
@@ -158,6 +201,25 @@ export class S3Stub {
         })
         .end();
       return;
+    }
+
+    if (method === "GET" && [...this.failing].some((part) => key.includes(part))) {
+      return void response.writeHead(500).end();
+    }
+
+    if (method === "GET" && [...this.truncating].some((part) => key.includes(part))) {
+      const object = this.objects.get(key);
+      if (!object) return void response.writeHead(404).end();
+      const range = /^bytes=(\d+)-/.exec(String(headers["range"] ?? ""));
+      const start = range ? Number(range[1]) : 0;
+      const size = object.body.length;
+      response.writeHead(range ? 206 : 200, {
+        "content-length": String(size - start),
+        ...(range ? { "content-range": `bytes ${start}-${size - 1}/${size}` } : {}),
+        "accept-ranges": "bytes",
+      });
+      const head = start < TRUNCATE_AT ? object.body.subarray(start, TRUNCATE_AT) : Buffer.alloc(0);
+      return void response.write(head, () => response.socket?.destroy());
     }
 
     if (method === "GET") {
@@ -243,6 +305,24 @@ export function presignedExpired(url: URL, now: number): boolean {
   const [, y, mo, d, h, mi, s] = match.map(Number) as number[];
   const signedAt = Date.UTC(y!, mo! - 1, d!, h!, mi!, s!);
   return now > signedAt + seconds * 1000;
+}
+
+/** Where a truncating object breaks off: short of any media format's header. */
+const TRUNCATE_AT = 16;
+
+/**
+ * Whether a presigned URL was dated in a whole second before `cutoff`. A URL
+ * signed in the same second as the cutoff, or after, is not: the date has
+ * one-second resolution, and a recovery's fresh URL is signed after the test
+ * expired the old ones.
+ */
+export function signedBefore(url: URL, cutoff: number): boolean {
+  if (cutoff <= 0) return false;
+  const date = url.searchParams.get("X-Amz-Date");
+  const match = date && /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z$/.exec(date);
+  if (!match) return false;
+  const [, y, mo, d, h, mi, s] = match.map(Number) as number[];
+  return Date.UTC(y!, mo! - 1, d!, h!, mi!, s!) + 1000 <= cutoff;
 }
 
 export function useStub(endpoint: string): void {

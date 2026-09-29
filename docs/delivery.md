@@ -1894,6 +1894,106 @@ pass; no player, page or route behaves differently.
   *Request has expired*, on a clock a test can move — so nothing waits fifteen
   minutes. Requests the SDK signs with a header never expire there.
 
+**F6.2 — audio and video recover, visibly and paused.** Implemented, automated
+tests pass, **not manually accepted**. Audio and video only; images, PDFs and
+download cards are exactly as they were, with no refresh parameter anywhere
+near them.
+
+- **One small wrapper, the same player.** `components/workrooms/MediaPlayer.tsx`
+  is what `FileViewer` renders for audio and video: the same native `<audio
+  controls preload="metadata">` and `<video controls preload="metadata"
+  playsInline>`, the same wrapper and fallback sentence, no custom controls and
+  no autoplay. The server hands it one number, `effectiveViewTtlSeconds()`, as
+  the retry window — never a signed URL, a key, a credential or the bucket's
+  address.
+- **A refresh is our own route again.** The player's `src` becomes the same
+  `/view` path it was given with `?refresh=N` (`refreshSource`), built from
+  that path and never from `currentSrc`, so every refresh — automatic or *Try
+  again* — is a new request our route authorizes from scratch and signs anew:
+  session, membership, published Revision, `ready` + `shared` + unarchived and
+  a viewable type for a client; staff and the file's Workroom in Studio. The
+  predicates are unchanged. Access withdrawn since the page opened gets the
+  route's 404, nothing is signed, and the player stops.
+- **F6.1's rules decide, and it ends paused.** Only a network error
+  (`MEDIA_ERR_NETWORK`) on a source that reached its metadata qualifies; one
+  automatic refresh per window; a failed refresh or restore stops. On the fresh
+  source's metadata the player is paused, put back at the time it failed at —
+  a time past the end is declined, not clamped — and left paused. Nothing calls
+  `play()`. The fresh metadata and the restoring seek are each bounded at ten
+  seconds.
+- **A stop is one calm line under that player**: *This preview couldn't be
+  refreshed. Try again, or download the original.* with **Try again** beside
+  the Download that is always there. It appears when the refresh failed, or
+  when the refreshed player failed again inside its window — both times a
+  refresh really happened — and never for a player that never loaded. *Try
+  again* is the person's: one new `/view` request with the next counter,
+  whatever the window says, and it restores paused too. No toast, no modal, no
+  replacement for the native player.
+- **Locators and capture keep their place.** The element is the shared thing:
+  while a refresh is in flight it carries `data-recovery="refreshing"`
+  (`"failed"` once stopped), and it fires `media-recovered` or
+  `media-recovery-failed`. `ReviewStage` reads those instead of concluding
+  *could not be loaded here* from a bare `error`, and a locator puts **its own**
+  moment or stretch start back after `media-recovered`, paused — including when
+  the press lands between the error and the fresh source, when the player's
+  saved time is somewhere else. An open capture panel owns its draft, start,
+  subject and session, none of which the player holds, so all of them survive
+  and the panel reads the player again once it is back.
+- **One log line, two facts.** `file.view_refreshed` with `{ route, viewer }`,
+  in both view routes, only when the refresh marker is present and only after
+  authorization has passed — a refused refresh leaves nothing. Never a file,
+  Workroom, person, key, name, URL, the marker's value, an email, a Review body
+  or an anchor; a test holds the line's keys to a whitelist.
+
+**Measured while building it: Chromium takes about thirty seconds to report
+an expired range.** A bucket refuses an expired address with an XML 403, as S3
+does. For a cross-origin media request Chromium's opaque-response blocking
+withholds that body, so the media loader sees a failed request rather than a
+403 and retries it — thirty times, with a pause growing by 50 ms each time —
+before the element reports `MEDIA_ERR_NETWORK`. In the local suite the error,
+and so the recovery, arrives **about 31 seconds after the seek**; the player
+shows itself loading until then. A prompt fault (a bare 500) errors at once.
+And Chromium reports **any** failure before metadata as a source it cannot use
+(code 4), even a stream broken off after its first bytes, so there the network
+rule never meets a player that never loaded; the `hadMetadata` half of the rule
+is for browsers that follow the specification's network error, and is tested
+by holding a player before its metadata and reporting one.
+The locator's wait across a recovery is bounded past that
+(`BROWSER_RETRY_MS`, 45 s, plus the two ten-second bounds), because the
+retrying happens before the player knows anything. A clock-based early refresh
+— refreshing on a stalled seek once the URL is known to be past its lifetime —
+is **not built**: it would start a refresh without an error, which the locked
+rule does not allow, and it could pause a player that was playing from its
+buffer. Whether the Railway bucket and Safari behave the same is for the
+real-beta walk.
+
+**Tested in a real browser against a real lapse.** `tests/media-recovery-browser.test.ts`
+runs against a server in preview mode with `VIEW_TTL_OVERRIDE_SECONDS=30` and
+the test bucket's expiry: a real thirty-second lifetime running out and the seek
+that meets it refused by the bucket, then recovered through `/view` with a new
+signature (A–C); one automatic refresh and a stop for a fault that persists,
+and no second automatic refresh inside the window (D); audio and video each
+recovered at the time sought, paused, with no `play()` call and no play event
+(E–G); a moment and a stretch locator on an expired player, a locator pressed
+while the player refreshes, and one pressed in the instant it fails (H); an
+open precise-time capture surviving recovery (I); membership revoked after the
+page opened (J); a file that never loaded — refused outright, broken off after
+its first bytes, or reporting a network error before its metadata (K); *Try
+again* while the fault
+persists and after it clears (L); an image and a PDF unchanged, the point where
+it was (M, N); a replaced version, client and Studio (O); and no signed address
+in the HTML or the flight payload, and the log's whitelist (P). Eight
+mutations — a refresh reusing the dead address, a second refresh inside the
+window, a recovery calling `play()`, the time lost, the locator's time not put
+back, a revoked person signed anyway, a player that never loaded refreshed, a
+log line carrying the path and the marker — each failed the test written for
+it.
+
+**For the real-beta walk (F6.3), set by hand and in beta only:**
+`VIEW_TTL_OVERRIDE_SECONDS=60` beside `SITE_ENV=preview`, then *Audio review
+test* and *Video review test* on an iPhone and on desktop. Nothing here set it.
+`ResponseCacheControl` hardening stays **deferred**.
+
 #### Stretches on a phone
 
 A stretch is kept, and it is harder than a moment: two deliberate presses

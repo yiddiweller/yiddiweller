@@ -161,3 +161,69 @@ export function recover(state: RecoveryState, event: RecoveryEvent, windowMs: nu
     }
   }
 }
+
+/* ------------------------------------------------ F6.2: the player's side */
+
+/**
+ * The one DOM contract between the player and anything else that drives it —
+ * `ReviewStage`'s locators and capture panel. While a refresh is in flight the
+ * media element carries `data-recovery="refreshing"`, and `"failed"` once one
+ * has failed; when it ends, the element fires one of the two events. A
+ * locator waiting on a player reads these rather than concluding from a bare
+ * `error` that the file cannot be loaded. No second state system: the
+ * element is the shared thing, and it already is.
+ */
+export const RECOVERY_ATTRIBUTE = "data-recovery";
+export const RECOVERED_EVENT = "media-recovered";
+export const RECOVERY_FAILED_EVENT = "media-recovery-failed";
+
+/**
+ * How long a fresh source may take to report its metadata, or a restoring
+ * seek to settle, before the attempt counts as failed — the same bound a
+ * locator already waits for a player.
+ */
+export const RECOVERY_TIMEOUT_MS = 10_000;
+
+/**
+ * How long a browser may go on retrying a refused range before it reports an
+ * error at all — measured, not chosen. A bucket refuses an expired address
+ * with an XML body, as S3 does; Chromium's opaque-response blocking withholds
+ * that from a cross-origin media request, so the media loader sees a failed
+ * request rather than a 403 and retries it, thirty times with a growing pause.
+ * The element's network error — the only thing recovery can start from —
+ * arrives about thirty-one seconds after the seek. Anything that waits on a
+ * player across a recovery waits at least this long first.
+ */
+export const BROWSER_RETRY_MS = 45_000;
+
+/**
+ * Our own `/view` route with a refresh marker, never anything else: the
+ * original authorized path, the same query it had, and `refresh=N`. Built
+ * from the path the page was given — never from `currentSrc` — so a refresh
+ * always goes back through authorization and never reuses a signed address.
+ * Generation 0 is the path exactly as given.
+ */
+export function refreshSource(source: string, generation: number): string {
+  if (!Number.isInteger(generation) || generation <= 0) return source;
+  const hash = source.indexOf("#");
+  const base = hash === -1 ? source : source.slice(0, hash);
+  const fragment = hash === -1 ? "" : source.slice(hash);
+  const mark = base.indexOf("?");
+  const path = mark === -1 ? base : base.slice(0, mark);
+  const query = new URLSearchParams(mark === -1 ? "" : base.slice(mark + 1));
+  query.set("refresh", String(generation));
+  return `${path}?${query.toString()}${fragment}`;
+}
+
+/**
+ * Where to put the player back once the fresh source knows its duration. A
+ * time past the end is **declined, not clamped** — the rule F2's locator
+ * already follows (`seekPlan`) — so the player stays at the start rather than
+ * claiming a place the file does not have. An unknown duration is not a
+ * reason to refuse.
+ */
+export function restoreSeek(seek: number, duration: number): number | null {
+  if (!Number.isFinite(seek) || seek < 0) return 0;
+  if (Number.isFinite(duration) && duration >= 0 && seek > duration) return null;
+  return seek;
+}

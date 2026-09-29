@@ -2,6 +2,7 @@ import { currentStaff } from "@/lib/auth/guard";
 import { fileForStaff } from "@/lib/db/files";
 import { isId } from "@/lib/business";
 import { presignInline } from "@/lib/storage/presign";
+import { logViewRefresh } from "@/lib/storage/view-refresh-log";
 import { viewable } from "@/lib/storage/policy";
 import { isPublicId } from "@/lib/workrooms/id";
 
@@ -17,7 +18,7 @@ export const dynamic = "force-dynamic";
  * it is there: the rule protects the person looking, not the tenancy.
  */
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string; fileId: string }> },
 ) {
   const staff = await currentStaff();
@@ -29,6 +30,9 @@ export async function GET(
   const file = await fileForStaff(fileId);
   if (!file || file.workroomId !== id || !viewable(file.contentType)) return notFound();
 
+  // A player recovering from an expired address (F6.2): logged only now,
+  // authorized, and with nothing but the route and the viewer kind.
+  logViewRefresh(request, "studio", file.contentType);
   const url = await presignInline(file.storageKey, file.contentType);
 
   return new Response(null, {

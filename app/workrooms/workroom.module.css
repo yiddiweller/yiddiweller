@@ -475,6 +475,34 @@
 .viewerAudio { margin-top: var(--w-3); }
 .viewerAudioPlayer { display: block; width: 100%; }
 
+/* Only when a player's one automatic refresh has failed: a calm line under
+   that player, never a banner or a dialog, beside the Download that is always
+   there. The native player stays exactly where it was. */
+.viewerRecovery {
+  margin-top: var(--w-2);
+  font-size: var(--w-fs-ui);
+  color: var(--w-fg-3);
+}
+
+.viewerRetry {
+  font: inherit;
+  font-size: var(--w-fs-ui);
+  color: var(--w-fg-2);
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--w-edge);
+  padding: 0 0 1px;
+  min-height: 24px;
+  cursor: pointer;
+}
+
+.viewerRetry:hover { color: var(--w-fg); }
+
+.viewerRetry:focus-visible {
+  outline: 1px solid var(--w-fg);
+  outline-offset: 4px;
+}
+
 /* What an unviewable file says. Quiet, and never an apology: the file is
    there, it is theirs, and the application it belongs in is elsewhere. */
 .viewerEmpty {

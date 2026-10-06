@@ -122,7 +122,17 @@ deleted from Railway beta and beta redeployed: the view URL is fifteen minutes
 closed.** Image regions, arrows, lines, rectangles, freehand, colours, several
 points per comment, spatial or frame annotation on video, PDF precision, zoom
 and an annotation toolbar are **deferred future annotation capabilities**, not
-unfinished Stage F requirements. **Stage G has not started.**
+unfinished Stage F requirements. **Stage G's V1 decisions are locked in
+`docs/delivery.md`, and G0 — return to the exact page after signing in — is
+implemented, its automated tests pass, and it is not manually accepted**: a
+signed-out link to a Workroom or Studio page comes back to exactly that page,
+query and all, after the magic link, through `next` on the entrance. Each world
+has its own strict rule — `lib/client-auth/redirect.ts` (`/workrooms` only) and
+`lib/auth/redirect.ts` (`/studio` only), judged raw and decoded — applied by the
+guard, the entrance, the form and both auth instances' hooks to all three
+magic-link callbacks. **`next` grants nothing**; the page runs its own checks.
+Middleware's `x-yw-return-to` header is always overwritten. **No notification is
+built or sent; G1 and G2 have not started.**
 Approvals has not begun. Build 005 is **not promoted**: production has no bucket, the sweep is
 unscheduled and there is no per-object backup strategy, so production remains
 Build 004.**

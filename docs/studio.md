@@ -229,7 +229,7 @@ All four are designed rather than left to the framework:
 | --- | --- |
 | The door | Address, one control, no marketing. |
 | On its way | "Check your email" — the same message whether or not the address has access. |
-| A link that did not work | Expired, already used, or invalid. The sign-in request passes `errorCallbackURL` so the reason survives the redirect; without it a failed link lands on `/studio`, bounces to the sign-in page and loses the explanation. |
+| A link that did not work | Expired, already used, or invalid. The sign-in request passes `errorCallbackURL` so the reason survives the redirect; without it a failed link lands on `/studio`, bounces to the sign-in page and loses the explanation. Since G0 it also carries the page somebody was on its way to, so asking again still returns there. |
 | An account without access | A Better Auth session whose staff record is not active. |
 
 The last one is a safety net rather than an everyday path: removing access

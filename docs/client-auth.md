@@ -141,6 +141,16 @@ and both are sanitised: the sign-in `POST` in its body, the verification `GET`
 in its query string. Sanitising only the body left
 `/magic-link/verify?callbackURL=/studio/clients` still working.
 
+**And it comes back to the page you asked for (G0).** A signed-out visit to a
+Workroom page is sent to `/workrooms/login?next=<that page>`; the entrance, the
+form and the auth hook each judge `next` by the same rule, and the link lands
+on exactly that page — query included — or on `/workrooms` if `next` was
+anything else. The hook rewrites `errorCallbackURL` and `newUserCallbackURL` as
+well as `callbackURL`, since a refused link follows the first just as readily.
+`next` grants nothing: the page runs its own reads, so access revoked while
+somebody signs in still ends at a 404. Studio has the same flow under its own
+rule, `lib/auth/redirect.ts`; see `delivery.md`, *G0*.
+
 ---
 
 ## Sessions

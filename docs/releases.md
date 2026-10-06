@@ -459,7 +459,14 @@ recorded in [`delivery.md`](./delivery.md) under *Reviews are verified on beta*.
   colours, several points in one comment, spatial or frame annotation on
   video, PDF precision, zoom and an annotation toolbar remain **deferred
   future annotation capabilities**, not unfinished Stage F work.
-- **Not started:** Stage G, notifications, and Approvals.
+- **Stage G0 — return to the exact page after signing in: implemented,
+  automated tests pass, not manually accepted.** A signed-out link to one
+  version of a Presentation, or to one note in Studio, now survives signing in
+  and lands on exactly that page, query included, in its own world only — each
+  world with its own strict redirect rule, applied at every hop. The address
+  grants nothing: the page still checks access when it is reached. Nothing about
+  notifications is built, and no new kind of email is sent.
+- **Not started:** Stage G notification delivery (G1 onward), and Approvals.
 
 **Stage A beta acceptance.** Migration `0004` deployed and applied. `npm run
 storage:verify` was run **inside the real beta app container against the real

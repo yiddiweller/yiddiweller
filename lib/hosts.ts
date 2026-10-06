@@ -21,6 +21,17 @@ export const STUDIO_PREFIX = "/studio";
 /** Where a client's private space lives, on the public and client host. */
 export const WORKROOM_PREFIX = "/workrooms";
 
+/**
+ * The page a request was for, as a path and query, handed from middleware to
+ * the guards so a refused visit can come back to it after signing in.
+ *
+ * Written by middleware on every request it lets through, and **always
+ * overwritten** there, so a value a browser sends never arrives. Even if one
+ * did, it would only choose where its own sender lands: the guards pass it
+ * through the world's own redirect rule, and `next` grants nothing.
+ */
+export const RETURN_HEADER = "x-yw-return-to";
+
 function hostname(host: string | null): string {
   if (!host) return "";
   // Strip the port; Host carries it on localhost and in some proxies.

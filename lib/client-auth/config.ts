@@ -12,6 +12,7 @@ import { sendWorkroomLinkEmail } from "../emails.ts";
 import { log, redactEmail } from "../log.ts";
 import { sendWithoutTelling } from "../auth-delivery.ts";
 
+import { sanitiseCallbacks } from "../auth-callbacks.ts";
 import { workroomInvitation } from "./invitation-plugin.ts";
 import { workroomRedirect } from "./redirect.ts";
 
@@ -147,15 +148,12 @@ function createClientAuth() {
         // the verification GET in its query string. Measured — sanitising only
         // the body left `/magic-link/verify?callbackURL=/studio/clients`
         // redirecting a client straight out of their own world.
-        const body = ctx.body as { callbackURL?: unknown } | undefined;
-        if (body && typeof body.callbackURL === "string") {
-          body.callbackURL = workroomRedirect(body.callbackURL);
-        }
-
-        const query = ctx.query as { callbackURL?: unknown } | undefined;
-        if (query && typeof query.callbackURL === "string") {
-          query.callbackURL = workroomRedirect(query.callbackURL);
-        }
+        //
+        // And all three of the places a magic link can land, not only the
+        // success one: a refused link follows `errorCallbackURL`, which is just
+        // as much a redirect an attacker can write into a link (G0).
+        sanitiseCallbacks(ctx.body, workroomRedirect);
+        sanitiseCallbacks(ctx.query, workroomRedirect);
       }),
     },
 

@@ -2,9 +2,10 @@ import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 
 import { type Staff } from "../db/staff.ts";
-import { STUDIO_PREFIX } from "../hosts.ts";
+import { RETURN_HEADER } from "../hosts.ts";
 import { staffForEmail } from "./access.ts";
 import { auth } from "./config.ts";
+import { studioLoginPath } from "./redirect.ts";
 
 /**
  * Server-side authorization. Every Studio page, action and route handler goes
@@ -35,10 +36,19 @@ export async function sessionEmail(): Promise<string | null> {
   return session?.user?.email ?? null;
 }
 
-/** Requires a signed-in active member. Sends anyone else to sign in. */
+/**
+ * Requires a signed-in active member. Sends anyone else to sign in — carrying
+ * the page they asked for, query and all, so a link to one note in one
+ * version comes back to exactly that.
+ *
+ * The address grants nothing. It is judged by `studioLoginPath` here, again on
+ * the sign-in page and again by the auth instance, and the page it leads to
+ * calls this guard as it always did: a deactivated member who signs in still
+ * gets no further than the entrance.
+ */
 export async function requireStaff(): Promise<Staff> {
   const staff = await currentStaff();
-  if (!staff) redirect(`${STUDIO_PREFIX}/login`);
+  if (!staff) redirect(studioLoginPath((await headers()).get(RETURN_HEADER)));
   return staff;
 }
 

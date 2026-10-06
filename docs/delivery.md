@@ -2928,6 +2928,86 @@ redacted, as `lib/auth-delivery.ts` established.
 No digests, no preferences, no notification centre, no unsubscribe machinery.
 These are transactional messages to people who were deliberately invited.
 
+### Stage G — decided, not built
+
+The architecture recon is approved and these V1 decisions are locked. **No
+notification is sent by anything yet**: no table, no migration, no renderer, no
+dispatcher and no notification setting exists.
+
+1. Replies never send notification email in V1.
+2. Studio-bound notifications go to `CONTACT_EMAIL`, the studio inbox.
+3. *Ask for feedback* notifies every eligible active client member of the
+   Workroom — active identity, active membership, published and unarchived.
+4. *Publish & notify* is deferred.
+5. A Presentation title may appear in an email's body, never its subject.
+6. In preview, notifications are captured, not sent; a later beta walk may use
+   a preview-only `NOTIFICATION_REDIRECT_TO`.
+7. The dispatch cron is created at G3, not before.
+8. Client feedback is emailed once per Review round.
+9. Client notifications reply to `CONTACT_EMAIL`, and say that a reply by email
+   does not become a reply in the Review.
+10. A re-request after a withdrawal may notify again.
+
+**Reliability belongs to the outbox, not the process.** A notification intent
+will be written in the same transaction as the action that causes it, and a
+scheduled dispatcher will deliver whatever is due. A detached attempt straight
+after the action is **best-effort speed only** — the guarantee that a
+notification eventually sends is the durable row plus the scheduled
+dispatcher, never in-process execution.
+
+### G0 — return to the exact page after signing in
+
+**Implemented, automated tests pass, not manually accepted.** Infrastructure a
+notification needs before it can link anybody anywhere: a signed-out person who
+follows a link to one exact page signs in and lands on exactly that page, in
+their own world, with nothing granted by the trip.
+
+- **The guard carries the page.** Middleware hands every Workroom and Studio
+  request's own path and query to the guards in `x-yw-return-to`, always
+  overwriting whatever a browser sent under that name. `requireViewer` and
+  `requireStaff` redirect to `/workrooms/login?next=…` or `/studio/login?next=…`;
+  a page with nothing worth returning to — `/workrooms`, `/studio` — still goes
+  to the bare entrance.
+- **Every hop judges it again, by its own world's rule.** The entrance reads
+  `next` through `workroomReturn` or `studioReturn`, the form sends it as
+  `callbackURL` with the entrance-plus-`next` as `errorCallbackURL`, and each
+  Better Auth instance's `before` hook rewrites **all three** magic-link
+  callbacks — success, error and new-user — on both halves of the flow. An
+  unsafe value is not repaired into something else; it becomes the ordinary
+  destination, `/workrooms` or `/studio`.
+- **Two rules, not one.** `lib/client-auth/redirect.ts` accepts only
+  `/workrooms` and below; `lib/auth/redirect.ts` only `/studio` and below. Each
+  refuses another origin, a protocol-relative or `///` URL, a scheme
+  (`javascript:`, `data:`), a backslash, a control character (CR and LF
+  included), a `..`, malformed escaping and anything over 2,048 characters —
+  judged raw **and decoded**, because Better Auth decodes a callback once more
+  before following it. Neither module mentions the other's namespace, and a
+  test holds that.
+- **Exact and immutable.** A client's link to `/presentations/{pid}/revisions/2`
+  comes back to Version 2; Studio's `/revisions/2?note=1` comes back with its
+  query, and the note opens itself as `?note=` always has.
+- **`next` grants nothing.** The page at the end runs its own guard and reads as
+  it always did: a client whose membership was revoked while signing in gets
+  the route's 404, and a Studio member switched off before clicking gets *This
+  account no longer has access.* Somebody already signed in who opens the
+  entrance with a `next` is sent there — inside their own world only.
+- **A used or expired link comes back to the entrance, destination kept**, so
+  asking again still returns to the page. Studio's says *That link did not
+  work.* as before; the client entrance is unchanged.
+- **Ordinary sign-in is unchanged**: no `next`, `/workrooms` and `/studio` as
+  before, and the Studio `JoinForm` still lands on `/studio`.
+- **Auth mail is untouched.** The staff and client magic links, the Workroom
+  invitation and the Studio invitation follow their existing paths; the only
+  change to a sign-in email is that its link names the destination. No token,
+  link or full address is logged. **G0 sent no new kind of email, and G1 and G2
+  have not started.**
+
+Tested end to end in a real browser through the real email: the test server's
+`RESEND_BASE_URL` points at a local capture (`tests/support/mail-capture.ts`),
+so the link followed is the one a person would have received and nothing leaves
+the machine (`tests/return-to-destination.test.ts`, with the open-redirect
+matrices in `workroom-redirect.test.ts` and `studio-redirect.test.ts`).
+
 ---
 
 ## Authorization

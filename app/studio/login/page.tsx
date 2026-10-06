@@ -2,6 +2,7 @@ import SignInForm from "@/components/studio/SignInForm";
 import SignOutButton from "@/components/studio/SignOutButton";
 import StudioMark from "@/components/studio/StudioMark";
 import { currentStaff, sessionEmail } from "@/lib/auth/guard";
+import { STUDIO_HOME, studioReturn } from "@/lib/auth/redirect";
 import { redirect } from "next/navigation";
 import styles from "@/app/studio/studio.module.css";
 
@@ -15,16 +16,21 @@ export const metadata = { title: "Sign in" };
  * and an account that no longer has access. The last one matters most — a
  * removed member holds a perfectly valid session, so without it they would see
  * an empty form for ever and never learn why.
+ *
+ * `next` is the page somebody was sent here from, query included. It is judged
+ * by Studio's one redirect rule and, if it fails, quietly becomes Studio's
+ * root. It opens nothing: the page it names calls `requireStaff` when reached.
  */
 export default async function StudioLogin({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; next?: string | string[] }>;
 }) {
-  // Already signed in and still active: no reason to look at a sign-in form.
-  if (await currentStaff()) redirect("/studio");
+  const [{ error, next }, signedInAs] = await Promise.all([searchParams, sessionEmail()]);
+  const destination = studioReturn(next);
 
-  const [{ error }, signedInAs] = await Promise.all([searchParams, sessionEmail()]);
+  // Already signed in and still active: no reason to look at a sign-in form.
+  if (await currentStaff()) redirect(destination);
 
   // A session, but not an active staff record: access was removed, or was
   // never granted to that address.
@@ -60,7 +66,7 @@ export default async function StudioLogin({
         </div>
       ) : null}
 
-      <SignInForm />
+      <SignInForm next={destination === STUDIO_HOME ? undefined : destination} />
     </main>
   );
 }

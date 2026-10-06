@@ -1,4 +1,5 @@
 import { betterAuth } from "better-auth";
+import { createAuthMiddleware } from "better-auth/api";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { nextCookies } from "better-auth/next-js";
 import { magicLink } from "better-auth/plugins";
@@ -8,8 +9,10 @@ import { uuidv7 } from "../db/id.ts";
 import { appUrl, authSecret } from "../env.ts";
 import { sendMagicLinkEmail } from "../emails.ts";
 import { log, redactEmail } from "../log.ts";
+import { sanitiseCallbacks } from "../auth-callbacks.ts";
 import { sendWithoutTelling } from "../auth-delivery.ts";
 import { staffForEmail } from "./access.ts";
+import { studioRedirect } from "./redirect.ts";
 
 /**
  * Studio authentication. Staff only.
@@ -90,6 +93,23 @@ function createAuth() {
     // is a magic link to an already-invited address.
     emailAndPassword: { enabled: false },
     socialProviders: {},
+
+    hooks: {
+      /**
+       * A Studio authentication flow may only ever land inside Studio (G0).
+       *
+       * Better Auth refuses another origin by itself. What it cannot know is
+       * that on this origin `/workrooms` is the client world, with a different
+       * identity system — so a Studio sign-in landing there is refused the same
+       * way the client instance refuses `/studio`. Both halves of the flow, all
+       * three callbacks: the sign-in POST carries them in its body and the
+       * verification GET in its query, and each is followed.
+       */
+      before: createAuthMiddleware(async (ctx) => {
+        sanitiseCallbacks(ctx.body, studioRedirect);
+        sanitiseCallbacks(ctx.query, studioRedirect);
+      }),
+    },
 
     user: {
       additionalFields: {

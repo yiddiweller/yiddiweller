@@ -15,7 +15,14 @@ type State = "idle" | "sending" | "sent";
  * server holds up its end of that too: a link is only ever sent to an active
  * staff address, and the request succeeds either way.
  */
-export default function SignInForm({ defaultEmail = "" }: { defaultEmail?: string }) {
+export default function SignInForm({
+  defaultEmail = "",
+  next,
+}: {
+  defaultEmail?: string;
+  /** Where the link lands, already judged by the sign-in page. Studio's root if absent. */
+  next?: string;
+}) {
   const [email, setEmail] = useState(defaultEmail);
   const [state, setState] = useState<State>("idle");
   const id = useId();
@@ -32,11 +39,12 @@ export default function SignInForm({ defaultEmail = "" }: { defaultEmail?: strin
     try {
       await authClient.signIn.magicLink({
         email: address,
-        callbackURL: "/studio",
+        callbackURL: next ?? "/studio",
         // Without this a failed link lands on /studio, which sends anyone not
         // signed in back to this page and drops the reason on the way. Naming
-        // the page here is what lets an expired link say so.
-        errorCallbackURL: "/studio/login",
+        // the page here is what lets an expired link say so — and it carries
+        // the destination too, so asking again still comes back to it.
+        errorCallbackURL: next ? `/studio/login?next=${encodeURIComponent(next)}` : "/studio/login",
       });
     } catch {
       // A transport failure and an unknown address must look the same from

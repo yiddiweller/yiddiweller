@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-import { classifyHost, studioPathAllowed, STUDIO_PREFIX, WORKROOM_PREFIX } from "@/lib/hosts";
+import { classifyHost, RETURN_HEADER, studioPathAllowed, STUDIO_PREFIX, WORKROOM_PREFIX } from "@/lib/hosts";
 
 /**
  * Host routing, and nothing else.
@@ -24,16 +24,21 @@ import { classifyHost, studioPathAllowed, STUDIO_PREFIX, WORKROOM_PREFIX } from 
  */
 export function middleware(request: NextRequest) {
   const kind = classifyHost(request.headers.get("host"));
-  const { pathname } = request.nextUrl;
+  const { pathname, search } = request.nextUrl;
 
   if (kind === "studio") {
     // Auth endpoints are shared infrastructure and must not be rewritten.
-    if (pathname.startsWith("/api/")) return NextResponse.next();
-    if (pathname.startsWith(STUDIO_PREFIX)) return NextResponse.next();
+    if (pathname.startsWith("/api/")) return NextResponse.next({ request: { headers: returning(request, null) } });
+    if (pathname.startsWith(STUDIO_PREFIX)) {
+      return NextResponse.next({ request: { headers: returning(request, `${pathname}${search}`) } });
+    }
 
+    // The return address is the prefixed path, which resolves on this host as
+    // it is — so the guard writes one shape of Studio address on every host.
+    const studioPath = `${STUDIO_PREFIX}${pathname === "/" ? "" : pathname}`;
     const url = request.nextUrl.clone();
-    url.pathname = `${STUDIO_PREFIX}${pathname === "/" ? "" : pathname}`;
-    return NextResponse.rewrite(url);
+    url.pathname = studioPath;
+    return NextResponse.rewrite(url, { request: { headers: returning(request, `${studioPath}${search}`) } });
   }
 
   /**
@@ -46,7 +51,7 @@ export function middleware(request: NextRequest) {
    * *reusing* the response; `no-store` stops it being written down at all.
    */
   if (pathname.startsWith(WORKROOM_PREFIX)) {
-    const response = NextResponse.next();
+    const response = NextResponse.next({ request: { headers: returning(request, `${pathname}${search}`) } });
     response.headers.set("Cache-Control", "private, no-store, max-age=0, must-revalidate");
     response.headers.set("Referrer-Policy", "same-origin");
     return response;
@@ -57,10 +62,24 @@ export function middleware(request: NextRequest) {
     // signal that Studio exists behind it.
     const url = request.nextUrl.clone();
     url.pathname = "/_not-found";
-    return NextResponse.rewrite(url, { status: 404 });
+    return NextResponse.rewrite(url, { status: 404, request: { headers: returning(request, null) } });
   }
 
-  return NextResponse.next();
+  const studioPage = pathname.startsWith(STUDIO_PREFIX) ? `${pathname}${search}` : null;
+  return NextResponse.next({ request: { headers: returning(request, studioPage) } });
+}
+
+/**
+ * The request's headers with the return address set to the page asked for —
+ * or removed, for anything that is not a Workroom or Studio page. Whatever the
+ * browser sent under that name is discarded either way: only this function
+ * ever writes it. See `RETURN_HEADER`.
+ */
+function returning(request: NextRequest, path: string | null): Headers {
+  const headers = new Headers(request.headers);
+  headers.delete(RETURN_HEADER);
+  if (path !== null) headers.set(RETURN_HEADER, path);
+  return headers;
 }
 
 export const config = {

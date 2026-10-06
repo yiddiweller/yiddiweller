@@ -300,6 +300,8 @@ export async function open(
     clientCookie?: string;
     /** Called with the page before it navigates — to hear its first requests. */
     onPage?: (page: Page) => void;
+    /** No session cookie for either world: somebody arriving from an email. */
+    signedOut?: boolean;
   } = {},
 ): Promise<{ page: Page; errors: string[]; release: () => void }> {
   const origin = options.base ?? base!;
@@ -309,7 +311,7 @@ export async function open(
     ...(options.mobile ? { isMobile: true, hasTouch: true } : {}),
   });
   const host = new URL(origin).hostname;
-  await context.addCookies([
+  if (!options.signedOut) await context.addCookies([
     { name: "__Secure-yw_client.session_token", value: options.clientCookie ?? fixture.clientCookie, domain: host, path: "/", secure: true, httpOnly: true, sameSite: "Lax" },
     { name: "__Secure-yw_studio.session_token", value: fixture.staffCookie, domain: host, path: "/", secure: true, httpOnly: true, sameSite: "Lax" },
   ]);

@@ -2,8 +2,10 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { findActiveIdentity, type ViewerIdentity } from "../db/workrooms.ts";
+import { RETURN_HEADER } from "../hosts.ts";
 
 import { clientAuth } from "./config.ts";
+import { workroomLoginPath } from "./redirect.ts";
 
 /**
  * Server-side authorization for everyone outside the company.
@@ -32,9 +34,18 @@ export async function currentViewer(): Promise<ViewerIdentity | null> {
   return findActiveIdentity(id);
 }
 
-/** Requires a signed-in client. Sends anyone else to the entrance. */
+/**
+ * Requires a signed-in client. Sends anyone else to the entrance — carrying
+ * the page they asked for, so signing in brings them back to it.
+ *
+ * That address chooses where they land and nothing else. It is judged by
+ * `workroomLoginPath` here, again on the sign-in page and again by the auth
+ * instance, and the page at the end of it runs this guard and its own reads
+ * exactly as before: somebody whose access ended while they signed in arrives
+ * at the same refusal they would have met anyway.
+ */
 export async function requireViewer(): Promise<ViewerIdentity> {
   const viewer = await currentViewer();
-  if (!viewer) redirect("/workrooms/login");
+  if (!viewer) redirect(workroomLoginPath((await headers()).get(RETURN_HEADER)));
   return viewer;
 }

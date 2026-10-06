@@ -15,15 +15,24 @@ import styles from "@/app/workrooms/workroom.module.css";
  *
  * The request goes to the client auth instance's own base path, so it can never
  * be answered by Studio's.
+ *
+ * `next`, when the page was given one, is where the link lands — already
+ * judged by the sign-in page and judged again by the auth instance on both
+ * halves of the flow. A link that has expired comes back to the entrance with
+ * the same destination, rather than dropping it.
  */
-export default function SignInForm() {
+export default function SignInForm({ next }: { next?: string }) {
   const id = useId();
 
   const [sent, submit, pending] = useActionState<boolean, FormData>(async (_was, form) => {
     const email = String(form.get("email") ?? "").trim();
     if (!email) return false;
 
-    await signIn.magicLink({ email, callbackURL: "/workrooms" });
+    await signIn.magicLink(
+      next
+        ? { email, callbackURL: next, errorCallbackURL: `/workrooms/login?next=${encodeURIComponent(next)}` }
+        : { email, callbackURL: "/workrooms" },
+    );
     return true;
   }, false);
 

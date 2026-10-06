@@ -363,8 +363,10 @@ hand-written tail beside the triggers.
 
 ### What `0007_notifications.sql` adds
 
-One operational table, `notification_deliveries` — Stage G's outbox, written by
-nothing yet (G1) — and one key on an existing table: `UNIQUE (workroom_id, id)`
+One operational table, `notification_deliveries` — Stage G's outbox, written
+since G2 only by the Review actions in `lib/db/reviews.ts`, inside their own
+transactions, and settled only by the dispatcher (G2 added no migration) — and
+one key on an existing table: `UNIQUE (workroom_id, id)`
 on `presentation_reviews`, the target of the delivery's composite foreign key.
 `id` is already that table's primary key, so the pair is already unique and the
 constraint cannot fail on any data. It comes **before** the foreign key that
@@ -373,7 +375,12 @@ refuses, and the order was corrected by hand. The client-identity foreign key
 is named by hand too — the generated name ran past PostgreSQL's 63 characters,
 which it truncates silently, leaving schema and database disagreeing about what
 the constraint is called. Every shape rule is a `CASE`, for the reason the next
-section gives. The model is `delivery.md`, *G1*.
+section gives. The model is `delivery.md`, *G1* and *G2*.
+
+**Test wipes delete `notification_deliveries` first.** Its foreign keys to a
+round and to a client identity are `RESTRICT`, so since G2 — when requesting a
+round writes rows — any fixture that deletes rounds or identities must clear the
+outbox before them.
 
 ### What `0006_reviews.sql` adds, and the eight columns it drops
 

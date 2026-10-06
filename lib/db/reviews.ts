@@ -4,7 +4,11 @@ import { record as recordActivity } from "./activity.ts";
 import { record as recordAudit, type AuditActor } from "./audit.ts";
 import { db, type Tx } from "./index.ts";
 import { uuidv7 } from "./id.ts";
+import { eligibleClientIdentityIds, enqueueDeliveries } from "./notifications.ts";
 import { ok, refuse, expectUnchanged, type Outcome } from "./outcome.ts";
+import { logNotification } from "../notifications/log.ts";
+import { receivedIntents, requestedIntents } from "../notifications/recipients.ts";
+import type { NotificationKind } from "../notifications/vocabulary.ts";
 import {
   presentationRevisionItems,
   presentationRevisions,
@@ -99,6 +103,82 @@ function auditActor(actor: ReviewActor): AuditActor {
   return actor.side === "studio"
     ? { id: actor.userId, name: actor.name, kind: "team_user" }
     : { id: actor.identityId, name: actor.name, kind: "client_user" };
+}
+
+/* ---------------------------------------------------------- notifications */
+
+/**
+ * What a committed Review action raised in Stage G's outbox (G2).
+ *
+ * **The intent is written inside the action's own transaction**, by
+ * `enqueueDeliveries(tx, …)`, so the round and the rows that announce it
+ * commit together or not at all — never an email about something that rolled
+ * back, and never a request nobody is told about because a second write
+ * failed. Nothing here talks to a provider; sending happens after commit, in
+ * `lib/notifications/dispatch.ts`.
+ *
+ * Only two things raise anything: a request for feedback — a new round, or a
+ * withdrawn one asked again — and a round's first root feedback note. Replies,
+ * later notes, edits, removals, resolving, closing, an ordinary reopen,
+ * withdrawing and publishing raise nothing, and their functions never call
+ * this module's outbox.
+ */
+export type NotificationsRaised = { kind: NotificationKind; count: number };
+
+/**
+ * Called once the transaction has **committed**, never before, and only when
+ * it raised something. The server actions pass one that starts the
+ * best-effort drain; tests and scripts pass none, and the rows simply wait for
+ * the scheduled dispatcher — which is the guarantee either way.
+ */
+export type AfterCommit = (raised: NotificationsRaised) => void;
+
+/**
+ * After commit: the operational line, then the caller's hook. The line is
+ * written here rather than inside the transaction so it can only ever describe
+ * rows that exist. A hook that throws is swallowed — the action has already
+ * succeeded, and nothing about delivery may turn it into a failure.
+ */
+function announce(raised: NotificationsRaised | null, after?: AfterCommit): void {
+  if (!raised || raised.count === 0) return;
+  logNotification("notification.created", raised);
+  try {
+    after?.(raised);
+  } catch {
+    // Best effort, by definition. The rows are durable without it.
+  }
+}
+
+/**
+ * The moment a request episode begins — taken **once**, written to the round,
+ * and read back from what was written. Millisecond precision, which is what a
+ * JavaScript `Date` carries, so the stored `requested_at` and every delivery's
+ * `requested_at` are the same instant to the microsecond, not merely close.
+ */
+function episodeMoment(): Date {
+  return new Date();
+}
+
+/**
+ * One `review.requested` row per client who could open this round **now**,
+ * for this episode, inside the caller's transaction. Runs after the round is
+ * open, so the eligibility query sees the state it is announcing. Returns how
+ * many rows were written; zero is a valid answer, not a failure.
+ */
+async function askClients(
+  tx: Tx,
+  actor: StaffActor,
+  round: { workroomId: string; reviewId: string; requestedAt: Date },
+): Promise<number> {
+  const eligible = await eligibleClientIdentityIds(round.reviewId, tx);
+  const intents = requestedIntents({
+    workroomId: round.workroomId,
+    reviewId: round.reviewId,
+    requestedAt: round.requestedAt,
+    eligibleClientIdentityIds: eligible,
+    actor: { side: "studio", userId: actor.userId },
+  });
+  return (await enqueueDeliveries(tx, intents)).length;
 }
 
 /* ------------------------------------------------------------- transaction */
@@ -348,9 +428,12 @@ async function requireActor(tx: Tx, round: RoundRow, actor: ReviewActor): Promis
 export async function requestReview(
   actor: StaffActor,
   revisionId: string,
-): Promise<Outcome<string>> {
-  return settle(
-    db().transaction(async (tx): Promise<Outcome<string>> => {
+  after?: AfterCommit,
+): Promise<Outcome<RequestedRound>> {
+  let raised: NotificationsRaised | null = null;
+
+  const outcome = await settle(
+    db().transaction(async (tx): Promise<Outcome<RequestedRound>> => {
       const [revision] = await tx
         .select({
           id: presentationRevisions.id,
@@ -384,18 +467,28 @@ export async function requestReview(
       if (existing) {
         // The row is the lifecycle record, so a re-request reuses it rather
         // than making a second round nobody could tell apart from the first.
-        const round = await openReuse(tx, actor, existing.id, revision.title);
-        return ok(round);
+        const reused = await openReuse(tx, actor, existing.id, revision.title);
+        const notified = await askClients(tx, actor, {
+          workroomId: revision.workroomId,
+          reviewId: existing.id,
+          requestedAt: reused.requestedAt,
+        });
+        raised = { kind: "review.requested", count: notified };
+        return ok({ reviewId: existing.id, notified });
       }
 
       const id = uuidv7();
-      await tx.insert(presentationReviews).values({
-        id,
-        workroomId: revision.workroomId,
-        presentationRevisionId: revisionId,
-        status: "open",
-        requestedBy: actor.userId,
-      });
+      const [inserted] = await tx
+        .insert(presentationReviews)
+        .values({
+          id,
+          workroomId: revision.workroomId,
+          presentationRevisionId: revisionId,
+          status: "open",
+          requestedAt: episodeMoment(),
+          requestedBy: actor.userId,
+        })
+        .returning({ requestedAt: presentationReviews.requestedAt });
 
       await recordAudit(tx, auditActor(actor), {
         action: "review.requested",
@@ -413,18 +506,41 @@ export async function requestReview(
         subject: revision.title,
       });
 
-      return ok(id);
+      // The episode is what was written, not a second clock reading.
+      const notified = await askClients(tx, actor, {
+        workroomId: revision.workroomId,
+        reviewId: id,
+        requestedAt: inserted!.requestedAt,
+      });
+      raised = { kind: "review.requested", count: notified };
+
+      return ok({ reviewId: id, notified });
     }),
   );
+
+  if (outcome.ok) announce(raised, after);
+  return outcome;
 }
 
-/** Re-request on a row that already exists. Only a withdrawal may be revived. */
+/**
+ * A request that went out: the round, and how many client members its
+ * notification was written for. A count, never who — no address and no
+ * identity leaves this module — and zero is an ordinary answer: asking is a
+ * valid act with nobody yet able to read it.
+ */
+export type RequestedRound = { reviewId: string; notified: number };
+
+/**
+ * Re-request on a row that already exists. Only a withdrawal may be revived,
+ * and reviving it is a **new request episode**: a fresh `requested_at`,
+ * returned as written so the caller announces exactly this episode.
+ */
 async function openReuse(
   tx: Tx,
   actor: StaffActor,
   reviewId: string,
   title: string,
-): Promise<string> {
+): Promise<{ requestedAt: Date }> {
   const round = await lockRound(tx, reviewId);
   if (!round) refused("not_found", "That feedback round no longer exists.");
 
@@ -445,13 +561,13 @@ async function openReuse(
     .set({
       status: "open",
       withdrawnAt: null,
-      requestedAt: new Date(),
+      requestedAt: episodeMoment(),
       requestedBy: actor.userId,
     })
     .where(
       and(eq(presentationReviews.id, reviewId), eq(presentationReviews.version, round.version)),
     )
-    .returning({ id: presentationReviews.id });
+    .returning({ id: presentationReviews.id, requestedAt: presentationReviews.requestedAt });
 
   if (changed.length === 0) throw new Refused(expectUnchanged(0) as Outcome<never>);
 
@@ -463,7 +579,7 @@ async function openReuse(
     metadata: { workroom_id: round.workroomId, after: "withdrawn" },
   });
 
-  return reviewId;
+  return { requestedAt: changed[0]!.requestedAt };
 }
 
 /**
@@ -594,9 +710,12 @@ export async function reopenReview(
   actor: StaffActor,
   reviewId: string,
   expectedVersion?: number,
-): Promise<Outcome<void>> {
-  return settle(
-    db().transaction(async (tx): Promise<Outcome<void>> => {
+  after?: AfterCommit,
+): Promise<Outcome<ReopenedRound>> {
+  let raised: NotificationsRaised | null = null;
+
+  const outcome = await settle(
+    db().transaction(async (tx): Promise<Outcome<ReopenedRound>> => {
       // presentations → presentation_reviews, in that order, always.
       const [presentation] = await tx
         .select({ presentationId: presentationRevisions.presentationId })
@@ -639,7 +758,7 @@ export async function reopenReview(
           closedByUserId: null,
           closedByRevisionId: null,
           withdrawnAt: null,
-          ...(wasWithdrawn ? { requestedAt: new Date(), requestedBy: actor.userId } : {}),
+          ...(wasWithdrawn ? { requestedAt: episodeMoment(), requestedBy: actor.userId } : {}),
         })
         .where(
           and(
@@ -647,10 +766,10 @@ export async function reopenReview(
             eq(presentationReviews.version, expectedVersion ?? round.version),
           ),
         )
-        .returning({ id: presentationReviews.id });
+        .returning({ id: presentationReviews.id, requestedAt: presentationReviews.requestedAt });
 
-      const outcome = expectUnchanged(changed.length);
-      if (!outcome.ok) return outcome;
+      const unchanged = expectUnchanged(changed.length);
+      if (!unchanged.ok) return unchanged;
 
       await recordAudit(tx, auditActor(actor), {
         action: wasWithdrawn ? "review.requested" : "review.reopened",
@@ -660,10 +779,31 @@ export async function reopenReview(
         metadata: { workroom_id: round.workroomId, ...(wasWithdrawn ? { after: "withdrawn" } : {}) },
       });
 
-      return ok(undefined);
+      // Two different acts that both leave the round open. Reviving a
+      // withdrawal asks the client again — a new episode, announced. Reopening
+      // what the studio closed is the studio changing its mind about its own
+      // administration, and nobody is emailed because a status became `open`.
+      if (!wasWithdrawn) return ok({ asked: false, notified: 0 });
+
+      const notified = await askClients(tx, actor, {
+        workroomId: round.workroomId,
+        reviewId,
+        requestedAt: changed[0]!.requestedAt,
+      });
+      raised = { kind: "review.requested", count: notified };
+      return ok({ asked: true, notified });
     }),
   );
+
+  if (outcome.ok) announce(raised, after);
+  return outcome;
 }
+
+/**
+ * A round opened again: whether that asked the client again — only reviving a
+ * withdrawal does — and for how many members a notification was written.
+ */
+export type ReopenedRound = { asked: boolean; notified: number };
 
 /**
  * Publishing a newer Revision ends the round on the old one. **Terminally.**
@@ -827,8 +967,11 @@ export async function createReviewNote(
     /** Where inside that item, or null for the item as a whole. */
     anchor?: unknown;
   },
+  after?: AfterCommit,
 ): Promise<Outcome<number>> {
-  return settle(
+  let raised: NotificationsRaised | null = null;
+
+  const outcome = await settle(
     db().transaction(async (tx): Promise<Outcome<number>> => {
       const round = await openRound(tx, input.reviewId);
 
@@ -874,6 +1017,17 @@ export async function createReviewNote(
       }
 
       const number = await nextOrdinal(tx, input.reviewId);
+      // Counted under the round's lock, before this note exists — removed
+      // notes included, because a removal never makes a later note the first.
+      const [{ roots }] = await tx
+        .select({ roots: count() })
+        .from(presentationReviewNotes)
+        .where(
+          and(
+            eq(presentationReviewNotes.presentationReviewId, round.id),
+            eq(presentationReviewNotes.isRoot, true),
+          ),
+        );
 
       await tx.insert(presentationReviewNotes).values({
         id: uuidv7(),
@@ -910,9 +1064,29 @@ export async function createReviewNote(
         });
       }
 
+      // The studio hears once per round: on the first root note, naming that
+      // note by its ordinal so the link opens exactly it. No body, no anchor,
+      // no address — the row says *which*, never *what*. The dedupe key is the
+      // round's, so even a second attempt at this could not add a row.
+      if (roots === 0) {
+        const created = await enqueueDeliveries(
+          tx,
+          receivedIntents({
+            workroomId: round.workroomId,
+            reviewId: round.id,
+            noteNumber: number,
+            actor: { side: "client", identityId: actor.identityId },
+          }),
+        );
+        raised = { kind: "review.received", count: created.length };
+      }
+
       return ok(number);
     }),
   );
+
+  if (outcome.ok) announce(raised, after);
+  return outcome;
 }
 
 /** An answer to one feedback item. Either side may write one; depth stays one. */

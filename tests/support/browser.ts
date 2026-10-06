@@ -197,7 +197,7 @@ export async function seed(): Promise<void> {
   const revision2 = (await findPresentation(pid))!.currentRevisionId!;
   const round2 = await requestReview(staff, revision2);
   assert.ok(round2.ok);
-  const r2 = round2.value;
+  const r2 = round2.value.reviewId;
 
   await note(ana, r2, 1, { kind: "point", x: 0.25, y: 0.75 }); // 1
   await note(ana, r2, 4, { kind: "point", x: 0.8, y: 0.2 }); // 2
@@ -221,8 +221,8 @@ export async function seed(): Promise<void> {
   const revision3 = (await findPresentation(pid))!.currentRevisionId!;
   const round3 = await requestReview(staff, revision3);
   assert.ok(round3.ok);
-  await note(ana, round3.value, 1, { kind: "time", t: 2 }); // 1 — the motion, in Version 3
-  await note(ana, round3.value, 2, { kind: "point", x: 0.5, y: 0.5 }); // 2 — the board, in Version 3
+  await note(ana, round3.value.reviewId, 1, { kind: "time", t: 2 }); // 1 — the motion, in Version 3
+  await note(ana, round3.value.reviewId, 2, { kind: "point", x: 0.5, y: 0.5 }); // 2 — the board, in Version 3
 
   // And the draft moves on again, unpublished: Studio's draft page now shows
   // work that no round was asked about.

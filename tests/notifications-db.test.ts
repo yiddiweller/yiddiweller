@@ -26,14 +26,13 @@ import {
   closeReview,
   createReviewNote,
   removeReviewNote,
-  reopenReview,
-  replyToReviewNote,
   requestReview,
   reviewForRevision,
   withdrawReview,
 } from "../lib/db/reviews.ts";
 import { clientIdentity, notificationDeliveries, presentationReviews, workroomMembers } from "../lib/db/schema.ts";
 import { revokeMembership } from "../lib/db/workrooms.ts";
+import { receivedDedupeKey } from "../lib/notifications/dedupe.ts";
 import { receivedIntents, requestedIntents } from "../lib/notifications/recipients.ts";
 import { decideReceived, decideRequested, MAX_ATTEMPTS } from "../lib/notifications/rules.ts";
 import { clearOwner, owner, person, round, seedOwner, stage, staff, type Stage } from "./support/review-stage.ts";
@@ -42,7 +41,7 @@ import { clearOwner, owner, person, round, seedOwner, stage, staff, type Stage }
  * Stage G1 against a real PostgreSQL: the delivery table's shape rules, its
  * cross-Workroom foreign key and dedupe key, the dispatcher's claim and
  * settle primitives — raced over separate connections — the dispatch-time
- * facts, and the proof that **no Review action writes a delivery yet**.
+ * facts. What the Review actions write since G2 is `notifications-wiring.test.ts`.
  */
 
 const MINUTE = 60_000;
@@ -72,6 +71,17 @@ after(async () => {
 });
 
 /* ------------------------------------------------------------- helpers */
+
+/** The delivery a Review action wrote for this client, newest episode first. */
+async function wired(reviewId: string, identityId: string): Promise<string> {
+  const rows = (await db().execute(sql`
+    SELECT id FROM notification_deliveries
+     WHERE presentation_review_id = ${reviewId} AND client_identity_id = ${identityId}
+     ORDER BY requested_at DESC LIMIT 1
+  `)) as unknown as Array<{ id: string }>;
+  assert.ok(rows[0], "the Review action wrote no delivery for this client");
+  return String(rows[0].id);
+}
 
 let seq = 0;
 const key = () => `test/${Date.now()}/${seq++}`;
@@ -407,21 +417,9 @@ test("a pending request is suppressed once it no longer stands: revoked, withdra
   const s = await stage("NF");
   const r = await round(s);
   const [roundRow] = await db().select().from(presentationReviews).where(eq(presentationReviews.id, r));
-  const enqueue = async (identityId: string) =>
-    (
-      await enqueueDeliveries(
-        db(),
-        requestedIntents({
-          workroomId: s.workroomId,
-          reviewId: r,
-          requestedAt: roundRow!.requestedAt,
-          eligibleClientIdentityIds: [identityId],
-          actor: { side: "studio", userId: staff.userId },
-        }),
-      )
-    )[0]!;
-  const forAna = await enqueue(s.ana.identityId);
-  const forBen = await enqueue(s.ben.identityId);
+  // Since G2 the request itself wrote these, inside its own transaction.
+  const forAna = await wired(r, s.ana.identityId);
+  const forBen = await wired(r, s.ben.identityId);
 
   assert.deepEqual(decideRequested((await requestedFacts(forAna))!), { send: true }, "a standing request was suppressed");
 
@@ -440,18 +438,8 @@ test("a pending request is suppressed once it no longer stands: revoked, withdra
   assert.deepEqual(decideRequested(facts), { send: false, reason: "withdrawn" }, "the old episode would have sent beside the new one");
 
   // The new episode's own delivery stands — until a newer version is published.
-  const [reasked] = await db().select().from(presentationReviews).where(eq(presentationReviews.id, r));
-  const [current] = await enqueueDeliveries(
-    db(),
-    requestedIntents({
-      workroomId: s.workroomId,
-      reviewId: r,
-      requestedAt: reasked!.requestedAt,
-      eligibleClientIdentityIds: [s.ana.identityId],
-      actor: { side: "studio", userId: staff.userId },
-    }),
-  );
-  assert.ok(current, "a new episode was deduplicated against the old one");
+  const current = await wired(r, s.ana.identityId);
+  assert.notEqual(current, forAna, "a new episode was deduplicated against the old one");
   assert.deepEqual(decideRequested((await requestedFacts(current))!), { send: true });
 
   const v = async () => (await findPresentation(s.presentationId))!.version;
@@ -462,8 +450,12 @@ test("a pending request is suppressed once it no longer stands: revoked, withdra
 
 test("the episode is compared at the precision of the key, so a request is always its own episode", async () => {
   const s = await stage("NG");
-  const r = await round(s); // requested_at from now(): microseconds a Date cannot hold
+  const r = await round(s);
+  // A round whose requested_at carries microseconds a Date cannot hold — what
+  // a row written before G2, by the column's default, looks like.
+  await db().execute(sql`UPDATE presentation_reviews SET requested_at = requested_at + interval '123 microseconds' WHERE id = ${r}`);
   const [roundRow] = await db().select().from(presentationReviews).where(eq(presentationReviews.id, r));
+  await db().delete(notificationDeliveries);
   const [id] = await enqueueDeliveries(
     db(),
     requestedIntents({
@@ -482,63 +474,40 @@ test("feedback is still announced after supersession, and not once it was taken 
   const r = await round(s);
   const n = await createReviewNote(s.ana, { reviewId: r, body: "MARKER-FEEDBACK-BODY", itemPosition: 1 });
   assert.ok(n.ok);
-  const [id] = await enqueueDeliveries(
-    db(),
-    receivedIntents({ workroomId: s.workroomId, reviewId: r, noteNumber: n.value, actor: { side: "client", identityId: s.ana.identityId } }),
-  );
-  assert.deepEqual(decideReceived((await receivedFacts(id!))!), { send: true });
+  const [{ id }] = await db()
+    .select({ id: notificationDeliveries.id })
+    .from(notificationDeliveries)
+    .where(eq(notificationDeliveries.dedupeKey, receivedDedupeKey({ reviewId: r })));
+  assert.deepEqual(decideReceived((await receivedFacts(id))!), { send: true });
 
   assert.ok((await removeReviewNote(s.ana, { reviewId: r, number: n.value })).ok);
-  assert.deepEqual(decideReceived((await receivedFacts(id!))!), { send: false, reason: "retracted" });
+  assert.deepEqual(decideReceived((await receivedFacts(id))!), { send: false, reason: "retracted" });
 
   // Another live note in the round keeps it worth telling.
   const second = await createReviewNote(s.ben, { reviewId: r, body: "Another thought." });
   assert.ok(second.ok);
-  assert.deepEqual(decideReceived((await receivedFacts(id!))!), { send: true });
+  assert.deepEqual(decideReceived((await receivedFacts(id))!), { send: true });
 
   // And a newer version does not stop it: feedback on Version N is still feedback.
   const v = async () => (await findPresentation(s.presentationId))!.version;
   assert.ok((await addNoteItem(owner, s.presentationId, await v(), { caption: "Two", body: "More." })).ok);
   assert.ok((await publishPresentation(owner, s.presentationId, await v())).ok);
   assert.equal((await reviewForRevision((await db().select().from(presentationReviews).where(eq(presentationReviews.id, r)))[0]!.presentationRevisionId))!.status, "closed");
-  assert.deepEqual(decideReceived((await receivedFacts(id!))!), { send: true });
+  assert.deepEqual(decideReceived((await receivedFacts(id))!), { send: true });
 });
 
-/* ----------------------------------------------------------- not wired */
+/* ------------------------------------------------- who reaches the outbox */
 
-test("no Review action writes a delivery yet: request, re-request, reopen, feedback, reply, publish", async () => {
-  await db().delete(notificationDeliveries);
-  const s = await stage("NW");
-  const r = await round(s); // requestReview
-  const note = await createReviewNote(s.ana, { reviewId: r, body: "First thought." });
-  assert.ok(note.ok);
-  assert.ok((await replyToReviewNote(staff, { reviewId: r, parentNumber: note.value, body: "Thank you." })).ok);
-  assert.ok((await replyToReviewNote(s.ben, { reviewId: r, parentNumber: note.value, body: "Agreed." })).ok);
-  assert.ok((await closeReview(staff, r)).ok);
-  assert.ok((await reopenReview(staff, r)).ok);
-
-  const s2 = await stage("NX");
-  const r2 = await round(s2);
-  const [row] = await db().select().from(presentationReviews).where(eq(presentationReviews.id, r2));
-  assert.ok((await withdrawReview(staff, r2)).ok);
-  assert.ok((await requestReview(staff, row!.presentationRevisionId)).ok); // openReuse
-  assert.ok((await withdrawReview(staff, r2)).ok);
-  assert.ok((await reopenReview(staff, r2)).ok); // reopen after withdrawal
-
-  const v = async () => (await findPresentation(s.presentationId))!.version;
-  assert.ok((await addNoteItem(owner, s.presentationId, await v(), { caption: "Two", body: "More." })).ok);
-  assert.ok((await publishPresentation(owner, s.presentationId, await v())).ok);
-
-  assert.equal((await db().select().from(notificationDeliveries)).length, 0, "a Review action wrote a delivery in G1");
-});
-
-test("nothing in a product path reaches the outbox, the dispatcher's primitives or a transport", () => {
+test("only the Review domain, the dispatcher and its command reach the outbox", () => {
   const strip = (file: string) => readFileSync(file, "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
   const files = ["app", "components", "lib", "middleware.ts", "scripts"].flatMap(sources);
   const reaching = files
     .filter((file) => !file.startsWith("lib/notifications/") && file !== "lib/db/notifications.ts" && file !== "lib/db/schema.ts")
-    .filter((file) => /db\/notifications|notifications\/(recipients|render|transport|resend-transport|log|dedupe|rules|mode)|notificationDeliveries/.test(strip(file)));
-  assert.deepEqual(reaching, [], "a product path reaches Stage G delivery");
+    .filter((file) => /db\/notifications|notifications\/(recipients|render|transport|resend-transport|dedupe|rules|dispatch|drain)|notificationDeliveries/.test(strip(file)));
+  // The domain writes intent inside its transactions; the command drains.
+  // Pages and actions reach Stage G only through `after-response`, `mode` and
+  // `request-copy` — never the outbox, a transport or the dispatcher itself.
+  assert.deepEqual(reaching.sort(), ["lib/db/reviews.ts", "scripts/dispatch-notifications.mjs"]);
 });
 
 function sources(root: string): string[] {

@@ -50,7 +50,7 @@ current version with no round. The walk found three defects — the item locator
 the tombstone and the publish consequence — each fixed at its cause and retested
 on beta; the record is *Reviews are verified on beta* in `docs/delivery.md`.
 **Stage C is not complete**: Stage F, precise feedback and return to context,
-is now closed (below), and Stage G, notifications, has not started. Stage
+is now closed (below), and Stage G, notifications, is under way (below). Stage
 F's architecture is locked in `docs/delivery.md` — image point, video and audio
 moment and stretch, return to context; no migration; regions, frame anchors and
 PDF anchors deferred. **F1, its foundation, is built and nothing visible is**:
@@ -146,9 +146,26 @@ by the claim's own attempt; `lib/notifications/*` holds the pure rules, the
 renderer, the retry schedule (1m, 5m, 30m, 2h, 6h — inside Resend's 24-hour
 idempotency window), `MailTransport` and its Resend adapter, and the preview
 mode — production `live` and refusing `NOTIFICATION_REDIRECT_TO`, the preview
-`capture` by default. **Nothing is wired: no Review action writes a delivery,
-nothing dispatches, no notification email can be sent, no cron exists, no
-Railway variable changed; G2 has not started.**
+`capture` by default. **G2 — domain wiring and the dispatcher — is
+implemented, its automated tests pass, and it is not manually accepted**:
+`requestReview` (a new round, or a withdrawal asked again — also through
+`reopenReview`) writes one `review.requested` per eligible client member, and a
+round's first root note one `review.received` naming that note, **inside the
+action's own transaction** through `enqueueDeliveries(tx, …)`; the request's one
+`requested_at` is written once and read back, and the deliveries carry exactly
+that instant. Replies, later notes and every other Review action write nothing.
+One dispatcher, `lib/notifications/dispatch.ts`, claims, re-checks access,
+renders from the frozen Revision, sends with `yw-notification/{id}` and settles
+by the claim — used by the best-effort drain the server actions schedule with
+`after()` (speed only, never awaited) and by `npm run notifications:dispatch`
+(25 a run). Links are the exact immutable Revision. Studio's *Ask for feedback*
+dialog says who will be emailed, and its confirmation how many — on beta, that
+the email was captured. **Beta is capture-only: `NOTIFICATION_REDIRECT_TO` is
+set nowhere, no deliberate real Stage G email has been sent from beta, no
+Railway cron exists, and G3 has not started.** The runner image copies
+`scripts/` but not `lib/`, which the command imports — G3 settles how the
+schedule runs it. Build 005 cannot be promoted until G3 has installed and
+verified that schedule.
 Approvals has not begun. Build 005 is **not promoted**: production has no bucket, the sweep is
 unscheduled and there is no per-object backup strategy, so production remains
 Build 004.**

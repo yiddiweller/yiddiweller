@@ -18,8 +18,11 @@ import {
   withdrawReview,
   type StaffActor,
 } from "@/lib/db/reviews";
+import { drainAfterResponse } from "@/lib/notifications/after-response";
+import { notificationMode } from "@/lib/notifications/mode";
+import { requestedMessage } from "@/lib/notifications/request-copy";
 import { readBody, readOrdinal, readRevisionNumber } from "@/lib/workrooms/review-input";
-import { failed, fromOutcome, type ActionResult } from "@/lib/studio-result";
+import { failed, fromOutcome, succeeded, type ActionResult } from "@/lib/studio-result";
 
 /**
  * Everything staff can do to a round of feedback.
@@ -108,9 +111,12 @@ export async function requestReviewAction(
   const revisionId = await currentRevisionForStaff(named.workroomId, named.presentationId);
   if (!revisionId) return failed("That presentation no longer exists.");
 
-  const outcome = await requestReview(actorFor(staff), revisionId);
+  // The notification rows commit with the round; the drain is scheduled for
+  // after the response and never decides this answer.
+  const outcome = await requestReview(actorFor(staff), revisionId, drainAfterResponse);
   refreshed(named.workroomId, named.presentationId);
-  return fromOutcome(outcome, "Asked the client for their thoughts on this version.");
+  if (!outcome.ok) return fromOutcome(outcome, "");
+  return succeeded(requestedMessage(outcome.value.notified, notificationMode().mode));
 }
 
 export async function closeReviewAction(
@@ -150,9 +156,16 @@ export async function reopenReviewAction(
   const round = await roundFor(form);
   if (!round) return failed("That feedback round no longer exists.");
 
-  const outcome = await reopenReview(actorFor(staff), round.reviewId);
+  const outcome = await reopenReview(actorFor(staff), round.reviewId, undefined, drainAfterResponse);
   refreshed(round.workroomId, round.presentationId);
-  return fromOutcome(outcome, "Feedback is open again on this version.");
+  if (!outcome.ok) return fromOutcome(outcome, "");
+  // Reopening what the studio closed emails nobody. Reviving a withdrawal is
+  // asking again, and says so.
+  return succeeded(
+    outcome.value.asked
+      ? requestedMessage(outcome.value.notified, notificationMode().mode)
+      : "Feedback is open again on this version.",
+  );
 }
 
 /* -------------------------------------------------------------- the notes */

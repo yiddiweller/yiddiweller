@@ -21,6 +21,7 @@ import {
   readRevisionNumber,
 } from "@/lib/workrooms/review-input";
 import { isPublicId } from "@/lib/workrooms/id";
+import { drainAfterResponse } from "@/lib/notifications/after-response";
 import { failed, fromOutcome, type ActionResult } from "@/lib/studio-result";
 
 /**
@@ -126,12 +127,14 @@ export async function createReviewNoteAction(
   const anchor = readAnchor(form.get("anchor"));
   if (anchor === null) return failed("That is not a place in the work.");
 
-  const outcome = await createReviewNote(round.actor, {
-    reviewId: round.reviewId,
-    body,
-    itemPosition,
-    anchor,
-  });
+  // The studio's notification, if this is the round's first note, commits
+  // with the note; the drain runs after the response. Nothing about email is
+  // ever this answer — the client is told their words were saved, no more.
+  const outcome = await createReviewNote(
+    round.actor,
+    { reviewId: round.reviewId, body, itemPosition, anchor },
+    drainAfterResponse,
+  );
   refreshed(round.named);
   return fromOutcome(outcome, "Sent to the studio.");
 }

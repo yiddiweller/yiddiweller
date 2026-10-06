@@ -126,14 +126,14 @@ test("an open round: the dialog says it will close, and publishing closes it", a
   const current = (await findPresentation(s.presentationId))!.currentRevisionId!;
   const made = await requestReview(staff, current);
   assert.ok(made.ok);
-  assert.ok((await createReviewNote(s.ana, { reviewId: made.value, body: "A real point." })).ok);
+  assert.ok((await createReviewNote(s.ana, { reviewId: made.value.reviewId, body: "A real point." })).ok);
 
   const said = await dialog(s);
   assert.match(said.message, FEEDBACK, "an open round was not disclosed");
   assert.match(said.message, /Version 2/, "the version was not named");
   assert.ok(!UUID.test(said.message), "the dialog names a row by its id");
 
-  assert.deepEqual(await publishAndInspect(s, made.value), { status: "closed", reason: "superseded" });
+  assert.deepEqual(await publishAndInspect(s, made.value.reviewId), { status: "closed", reason: "superseded" });
 });
 
 test("no round: nothing is said about feedback, and there is none to close", async () => {
@@ -154,13 +154,13 @@ test("a round the studio closed: not said to close again, and it keeps its reaso
   const current = (await findPresentation(s.presentationId))!.currentRevisionId!;
   const made = await requestReview(staff, current);
   assert.ok(made.ok);
-  assert.ok((await createReviewNote(s.ana, { reviewId: made.value, body: "Said." })).ok);
-  assert.ok((await closeReview(staff, made.value)).ok);
+  assert.ok((await createReviewNote(s.ana, { reviewId: made.value.reviewId, body: "Said." })).ok);
+  assert.ok((await closeReview(staff, made.value.reviewId)).ok);
 
   const said = await dialog(s);
   assert.doesNotMatch(said.message, FEEDBACK, "a closed round was said to close");
 
-  assert.deepEqual(await publishAndInspect(s, made.value), { status: "closed", reason: "staff" });
+  assert.deepEqual(await publishAndInspect(s, made.value.reviewId), { status: "closed", reason: "staff" });
 });
 
 test("a withdrawn round: never mentioned, and it stays withdrawn", async () => {
@@ -169,14 +169,14 @@ test("a withdrawn round: never mentioned, and it stays withdrawn", async () => {
   const current = (await findPresentation(s.presentationId))!.currentRevisionId!;
   const made = await requestReview(staff, current);
   assert.ok(made.ok);
-  assert.ok((await withdrawReview(staff, made.value)).ok);
+  assert.ok((await withdrawReview(staff, made.value.reviewId)).ok);
 
   const said = await dialog(s);
   // A request the studio took back is administration, not history, and a
   // dialog that alluded to it would surface what the withdrawal hid.
   assert.doesNotMatch(said.message, /[Ff]eedback|[Rr]eview|withdraw/, "a withdrawn round surfaced");
 
-  assert.deepEqual(await publishAndInspect(s, made.value), { status: "withdrawn", reason: null });
+  assert.deepEqual(await publishAndInspect(s, made.value.reviewId), { status: "withdrawn", reason: null });
 });
 
 test("an open round on a withdrawn presentation is still disclosed, because it still closes", async () => {
@@ -194,7 +194,7 @@ test("an open round on a withdrawn presentation is still disclosed, because it s
   assert.ok((await unpublishPresentation(owner, s.presentationId, withdrawing.version)).ok);
 
   assert.match((await dialog(s)).message, FEEDBACK);
-  assert.deepEqual(await publishAndInspect(s, made.value), { status: "closed", reason: "superseded" });
+  assert.deepEqual(await publishAndInspect(s, made.value.reviewId), { status: "closed", reason: "superseded" });
 });
 
 test("the reader is scoped to its own Workroom", async () => {

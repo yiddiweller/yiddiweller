@@ -28,6 +28,7 @@ import {
   presentationRevisionItems,
   presentationRevisions,
   presentationReviewNotes,
+  notificationDeliveries,
   presentationReviews,
   presentations,
   projects,
@@ -105,6 +106,7 @@ async function wipe(): Promise<void> {
     await db().execute(sql.raw(`ALTER TABLE ${table} DISABLE TRIGGER USER`));
   }
   await db().delete(presentationReviewNotes);
+  await db().delete(notificationDeliveries);
   await db().delete(presentationReviews);
   await db().delete(presentationApprovals);
   await db().delete(presentationRevisionItems);

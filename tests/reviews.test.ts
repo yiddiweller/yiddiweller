@@ -47,6 +47,7 @@ import {
   presentationRevisionItems,
   presentationRevisions,
   presentationReviewNotes,
+  notificationDeliveries,
   presentationReviews,
   presentations,
   projects,
@@ -97,6 +98,7 @@ export async function wipe(): Promise<void> {
     await db().execute(sql.raw(`ALTER TABLE ${table} DISABLE TRIGGER USER`));
   }
   await db().delete(presentationReviewNotes);
+  await db().delete(notificationDeliveries);
   await db().delete(presentationReviews);
   await db().delete(presentationApprovals);
   await db().delete(presentationRevisionItems);
@@ -270,7 +272,7 @@ export async function stage(tag = "A"): Promise<Stage> {
 export async function round(s: Stage): Promise<string> {
   const made = await requestReview(staff, s.revision2);
   assert.ok(made.ok, made.ok ? "" : made.message);
-  return made.value;
+  return made.value.reviewId;
 }
 
 async function version(reviewId: string): Promise<number> {
@@ -344,7 +346,7 @@ test("a withdrawn round is re-requested in place, never duplicated", async () =>
 
   const again = await requestReview(staff, s.revision2);
   assert.ok(again.ok);
-  assert.equal(again.value, id, "a second row was created");
+  assert.equal(again.value.reviewId, id, "a second row was created");
   assert.equal((await reviewForRevision(s.revision2))!.status, "open");
 
   const [{ rounds }] = await db()
@@ -510,7 +512,7 @@ test("publishing leaves a staff closure and a withdrawal exactly as they were", 
   const current = (await findPresentation(s.presentationId))!.currentRevisionId!;
   const second = await requestReview(staff, current);
   assert.ok(second.ok);
-  assert.ok((await withdrawReview(staff, second.value, await version(second.value))).ok);
+  assert.ok((await withdrawReview(staff, second.value.reviewId, await version(second.value.reviewId))).ok);
 
   assert.ok(
     (await updatePresentation(owner, s.presentationId, await v(), {

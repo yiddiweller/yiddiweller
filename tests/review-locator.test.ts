@@ -164,7 +164,7 @@ test("a Revision has one set of positions, and the draft's gaps are not in it", 
 test("every subject the client can pick resolves to the block they picked", async () => {
   await wipe();
   const { s, presentation, client } = await edited();
-  const reviewId = (await requestReview(staff, presentation.currentRevisionId!)) as { value: string };
+  const reviewId = { value: ((await requestReview(staff, presentation.currentRevisionId!)) as { value: { reviewId: string } }).value.reviewId };
 
   for (const option of itemSubjects(client.items)) {
     const made = await createReviewNote(s.ana, {
@@ -214,7 +214,7 @@ test("every subject the client can pick resolves to the block they picked", asyn
 test("a point about a block carries its subject; a general point carries none", async () => {
   await wipe();
   const { s, presentation, client, studio } = await edited();
-  const reviewId = (await requestReview(staff, presentation.currentRevisionId!)) as { value: string };
+  const reviewId = { value: ((await requestReview(staff, presentation.currentRevisionId!)) as { value: { reviewId: string } }).value.reviewId };
 
   const identity = itemSubjects(client.items).find(
     (option) => option.label === "Primary identity direction",
@@ -295,7 +295,7 @@ test("a block is always named, and never named as an empty string", () => {
 test("the subject survives closing, superseding and being read as history", async () => {
   await wipe();
   const { s, presentation, client } = await edited();
-  const reviewId = (await requestReview(staff, presentation.currentRevisionId!)) as { value: string };
+  const reviewId = { value: ((await requestReview(staff, presentation.currentRevisionId!)) as { value: { reviewId: string } }).value.reviewId };
 
   const identity = itemSubjects(client.items).find(
     (option) => option.label === "Primary identity direction",

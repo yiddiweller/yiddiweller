@@ -14,11 +14,11 @@ import { uuidv7 } from "./id.ts";
 import { notificationDeliveries } from "./schema.ts";
 
 /**
- * Stage G's outbox, and the primitives its dispatcher will use (G1).
+ * Stage G's outbox, and the primitives its dispatcher uses (G1, wired in G2).
  *
- * **Nothing calls these from a product path yet.** G2 wires `enqueue` into the
- * Review actions' own transactions and builds the dispatcher on the rest; G3
- * schedules it. Until then the table stays empty and nothing is sent.
+ * `enqueueDeliveries` is called from inside the Review actions' own
+ * transactions in `lib/db/reviews.ts`; everything else here is used by
+ * `lib/notifications/dispatch.ts`, after commit. G3 schedules the dispatcher.
  *
  * The rules a dispatcher must keep, and that these make hard to break:
  *
@@ -296,4 +296,91 @@ export async function receivedFacts(deliveryId: string, on: Executor = db()): Pr
     triggeringNoteLive: row.triggering_note_live === null ? null : row.triggering_note_live === true,
     liveRootNotes: Number(row.live_root_notes),
   };
+}
+
+/* ----------------------------------------------------- what a message says */
+
+/**
+ * What a `review.requested` message names, read at the moment of sending: the
+ * title **as that Revision froze it**, its number, and the two public handles
+ * its client page is reached by. Nothing a person wrote, no file, no address.
+ */
+export type RequestedContent = { title: string; version: number; room: string; presentation: string };
+
+export async function requestedContent(deliveryId: string, on: Executor = db()): Promise<RequestedContent | null> {
+  const rows = (await on.execute(sql`
+    SELECT COALESCE(NULLIF(rv.snapshot->>'title', ''), p.title) AS title,
+           rv.revision_number, w.public_id AS room, p.public_id AS presentation
+      FROM notification_deliveries d
+      JOIN presentation_reviews r ON r.workroom_id = d.workroom_id AND r.id = d.presentation_review_id
+      JOIN presentation_revisions rv ON rv.workroom_id = r.workroom_id AND rv.id = r.presentation_revision_id
+      JOIN presentations p ON p.id = rv.presentation_id
+      JOIN workrooms w ON w.id = d.workroom_id
+     WHERE d.id = ${deliveryId} AND d.kind = 'review.requested'
+  `)) as unknown as Array<Record<string, unknown>>;
+  const row = rows[0];
+  if (!row) return null;
+  return {
+    title: String(row.title),
+    version: Number(row.revision_number),
+    room: String(row.room),
+    presentation: String(row.presentation),
+  };
+}
+
+/**
+ * What a `review.received` message names: the frozen title and number of the
+ * Revision the feedback is **on** — never the Presentation's latest — the
+ * internal handles Studio's page is reached by, the note it names, and who
+ * wrote that note. The name is withheld once the note is removed: a tombstone
+ * does not narrate who took something back.
+ */
+export type ReceivedContent = {
+  title: string;
+  version: number;
+  workroomId: string;
+  presentationId: string;
+  noteNumber: number;
+  clientName: string | null;
+};
+
+export async function receivedContent(deliveryId: string, on: Executor = db()): Promise<ReceivedContent | null> {
+  const rows = (await on.execute(sql`
+    SELECT COALESCE(NULLIF(rv.snapshot->>'title', ''), p.title) AS title,
+           rv.revision_number, d.workroom_id, rv.presentation_id, d.note_number,
+           (SELECT n.author_name FROM presentation_review_notes n
+             WHERE n.presentation_review_id = d.presentation_review_id AND n.number = d.note_number
+               AND n.author_side = 'client' AND n.removed_at IS NULL) AS client_name
+      FROM notification_deliveries d
+      JOIN presentation_reviews r ON r.workroom_id = d.workroom_id AND r.id = d.presentation_review_id
+      JOIN presentation_revisions rv ON rv.workroom_id = r.workroom_id AND rv.id = r.presentation_revision_id
+      JOIN presentations p ON p.id = rv.presentation_id
+     WHERE d.id = ${deliveryId} AND d.kind = 'review.received' AND d.note_number IS NOT NULL
+  `)) as unknown as Array<Record<string, unknown>>;
+  const row = rows[0];
+  if (!row) return null;
+  return {
+    title: String(row.title),
+    version: Number(row.revision_number),
+    workroomId: String(row.workroom_id),
+    presentationId: String(row.presentation_id),
+    noteNumber: Number(row.note_number),
+    clientName: typeof row.client_name === "string" ? row.client_name : null,
+  };
+}
+
+/**
+ * The client's sign-in address **now** — the verified credential, never
+ * `contacts.email` — read only when a message is actually about to go to
+ * them, after every access rule has passed. Never stored on the delivery, and
+ * never read at all when the preview captures or redirects.
+ */
+export async function clientAddress(deliveryId: string, on: Executor = db()): Promise<string | null> {
+  const rows = (await on.execute(sql`
+    SELECT ci.email FROM notification_deliveries d
+      JOIN client_identities ci ON ci.id = d.client_identity_id
+     WHERE d.id = ${deliveryId} AND d.kind = 'review.requested'
+  `)) as unknown as Array<{ email: unknown }>;
+  const email = rows[0]?.email;
+  return typeof email === "string" && email.trim() ? email.trim() : null;
 }

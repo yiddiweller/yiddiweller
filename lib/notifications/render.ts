@@ -1,11 +1,11 @@
 import { BG, escapeHtml, FAINT, FONT, FOOTER, MARK, MUTED, oneLine, shell, WHITE } from "../emails.ts";
-import type { NotificationKind } from "./vocabulary.ts";
+import type { NotificationKind, RecipientKind } from "./vocabulary.ts";
 
 /**
  * The two Stage G messages, as subject, HTML and plain text (G1). Pure: no
  * provider, no database, no clock — a view in, a message out. Nothing sends
- * them yet; G2's dispatcher will render one at the moment it sends, from what
- * is true then.
+ * them; G2's dispatcher renders one at the moment it sends, from what is true
+ * then.
  *
  * **What a message may say is narrow on purpose.** A subject names no
  * Presentation, no Workroom, no person and no feedback: it is the part of an
@@ -82,22 +82,45 @@ const SMALL = (html: string) =>
 const STUDIO_MARK = `<tr><td style="font-family:${FONT};font-size:12px;letter-spacing:0.3em;color:${MUTED};text-transform:uppercase;padding:0 0 8px;">Yiddi&nbsp;Weller</td></tr>
 <tr><td style="font-family:${FONT};font-size:12px;letter-spacing:0.3em;color:${FAINT};text-transform:uppercase;padding:0 0 56px;">Studio</td></tr>`;
 
+/**
+ * The one line a redirected preview message adds (G2): who it **would** have
+ * gone to, as a role — never an address, a name or an identifier. Only the
+ * preview's redirect mode passes it; production never does.
+ */
+export type RenderOptions = { previewFor?: RecipientKind };
+
+const PREVIEW_ROLE: Record<RecipientKind, string> = {
+  client: "client member",
+  studio_inbox: "studio inbox",
+};
+
+export function previewLine(role: RecipientKind): string {
+  return `Preview notification — intended recipient: ${PREVIEW_ROLE[role]}`;
+}
+
+const PREVIEW = (role: RecipientKind | undefined) =>
+  role
+    ? `<tr><td style="font-family:${FONT};font-size:12px;line-height:1.6;color:${FAINT};padding:0 0 32px;">${escapeHtml(previewLine(role))}</td></tr>`
+    : "";
+
+const PREVIEW_TEXT = (role: RecipientKind | undefined) => (role ? `${previewLine(role)}\n\n` : "");
+
 /** A label for HTML: one line, escaped. */
 const label = (value: string) => escapeHtml(oneLine(value));
 
-function requested(view: RequestedView): RenderedMail {
+function requested(view: RequestedView, role?: RecipientKind): RenderedMail {
   const url = link(view.url);
   const n = version(view.version);
   const title = oneLine(view.presentationTitle);
 
-  const html = shell(`${MARK}
+  const html = shell(`${PREVIEW(role)}${MARK}
 ${HEADING("Your thoughts are requested.")}
 ${PARAGRAPH(`The studio would like your thoughts on <span style="color:${WHITE};">${label(title)}</span>, Version&nbsp;${n}. Say as much or as little as you like.`)}
 ${BUTTON(url, "Open the presentation")}
 ${SMALL("Write your thoughts in your workroom. A reply to this email reaches the studio, but it is not added to the feedback.")}
 ${FOOTER}`);
 
-  const text = `YIDDI WELLER
+  const text = `${PREVIEW_TEXT(role)}YIDDI WELLER
 
 Your thoughts are requested.
 
@@ -112,19 +135,19 @@ studio, but it is not added to the feedback.`;
   return { subject: oneLine(SUBJECTS["review.requested"]), html, text };
 }
 
-function received(view: ReceivedView): RenderedMail {
+function received(view: ReceivedView, role?: RecipientKind): RenderedMail {
   const url = link(view.url);
   const n = version(view.version);
   const title = oneLine(view.presentationTitle);
   const who = view.clientName && oneLine(view.clientName) ? oneLine(view.clientName) : "A client";
 
-  const html = shell(`${STUDIO_MARK}
+  const html = shell(`${PREVIEW(role)}${STUDIO_MARK}
 ${HEADING("New feedback.")}
 ${PARAGRAPH(`${label(who)} left feedback on <span style="color:${WHITE};">${label(title)}</span>, Version&nbsp;${n}.`)}
 ${BUTTON(url, "Open in Studio")}
 ${SMALL("What they wrote is in Studio, not in this email.")}`);
 
-  const text = `YIDDI WELLER STUDIO
+  const text = `${PREVIEW_TEXT(role)}YIDDI WELLER STUDIO
 
 New feedback.
 
@@ -137,10 +160,14 @@ What they wrote is in Studio, not in this email.`;
   return { subject: oneLine(SUBJECTS["review.received"]), html, text };
 }
 
-export function renderNotification(kind: "review.requested", view: RequestedView): RenderedMail;
-export function renderNotification(kind: "review.received", view: ReceivedView): RenderedMail;
-export function renderNotification(kind: NotificationKind, view: RequestedView | ReceivedView): RenderedMail {
-  if (kind === "review.requested") return requested(view as RequestedView);
-  if (kind === "review.received") return received(view as ReceivedView);
+export function renderNotification(kind: "review.requested", view: RequestedView, options?: RenderOptions): RenderedMail;
+export function renderNotification(kind: "review.received", view: ReceivedView, options?: RenderOptions): RenderedMail;
+export function renderNotification(
+  kind: NotificationKind,
+  view: RequestedView | ReceivedView,
+  options: RenderOptions = {},
+): RenderedMail {
+  if (kind === "review.requested") return requested(view as RequestedView, options.previewFor);
+  if (kind === "review.received") return received(view as ReceivedView, options.previewFor);
   throw new Error("no template for that kind");
 }

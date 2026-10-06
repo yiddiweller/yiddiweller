@@ -476,12 +476,23 @@ recorded in [`delivery.md`](./delivery.md) under *Reviews are verified on beta*.
   `notification_deliveries`, Stage G's outbox — intent and delivery state only,
   never an address or a word of anybody's feedback — with the rules, renderer,
   claim-and-retry primitives, transport and preview capture a dispatcher will
-  need. **Nothing uses any of it yet**: no Review action writes a delivery,
-  nothing dispatches, no notification email can be sent, no cron exists and no
-  Railway variable changed. The migration only adds; existing Review rows are
-  untouched.
-- **Not started:** G2 (wiring Review actions and the dispatcher), G3 (the
-  scheduled dispatcher and the real-beta walk), and Approvals.
+  need. As G1 shipped nothing used any of it; G2 wires it. The migration only
+  adds; existing Review rows are untouched.
+- **Stage G2 — Review notifications wired, and the dispatcher: implemented,
+  automated tests pass, not manually accepted.** *Ask for feedback* (and asking
+  again after a withdrawal) writes one delivery per eligible client member, and
+  a round's first root feedback note writes one to the studio inbox naming that
+  note — each in the action's own transaction, sharing the request's one
+  persisted timestamp. Replies and every other Review action write nothing.
+  One dispatcher re-checks access, renders and sends after commit, used by a
+  best-effort drain after the response and by `npm run notifications:dispatch`;
+  links name the exact immutable Revision. Studio's dialog now says who will be
+  emailed, and its confirmation how many. **Beta is capture-only**:
+  `NOTIFICATION_REDIRECT_TO` is set nowhere, no deliberate real Stage G email
+  has been sent from beta, and **no Railway cron exists**. No new migration.
+- **Not started:** G3 (the scheduled dispatcher on Railway, the redirected
+  real-beta email walk), and Approvals. **Build 005 cannot be promoted until G3
+  has installed and verified the dispatch schedule.**
 
 **Stage A beta acceptance.** Migration `0004` deployed and applied. `npm run
 storage:verify` was run **inside the real beta app container against the real
@@ -507,13 +518,16 @@ These are the gates between beta and production:
 - **`npm run storage:verify` has not been run in production**, because there is
   nothing there to run it against yet. Beta passing says nothing about a bucket
   that does not exist.
+- **The notification dispatcher is not scheduled.** Until G3 installs and
+  verifies it, a notification whose best-effort drain did not run waits for
+  somebody to run `npm run notifications:dispatch`.
 - **`npm run env:check` has not been run against production for Build 005's
   variables.** Beta had `CLIENT_AUTH_SECRE` for a whole round of investigation;
   one command would have found it, and one command is the gate.
 
 Separately from those gates, and not claimed either way as a gate: **Stage C is
-not complete** — Stage F and Stage G are not built — and **Approvals has not
-begun**, and is read or written by no code.
+not complete** — Stage F is closed, but Stage G is not (G3 has not started) — and
+**Approvals has not begun**, and is read or written by no code.
 
 The viewer, Stage B and Stage C's Review surfaces were all on this list and are
 no longer: the viewer was accepted on beta by hand — image, PDF, MP4 and video

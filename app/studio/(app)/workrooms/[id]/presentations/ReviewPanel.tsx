@@ -1,7 +1,10 @@
+import Announcement from "@/components/studio/Announcement";
 import Moment from "@/components/studio/Moment";
 import RecordAction from "@/components/studio/RecordAction";
 import ReviewThread, { type LocatorMode } from "@/components/workrooms/ReviewThread";
 import { reviewPanelForStaff } from "@/lib/db/reviews";
+import { notificationMode } from "@/lib/notifications/mode";
+import { requestDialogMessage } from "@/lib/notifications/request-copy";
 import { labelAt, type ClientRevisionItem } from "@/lib/workrooms/presentation-view";
 import { revisionLocatorHref } from "@/lib/workrooms/review-locator";
 import { type ReviewLifecycle } from "@/lib/workrooms/review-lifecycle";
@@ -56,68 +59,71 @@ function Controls({
   const named = fields as Record<string, string | number>;
 
   return (
-    <div className={studio.actions}>
-      {lifecycle.canRequest ? (
-        <RecordAction
-          action={requestReviewAction}
-          fields={named}
-          label={lifecycle.state === "withdrawn" ? "Ask again" : "Ask for feedback"}
-          busyLabel="Asking…"
-          variant="secondary"
-          confirm={{
-            title: "Ask for feedback on this version?",
-            message:
-              "The client can write on it until you close it. No email is sent — telling them is a separate decision.",
-            action: "Ask",
-          }}
-        />
-      ) : null}
+    <Announcement>
+      <div className={studio.actions}>
+        {lifecycle.canRequest ? (
+          <RecordAction
+            action={requestReviewAction}
+            fields={named}
+            label={lifecycle.state === "withdrawn" ? "Ask again" : "Ask for feedback"}
+            busyLabel="Asking…"
+            variant="secondary"
+            announce
+            confirm={{
+              title: "Ask for feedback on this version?",
+              message: requestDialogMessage(notificationMode().mode),
+              action: "Ask",
+            }}
+          />
+        ) : null}
 
-      {lifecycle.canClose ? (
-        <RecordAction
-          action={closeReviewAction}
-          fields={named}
-          label="Close feedback"
-          busyLabel="Closing…"
-          confirm={{
-            title: "Close feedback on this version?",
-            message:
-              "The client keeps everything that was said and can no longer add to it. You can reopen it while this is the version they are reading.",
-            action: "Close",
-            destructive: true,
-          }}
-        />
-      ) : null}
+        {lifecycle.canClose ? (
+          <RecordAction
+            action={closeReviewAction}
+            fields={named}
+            label="Close feedback"
+            busyLabel="Closing…"
+            confirm={{
+              title: "Close feedback on this version?",
+              message:
+                "The client keeps everything that was said and can no longer add to it. You can reopen it while this is the version they are reading.",
+              action: "Close",
+              destructive: true,
+            }}
+          />
+        ) : null}
 
-      {/* Gone for good the moment anybody writes, including a comment that was
-          taken back: the ordinal is spent, and presenting an untouched round to
-          somebody who had already used it would be a lie about their own
-          Workroom. The button disappears rather than refusing. */}
-      {lifecycle.canWithdraw ? (
-        <RecordAction
-          action={withdrawReviewAction}
-          fields={named}
-          label="Take the request back"
-          busyLabel="Taking back…"
-          confirm={{
-            title: "Take the request back?",
-            message:
-              "This version looks to the client exactly as it did before you asked. Only possible while nothing has been written.",
-            action: "Take back",
-            destructive: true,
-          }}
-        />
-      ) : null}
+        {/* Gone for good the moment anybody writes, including a comment that was
+            taken back: the ordinal is spent, and presenting an untouched round to
+            somebody who had already used it would be a lie about their own
+            Workroom. The button disappears rather than refusing. */}
+        {lifecycle.canWithdraw ? (
+          <RecordAction
+            action={withdrawReviewAction}
+            fields={named}
+            label="Take the request back"
+            busyLabel="Taking back…"
+            confirm={{
+              title: "Take the request back?",
+              message:
+                "This version looks to the client exactly as it did before you asked. Only possible while nothing has been written.",
+              action: "Take back",
+              destructive: true,
+            }}
+          />
+        ) : null}
 
-      {lifecycle.canReopen ? (
-        <RecordAction
-          action={reopenReviewAction}
-          fields={named}
-          label="Reopen feedback"
-          busyLabel="Reopening…"
-        />
-      ) : null}
-    </div>
+        {lifecycle.canReopen ? (
+          <RecordAction
+            action={reopenReviewAction}
+            fields={named}
+            label="Reopen feedback"
+            busyLabel="Reopening…"
+            announce
+          />
+        ) : null}
+      </div>
+    </Announcement>
   );
 }
 

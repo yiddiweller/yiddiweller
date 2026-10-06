@@ -155,12 +155,12 @@ test("a malformed success keeps no provider id rather than an arbitrary one", as
   });
 });
 
-test("nothing in a product path constructs or calls the Resend transport", () => {
+test("only the dispatcher constructs the Resend transport — there is no second sender", () => {
   const callers = ["app", "lib", "components", "middleware.ts", "scripts"]
     .flatMap((root) => listSources(root))
     .filter((file) => file !== "lib/notifications/resend-transport.ts")
     .filter((file) => /resendTransport|resend-transport/.test(code(file)));
-  assert.deepEqual(callers, [], "a product path reaches the notification transport");
+  assert.deepEqual(callers, ["lib/notifications/dispatch.ts"], "something besides the dispatcher reaches the notification transport");
 });
 
 /** A file's code, without its comments — what it does, not what it says. */

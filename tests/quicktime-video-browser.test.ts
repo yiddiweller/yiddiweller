@@ -103,7 +103,7 @@ async function seedQuickTime(): Promise<void> {
   assert.ok(round.ok);
   const quinn = await person("Quinn", workroomId, "quinn-quicktime@example.test");
   const timed = await createReviewNote(quinn, {
-    reviewId: round.value,
+    reviewId: round.value.reviewId,
     body: "At two seconds.",
     itemPosition: 0,
     anchor: { kind: "time", t: 2 },
@@ -111,7 +111,7 @@ async function seedQuickTime(): Promise<void> {
   assert.ok(!timed.ok, "a time was stored on a MOV frozen as a download");
   quick.refusal = timed.message;
   // Feedback about it as a whole is unaffected.
-  assert.ok((await createReviewNote(quinn, { reviewId: round.value, body: "About the clip.", itemPosition: 0 })).ok);
+  assert.ok((await createReviewNote(quinn, { reviewId: round.value.reviewId, body: "About the clip.", itemPosition: 0 })).ok);
 
   // Version 2, published after the change: the same file, frozen as `video`.
   assert.ok((await publishPresentation(owner, pid, await version(pid))).ok);

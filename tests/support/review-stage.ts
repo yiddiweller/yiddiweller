@@ -292,7 +292,7 @@ export async function round(s: Stage): Promise<string> {
   const current = (await findPresentation(s.presentationId))!.currentRevisionId!;
   const made = await requestReview(staff, current);
   assert.ok(made.ok, made.ok ? "" : made.message);
-  return made.value;
+  return made.value.reviewId;
 }
 
 

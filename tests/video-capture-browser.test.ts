@@ -101,8 +101,8 @@ async function seedVideo(): Promise<void> {
     pid,
     presentation: (await findPresentation(pid))!.publicId,
     frozen: (await findPresentation(frozen.value))!.publicId,
-    frozenReview: frozenRound.value,
-    review: round.value,
+    frozenReview: frozenRound.value.reviewId,
+    review: round.value.reviewId,
     quinn: await person("Quinn", workroomId, "quinn-video@example.test"),
   });
 }

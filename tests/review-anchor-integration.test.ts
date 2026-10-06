@@ -310,7 +310,7 @@ test("an anchor is judged by the viewer its own Revision froze, not by today's f
   // …and a point there is refused, because Revision 3 shows a video there.
   const next = await requestReview(staff, current);
   assert.ok(next.ok);
-  const onVideo = await write(s.ana, next.value, IMAGE, { kind: "point", x: 0.42, y: 0.18 });
+  const onVideo = await write(s.ana, next.value.reviewId, IMAGE, { kind: "point", x: 0.42, y: 0.18 });
   assert.ok(!onVideo.ok);
   assert.match(onVideo.message, /point belongs on an image/);
 

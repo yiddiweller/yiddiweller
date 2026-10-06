@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from "react";
 
+import { useAnnounce } from "@/components/studio/Announcement";
 import ConfirmDialog, { type Confirm } from "@/components/studio/ConfirmDialog";
 import { type ActionResult } from "@/lib/studio-result";
 import styles from "@/app/studio/studio.module.css";
@@ -24,6 +25,9 @@ import styles from "@/app/studio/studio.module.css";
  * front of a submission that then happens by other means — it *is* the
  * submission, carrying the same hidden fields, through the same server action.
  * There is no path where the dialog is dismissed and the mutation runs anyway.
+ *
+ * **`announce`** hands a success's sentence to the nearest `Announcement`,
+ * for an action whose own button disappears once it has worked.
  */
 export default function RecordAction({
   action,
@@ -32,6 +36,7 @@ export default function RecordAction({
   busyLabel,
   confirm,
   variant = "quiet",
+  announce = false,
 }: {
   action: (previous: ActionResult | null, form: FormData) => Promise<ActionResult>;
   fields: Record<string, string | number>;
@@ -39,8 +44,10 @@ export default function RecordAction({
   busyLabel: string;
   confirm?: Confirm;
   variant?: "primary" | "secondary" | "quiet";
+  announce?: boolean;
 }) {
   const [asking, setAsking] = useState(false);
+  const say = useAnnounce();
   const [result, submit, pending] = useActionState<ActionResult | null, FormData>(
     // Closed by the submission that finished, rather than by the click that
     // started it: while the action is in flight the dialog stays up saying so,
@@ -49,6 +56,7 @@ export default function RecordAction({
     async (previous, form) => {
       const outcome = await action(previous, form);
       setAsking(false);
+      if (announce && outcome.ok) say?.(outcome.message);
       return outcome;
     },
     null,

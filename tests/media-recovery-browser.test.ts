@@ -81,11 +81,11 @@ before(async () => {
   assert.ok(round.ok);
 
   const lia = await person("Lia", workroomId, "lia-recovery@example.test");
-  await note(lia, round.value, 0, { kind: "time", t: 450 }); // 1
-  await note(lia, round.value, 0, { kind: "time", t: 500, t2: 520 }); // 2
-  await note(lia, round.value, 1, { kind: "time", t: 15 }); // 3
-  await note(lia, round.value, 1, { kind: "time", t: 12, t2: 16 }); // 4
-  await note(lia, round.value, 2, { kind: "point", x: 0.25, y: 0.75 }); // 5
+  await note(lia, round.value.reviewId, 0, { kind: "time", t: 450 }); // 1
+  await note(lia, round.value.reviewId, 0, { kind: "time", t: 500, t2: 520 }); // 2
+  await note(lia, round.value.reviewId, 1, { kind: "time", t: 15 }); // 3
+  await note(lia, round.value.reviewId, 1, { kind: "time", t: 12, t2: 16 }); // 4
+  await note(lia, round.value.reviewId, 2, { kind: "point", x: 0.25, y: 0.75 }); // 5
 
   // A second client, whose access the revocation test withdraws.
   const rae = await person("Rae", workroomId, "rae-recovery@example.test");

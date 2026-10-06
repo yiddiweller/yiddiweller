@@ -43,6 +43,7 @@ import {
   presentationRevisionItems,
   presentationRevisions,
   presentationReviewNotes,
+  notificationDeliveries,
   presentationReviews,
   presentations,
   projects,
@@ -95,6 +96,7 @@ async function wipe(): Promise<void> {
     await db().execute(sql.raw(`ALTER TABLE ${table} DISABLE TRIGGER USER`));
   }
   await db().delete(presentationReviewNotes);
+  await db().delete(notificationDeliveries);
   await db().delete(presentationReviews);
   await db().delete(presentationApprovals);
   await db().delete(presentationRevisionItems);
@@ -231,7 +233,7 @@ async function stage(): Promise<Stage> {
   const made2 = await requestReview(staff, revision);
   assert.ok(made2.ok);
 
-  return { presentationId, revision, reviewId: made2.value, ana: people[0]!, ben: people[1]! };
+  return { presentationId, revision, reviewId: made2.value.reviewId, ana: people[0]!, ben: people[1]! };
 }
 
 async function version(reviewId: string): Promise<number> {

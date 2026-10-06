@@ -360,7 +360,7 @@ test("a picture frozen as a download takes no point, however it reads today", as
   const round = await requestReview(staff, revisionId);
   assert.ok(round.ok);
   const refused = await createReviewNote(s.ana, {
-    reviewId: round.value,
+    reviewId: round.value.reviewId,
     body: "Refused: a point on a download.",
     itemPosition: 0,
     anchor: point(0.5, 0.5),

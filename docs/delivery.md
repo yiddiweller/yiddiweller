@@ -2928,11 +2928,11 @@ redacted, as `lib/auth-delivery.ts` established.
 No digests, no preferences, no notification centre, no unsubscribe machinery.
 These are transactional messages to people who were deliberately invited.
 
-### Stage G — decided, not built
+### Stage G — the V1 decisions
 
-The architecture recon is approved and these V1 decisions are locked. **No
-notification is sent by anything yet**: no table, no migration, no renderer, no
-dispatcher and no notification setting exists.
+The architecture recon is approved and these V1 decisions are locked. When they
+were locked nothing existed yet; G0, G1 and G2 below build them, and beta stays
+capture-only until G3.
 
 1. Replies never send notification email in V1.
 2. Studio-bound notifications go to `CONTACT_EMAIL`, the studio inbox.
@@ -3043,18 +3043,18 @@ to its own namespace, `next` grants nothing, the destination's own
 authorization stays authoritative, and an ordinary sign-in without `next` still
 lands on its world's root.
 
-**Stage G status.** G0 is closed. **G1 and G2 have not started**: there is no
-notification table, no notification email has been sent, there is no
-notification cron on Railway and no notification environment variable.
-Approvals have not started.
+**Stage G status, when G0 closed.** G0 is closed. G1 and G2 had not started:
+there was no notification table, no notification email had been sent, there
+was no notification cron on Railway and no notification environment variable.
+Approvals had not started. *(G1 and G2 follow below.)*
 
 ### G1 — the durable notification foundation
 
 **Implemented, automated tests pass, not manually accepted.** The outbox and
-everything a dispatcher will need — and **nothing that uses them**. No Review
-action writes a delivery, nothing dispatches, no Stage G email can be sent, no
-Railway cron exists and no Railway variable was changed. G2 has not started;
-Approvals have not started.
+everything a dispatcher needs. **As G1 shipped, nothing used them**: no Review
+action wrote a delivery, nothing dispatched, no Stage G email could be sent, no
+Railway cron existed and no Railway variable was changed. G2 wires them —
+below.
 
 - **One operational table, `notification_deliveries`** (migration
   `0007_notifications.sql`): one row per event × recipient, holding **intent and
@@ -3118,17 +3118,17 @@ Approvals have not started.
 - **`MailTransport`**, a recording fake for tests, and a Resend adapter that
   passes the `Idempotency-Key`, reduces every failure to a class and never logs
   — the SDK's own logger, which prints the provider's raw error outside
-  production, is silenced on the adapter's instance. **Nothing calls it**: a
-  test scans every product path.
+  production, is silenced on the adapter's instance. Since G2 only the
+  dispatcher constructs it, and a test scans every product path for that.
 - **Preview safety** (`lib/notifications/mode.ts`). Production is `live` and
   never honours `NOTIFICATION_REDIRECT_TO`, which `env:check` refuses there by
   name, even blank. The preview is `capture` by default; a valid single address
   makes it `redirect`; a malformed one stays `capture` and `env:check` refuses
-  it. The value is never printed. **Defined, not active**: nothing delivers yet.
+  it. The value is never printed. (G1 defined it; G2's dispatcher obeys it.)
   Sign-in, invitation and contact mail never consult it, and a test holds that.
 - **Logs.** `notification.created / sent / failed / suppressed / captured`, each
   with a whitelisted set of words — kind, count, delivery id, attempt, reason,
-  error class, recipient role — checked at runtime. Defined, emitted by nothing.
+  error class, recipient role — checked at runtime. (Emitted from G2.)
 
 **Audit, Activity and deliveries stay three things.** Audit is the lifecycle
 and security record, Activity the client's timeline, and
@@ -3143,6 +3143,176 @@ on a live database; `SKIP LOCKED`, the abandoned-claim rule, the provider key,
 the subject, the body, escaping, the preview default, `env:check`'s refusal and
 its silence, and the retry horizon broken in code — each failed the test written
 for it.
+
+### G2 — domain wiring and the dispatcher
+
+**Implemented, automated tests pass, not manually accepted.** The Review actions
+now write their notifications, and one dispatcher delivers them. **Beta stays
+capture-only**: `NOTIFICATION_REDIRECT_TO` is not set anywhere, no deliberate
+real Stage G email has been sent from beta, **no Railway cron exists** — the
+scheduled reliability job is G3's — and G3 and Approvals have not started.
+**Build 005 cannot be promoted until G3 has installed and verified that
+schedule.**
+
+**What writes a notification — and the reliability model.** Two events, and
+nothing else:
+
+| Event | Function | Rows written, in the action's own transaction |
+| --- | --- | --- |
+| Ask for feedback — a new round | `requestReview` | one `review.requested` per eligible client member |
+| Ask again after a withdrawal | `requestReview` (reuses the row) or `reopenReview` from `withdrawn` | one per eligible member, for the **new** episode |
+| A round's first root feedback note | `createReviewNote` | one `review.received`, to `studio_inbox`, naming that note |
+
+Replies (either side), later root notes, edits, removals, resolve and reopen of
+a note, closing, an ordinary reopen after the studio closed a round,
+withdrawing, supersession, publishing and sharing a file write **nothing**, and
+a test performs each and counts the table. The rows are inserted by
+`enqueueDeliveries(tx, …)` inside the domain transaction — never after it, never
+in a second one — so the round or note and its notification commit together or
+neither exists; a test makes the outbox refuse its insert and watches the whole
+action, its Audit and its Activity vanish. Nothing in that transaction talks to
+a provider. **The guarantee is the committed row plus the scheduled
+dispatcher**; everything else is speed.
+
+- **One request episode, one timestamp.** The round's `requested_at` is taken
+  once, written, and read back from `RETURNING`; the deliveries are built from
+  that value, never from a second clock reading. Both columns hold the same
+  instant to the microsecond — a test compares them with `=` in SQL across
+  every door (new round, ask again, reopen from withdrawn) and many fresh
+  rounds. Rows written before G2 used the column default (microseconds), which
+  the dispatcher's millisecond comparison still treats as their own episode.
+- **The first root note, exactly.** Counted under the round's row lock before
+  the note is inserted, removed notes included — a removal never makes a later
+  note the first — and the delivery's `note_number` is the ordinal just
+  created. G2 never writes a `review.received` without one, and the dedupe key
+  is per round, so a second root note cannot add a row even by accident.
+- **Who is asked.** `eligibleClientIdentityIds`, run after the round is open:
+  active identity with an unarchived contact, active membership, Workroom and
+  Presentation published and unarchived, round open on the current Revision.
+  Never `contacts.email`, the project owner, the person who asked or all staff.
+  **Zero eligible members is not a failure**: the round opens, no row is
+  written, and Studio is told so.
+- **What the action returns.** `requestReview` answers `{ reviewId, notified }`
+  and `reopenReview` `{ asked, notified }` — a count, never an address, an
+  identity or a row. `createReviewNote` still answers the note's ordinal; the
+  client is never told anything about email.
+- **After commit, and only after.** The domain writes `notification.created`
+  (kind and count) once the transaction has committed and only if it wrote
+  rows, then calls the caller's `AfterCommit` hook. A hook that throws is
+  swallowed; a refused or rolled-back action calls nothing.
+
+**The dispatcher** (`lib/notifications/dispatch.ts`), the only code that turns
+a row into a message — the scheduled command and the drain both call it, and a
+test holds that nothing else constructs the transport. For each row: claim and
+commit (no transaction is open from here on); fail abandoned claims with no
+attempts left; **re-read the facts and decide** with G1's rules — a revoked
+member, an inactive identity, an unpublished Workroom or Presentation, a round
+withdrawn, closed, superseded or asked again since, feedback taken back with
+nothing left — each is a suppression with its reason, never a provider failure;
+then the mode; then render from what is true now; then send with
+`yw-notification/{delivery id}`; then settle by the claim. A row that throws is a
+retried `unknown`, and never stops the batch.
+
+- **Links are the exact immutable Revision**, built from the app's own origins
+  (`lib/notifications/links.ts`): a client's
+  `workroomUrl()/{room}/presentations/{presentation}/revisions/{N}`, and
+  Studio's `studioUrl()/workrooms/{id}/presentations/{id}/revisions/{N}?note={n}`
+  through the same `revisionLocatorHref` Studio's draft page uses. Never a file
+  route, a `/view` URL, a signed URL or a token. Feedback on Version 2 still
+  links to Version 2, with its note, after Version 3 is published; a pending
+  request for Version 2 is suppressed as `superseded` instead.
+- **What a message names, read at send time**: the title **as that Revision
+  froze it**, its number, and — for the studio — the note author's name, withheld
+  once that note was removed. Never feedback, an anchor, a file or an address.
+- **Where it goes.** *Live*: the client's verified sign-in address as it is at
+  that moment (`client_identities.email`, never `contacts.email`), or
+  `CONTACT_EMAIL` as configured at that moment; a client's message has Reply-To
+  `CONTACT_EMAIL`, the studio's none. *Capture* (the preview's default): after
+  the access re-check, the row settles `suppressed / preview_capture`, a
+  `notification.captured` line says kind, delivery and role, nothing is rendered
+  for a recipient and no transport is built. *Redirect* (preview, valid
+  `NOTIFICATION_REDIRECT_TO`, **not configured anywhere**): the one test inbox is
+  the only recipient, the intended client's address is never even read, and the
+  body opens with *Preview notification — intended recipient: client member*
+  (or *studio inbox*) — a role, never an address or an id. A client message's
+  Reply-To stays `CONTACT_EMAIL`, the reply path being tested.
+- **Configuration is read when sending, never stored.** A missing
+  `RESEND_API_KEY`, `RESEND_FROM_EMAIL` or `CONTACT_EMAIL` fails the attempt as
+  `invalid_api_key`, `invalid_from_address` or `validation_error` — what the
+  provider would have said, and terminal by G1's rules. Capture needs none of
+  them.
+- **Retries, failure and the provider key** are G1's, exactly: transient
+  classes wait 1m, 5m, 30m, 2h, 6h; terminal ones fail at once; every attempt of
+  a row carries the same key, proven both with the recording transport and with
+  the real Resend adapter against a local stand-in.
+
+**Batches.** The scheduled command claims at most **25** rows a run
+(`SCHEDULED_BATCH`); anything more waits for the next run. The drain claims at
+most **5** (`IMMEDIATE_BATCH`). Rows are worked one at a time.
+
+**The best-effort drain — speed only.** The server actions pass
+`drainAfterResponse` (`lib/notifications/after-response.ts`) as the hook; it
+schedules `drainOnce` with Next's `after()`, which runs once the response has
+been sent. It is never awaited by the action, uses the same dispatcher, never
+rejects — a failure is one field-less `notification.drain_failed` warning — and
+if the process stops before or during it the row is still `pending` for the
+scheduled command. A browser test holds the provider's line open and watches the
+Studio confirmation appear while the request is still unanswered; another makes
+the provider answer 500 and watches *Ask for feedback* and the client's first
+note succeed, their rows left to retry.
+
+**`npm run notifications:dispatch`** (`scripts/dispatch-notifications.mjs`): one
+bounded pass, a `notification.dispatched` line of counts, exit 0 whenever the
+pass ran — nothing due, rows retried, failed or suppressed included — and exit 1
+only when it has no database or cannot reach it. Safe to run repeatedly and
+concurrently. **Not scheduled**: G3 creates and verifies the Railway job. Note
+for G3: the production image copies `scripts/` but not `lib/`, which this
+command (like `storage:sweep`) imports — G3 decides how the scheduled job runs
+it.
+
+**Studio's words** (`lib/notifications/request-copy.ts`, pure). The *Ask for
+feedback* dialog no longer says no email is sent. Live: *The client can write on
+it until you close it. Active client members of this workroom will be emailed a
+link to this version.* Capture: *… Beta captures notification emails; no client
+email will be sent.* Redirect: *… Beta sends notification emails to its test
+inbox only; no client email will be sent.* After asking, the exact count:
+*Asked the client for their thoughts on this version. 2 client members will be
+emailed.* — or, on beta, *Beta captured the email for 2 client members; no
+client email was sent.* — or, with nobody to email, *No active client members
+are currently available to email.*, calmly, never as an error. The sentence is
+held by a small `Announcement` around the round's controls, because the button
+that caused it disappears once the round is open. The client's feedback UI is
+unchanged: *Sent to the studio.*, and nothing about email.
+
+**Logging.** `notification.created` (kind, count), `.sent` (kind, delivery,
+attempt), `.failed` (kind, delivery, attempt, error class — every failed attempt,
+retried or not), `.suppressed` (kind, delivery, reason), `.captured` (kind,
+delivery, role), `.dispatched` (counts) and `.drain_failed` (nothing) — the G1
+whitelist, extended by the last two, checked at runtime. Never an address, a
+name, a title, feedback, an anchor, a link, an idempotency key, a connection
+string or anything a provider said.
+
+**Auth mail is untouched.** Sign-in links, Workroom and Studio invitations and
+the contact form keep their own senders and never consult the notification
+mode; on a preview server in capture mode, a test requests both worlds' sign-in
+links and watches them arrive.
+
+Tested against a real PostgreSQL, two real servers — one preview, one live —
+and a real browser, with the provider replaced by a recording transport
+in-process and a local stand-in over HTTP (`notifications-wiring`,
+`-dispatch`, `-browser` and `-copy`, beside G1's suites). Twenty-two mutations — the request's rows written on another
+connection, delivery work run before commit, every root note or every reply
+announced, an ordinary reopen treated as a request, a wrong or missing note
+number, a second clock or the column default for the episode, an old episode
+sent, access not re-checked, feedback suppressed by supersession, the link
+moved to the latest version, capture calling a transport, a redirect sent to
+the intended address, a retry with a new provider key, a claim that does not
+claim, feedback text reaching the message, a throwing hook failing the action,
+and — built into the servers and driven in the browser — the drain awaited and
+a provider failure failing *Ask for feedback* — each failed the tests written
+for it, except one: loosening only the "first root note" condition changes
+nothing, because the per-round dedupe key still makes a second insert a no-op.
+That is the second line holding, and loosening both is caught.
 
 ---
 

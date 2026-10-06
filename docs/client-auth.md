@@ -149,7 +149,9 @@ anything else. The hook rewrites `errorCallbackURL` and `newUserCallbackURL` as
 well as `callbackURL`, since a refused link follows the first just as readily.
 `next` grants nothing: the page runs its own reads, so access revoked while
 somebody signs in still ends at a 404. Studio has the same flow under its own
-rule, `lib/auth/redirect.ts`; see `delivery.md`, *G0*.
+rule, `lib/auth/redirect.ts`; see `delivery.md`, *G0*. Walked on beta through
+the real email and accepted: a client came back to the exact Revision asked
+for (*G0 is verified on beta*).
 
 ---
 

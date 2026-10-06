@@ -2957,7 +2957,8 @@ dispatcher, never in-process execution.
 
 ### G0 — return to the exact page after signing in
 
-**Implemented, automated tests pass, not manually accepted.** Infrastructure a
+**Implemented, automated tests pass, real-beta manual acceptance passes — closed**
+(see *G0 is verified on beta*, below). Infrastructure a
 notification needs before it can link anybody anywhere: a signed-out person who
 follows a link to one exact page signs in and lands on exactly that page, in
 their own world, with nothing granted by the trip.
@@ -3007,6 +3008,45 @@ Tested end to end in a real browser through the real email: the test server's
 so the link followed is the one a person would have received and nothing leaves
 the machine (`tests/return-to-destination.test.ts`, with the open-redirect
 matrices in `workroom-redirect.test.ts` and `studio-redirect.test.ts`).
+
+#### G0 is verified on beta
+
+Walked by hand on the real Railway beta deployment, through each world's real
+magic-link email:
+
+- **Client.** Signed out, an exact immutable Revision link was opened; the app
+  sent it to the client sign-in; a real link was requested and opened from the
+  email; authentication completed and the browser returned to **exactly the
+  Revision first asked for** — not the generic `/workrooms` page. *Client
+  return-to-destination: real-beta manual acceptance passes.*
+- **Studio.** Signed out, an exact immutable Studio Revision URL carrying
+  `?note=1` was opened; the app sent it to Studio sign-in; a real link was
+  requested and opened from the email; authentication completed and the browser
+  returned to **exactly that Revision with `?note=1` intact**, and the saved
+  note's context opened as it should. *Studio return-to-destination: real-beta
+  manual acceptance passes.*
+
+**What the walk proves, and what it does not.** By hand: a client's exact
+Revision and Studio's exact Revision come back after a real magic-link sign-in,
+Studio keeps `?note=1`, and the note's context opens on arrival. **Not walked by
+hand**, and proven by the automated suites instead: refusal of external,
+protocol-relative and encoded redirects and of control characters; cross-world
+isolation; the spoofed return header; revoked client access and inactive staff;
+the unsafe-`next` fallback and ordinary sign-in without `next`; the log and
+token leak checks; and every mutation check. Not every note or deep-link
+variant was walked.
+
+**G0 — return to the destination after sign-in — is closed.** What is
+accepted: client and Studio deep links survive sign-in, a safe query string
+survives with them, Studio's `?note=` context survives, each auth world is held
+to its own namespace, `next` grants nothing, the destination's own
+authorization stays authoritative, and an ordinary sign-in without `next` still
+lands on its world's root.
+
+**Stage G status.** G0 is closed. **G1 and G2 have not started**: there is no
+notification table, no notification email has been sent, there is no
+notification cron on Railway and no notification environment variable.
+Approvals have not started.
 
 ---
 

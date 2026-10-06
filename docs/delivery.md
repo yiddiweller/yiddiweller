@@ -2057,8 +2057,18 @@ pass; F6.3, the real-beta walk, passes manual acceptance. What is accepted:
 optional, separate storage-hardening change, not part of F6 and not needed for
 it.
 
-**Still not built:** regions, frame-region display, PDF precision, Stage G.
-Stage F is not complete.
+**Stage F — precise feedback and return to context — is closed.** Its scope
+was F1 the canonical anchor foundation, F2 locators and return to context, F3
+audio moments and stretches, F4 video moments and stretches, F5 image points
+and drag-to-fine-tune, and F6 signed media recovery; all of it is complete.
+
+**Deferred future annotation capabilities** — deliberately left for a future
+phase, not unfinished Stage F requirements: image regions, arrows, lines,
+rectangles, freehand drawing, annotation colours, several points in one
+comment, spatial or frame annotation on video, PDF precision, zoom and an
+annotation toolbar, and any other advanced annotation tooling.
+
+**Not started:** Stage G, notifications, and Approvals.
 
 #### Stretches on a phone
 

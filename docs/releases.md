@@ -452,8 +452,14 @@ recorded in [`delivery.md`](./delivery.md) under *Reviews are verified on beta*.
   redeployed, so the view URL is back to fifteen minutes. `ResponseCacheControl`
   hardening stays deferred, outside F6. Record: *F6 is verified on beta* in
   `docs/delivery.md`.
-- **Still not built:** region capture, and Stage G,
-  notifications. Stage G has not started.
+- **Stage F — precise feedback and return to context — is closed:** F1 the
+  anchor foundation, F2 return to context, F3 audio and F4 video moments and
+  stretches, F5 image points and F6 signed media recovery are all complete.
+  Image regions, arrows, lines, rectangles, freehand drawing, annotation
+  colours, several points in one comment, spatial or frame annotation on
+  video, PDF precision, zoom and an annotation toolbar remain **deferred
+  future annotation capabilities**, not unfinished Stage F work.
+- **Not started:** Stage G, notifications, and Approvals.
 
 **Stage A beta acceptance.** Migration `0004` deployed and applied. `npm run
 storage:verify` was run **inside the real beta app container against the real

@@ -49,8 +49,8 @@ over an open round, superseding it into read-only history in both worlds → a n
 current version with no round. The walk found three defects — the item locator,
 the tombstone and the publish consequence — each fixed at its cause and retested
 on beta; the record is *Reviews are verified on beta* in `docs/delivery.md`.
-**Stage C is not complete**: Stage F, drawing precise anchors (stored and
-projected, drawn by nothing), and Stage G, notifications, are not built. Stage
+**Stage C is not complete**: Stage F, precise feedback and return to context,
+is now closed (below), and Stage G, notifications, has not started. Stage
 F's architecture is locked in `docs/delivery.md` — image point, video and audio
 moment and stretch, return to context; no migration; regions, frame anchors and
 PDF anchors deferred. **F1, its foundation, is built and nothing visible is**:
@@ -117,8 +117,12 @@ in iPhone Safari — after a loading delay, at the position sought, paused, no
 autoplay — and the saved locator *At 0:01* landed at 0:01, paused, after
 expiry; every other rule rests on the automated suites. **The override was
 deleted from Railway beta and beta redeployed: the view URL is fifteen minutes
-(900 seconds) again**, and `VIEW_TTL_OVERRIDE_SECONDS` is set nowhere. Region
-capture is not built, Stage G has not started, and Stage F is not complete.
+(900 seconds) again**, and `VIEW_TTL_OVERRIDE_SECONDS` is set nowhere.
+**Stage F — precise feedback and return to context, F1 through F6 — is
+closed.** Image regions, arrows, lines, rectangles, freehand, colours, several
+points per comment, spatial or frame annotation on video, PDF precision, zoom
+and an annotation toolbar are **deferred future annotation capabilities**, not
+unfinished Stage F requirements. **Stage G has not started.**
 Approvals has not begun. Build 005 is **not promoted**: production has no bucket, the sweep is
 unscheduled and there is no per-object backup strategy, so production remains
 Build 004.**

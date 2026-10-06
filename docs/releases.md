@@ -471,8 +471,17 @@ recorded in [`delivery.md`](./delivery.md) under *Reviews are verified on beta*.
   asked for, and Studio to the exact Revision with `?note=1` intact and the note
   open. The unsafe-redirect, isolation, access and leak cases rest on the
   automated suites. Record: *G0 is verified on beta* in `docs/delivery.md`.
-- **Not started:** Stage G notification delivery — G1 and G2: no notification
-  table, email, cron or environment variable exists — and Approvals.
+- **Stage G1 — the durable notification foundation: implemented, automated
+  tests pass, not manually accepted.** Migration `0007_notifications.sql` adds
+  `notification_deliveries`, Stage G's outbox — intent and delivery state only,
+  never an address or a word of anybody's feedback — with the rules, renderer,
+  claim-and-retry primitives, transport and preview capture a dispatcher will
+  need. **Nothing uses any of it yet**: no Review action writes a delivery,
+  nothing dispatches, no notification email can be sent, no cron exists and no
+  Railway variable changed. The migration only adds; existing Review rows are
+  untouched.
+- **Not started:** G2 (wiring Review actions and the dispatcher), G3 (the
+  scheduled dispatcher and the real-beta walk), and Approvals.
 
 **Stage A beta acceptance.** Migration `0004` deployed and applied. `npm run
 storage:verify` was run **inside the real beta app container against the real

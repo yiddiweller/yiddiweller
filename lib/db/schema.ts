@@ -16,6 +16,19 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
+import {
+  DELIVERY_ERRORS,
+  DELIVERY_STATUSES,
+  NOTIFICATION_KINDS,
+  RECIPIENT_KINDS,
+  SUPPRESSION_REASONS,
+  type DeliveryError,
+  type DeliveryStatus,
+  type NotificationKind,
+  type RecipientKind,
+  type SuppressionReason,
+} from "../notifications/vocabulary.ts";
+
 /**
  * Schema conventions for every table added from Phase 1 onward. The reasoning
  * behind each is in `docs/database.md`; this file is where they are enforced.
@@ -1568,6 +1581,10 @@ export const presentationReviews = pgTable(
       table.id,
       table.presentationRevisionId,
     ),
+    // A notification delivery's FK target (G1): a delivery names its Workroom
+    // and its round together, so PostgreSQL refuses one whose round lives in
+    // another Workroom. `id` is already unique, so this only states a pair.
+    unique("presentation_reviews_workroom_id_id_key").on(table.workroomId, table.id),
 
     index("presentation_reviews_workroom_idx").on(table.workroomId, table.status),
 
@@ -1914,3 +1931,154 @@ export const presentationApprovals = pgTable(
     ),
   ],
 );
+
+/* ------------------------------------------------ Stage G: notifications */
+
+/**
+ * One notification, for one recipient: **structured intent and delivery
+ * state, and nothing else** (Stage G1).
+ *
+ * An operational table — mutable, and not Audit, not Activity, not Review
+ * content. A row says *this happened, this person should hear about it, and
+ * here is how sending it is going*. It holds no address, no subject, no body,
+ * no rendered mail, no title, no name, no feedback text, no anchor and no URL:
+ * a dispatcher looks up the recipient it is still allowed to reach and renders
+ * the message **at send time**, so an inbox never receives what a row
+ * remembered instead of what is true.
+ *
+ * The guarantee that a notification eventually sends is this row, written in
+ * the same transaction as the action that caused it, plus a scheduled
+ * dispatcher. Any attempt made straight after the action is speed, not
+ * reliability. **G1 writes nothing here** — no Review action is wired to it
+ * and nothing dispatches; that is G2 and G3.
+ *
+ * Every shape rule is a `CASE`, never an `IN` or an `OR` that a NULL could
+ * slip through: a CHECK passes when its expression is NULL.
+ */
+export const notificationDeliveries = pgTable(
+  "notification_deliveries",
+  {
+    id: uuid("id").primaryKey(),
+    kind: text("kind").notNull().$type<NotificationKind>(),
+
+    workroomId: uuid("workroom_id").notNull(),
+    presentationReviewId: uuid("presentation_review_id").notNull(),
+    /**
+     * The request episode a `review.requested` belongs to: the round's own
+     * `requested_at` when it was asked for. A re-request after a withdrawal is
+     * a new episode, and a delivery from the old one is suppressed rather than
+     * sent beside the new one. Compared in SQL, column to column — a
+     * JavaScript `Date` would drop the microseconds and never match.
+     */
+    requestedAt: timestamp("requested_at", { withTimezone: true }),
+    /** The Review note's ordinal for a `review.received` — never its id, never its text. */
+    noteNumber: integer("note_number"),
+
+    recipientKind: text("recipient_kind").notNull().$type<RecipientKind>(),
+    clientIdentityId: text("client_identity_id"),
+
+    /** One row per event and recipient, ever. Built by `lib/notifications/dedupe.ts`. */
+    dedupeKey: text("dedupe_key").notNull(),
+
+    status: text("status").notNull().default("pending").$type<DeliveryStatus>(),
+    attempts: integer("attempts").notNull().default(0),
+    nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }).defaultNow(),
+    claimedAt: timestamp("claimed_at", { withTimezone: true }),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+    providerMessageId: text("provider_message_id"),
+    /** A class from `DELIVERY_ERRORS`. Never the provider's words. */
+    lastError: text("last_error").$type<DeliveryError>(),
+    suppressedReason: text("suppressed_reason").$type<SuppressionReason>(),
+
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.workroomId, table.presentationReviewId],
+      foreignColumns: [presentationReviews.workroomId, presentationReviews.id],
+      name: "notification_deliveries_review_fk",
+    }).onDelete("restrict"),
+    // Named by hand: the generated name runs past PostgreSQL's 63 characters,
+    // which it truncates silently, leaving the schema and the database
+    // disagreeing about what the constraint is called.
+    foreignKey({
+      columns: [table.clientIdentityId],
+      foreignColumns: [clientIdentity.id],
+      name: "notification_deliveries_client_identity_fk",
+    }).onDelete("restrict"),
+
+    unique("notification_deliveries_dedupe_key").on(table.dedupeKey),
+
+    index("notification_deliveries_due_idx").on(table.status, table.nextAttemptAt),
+    index("notification_deliveries_claimed_idx").on(table.status, table.claimedAt),
+    index("notification_deliveries_review_idx").on(table.workroomId, table.presentationReviewId),
+
+    check("notification_deliveries_kind_check", sql.raw(`kind IN (${quoted(NOTIFICATION_KINDS)})`)),
+    check(
+      "notification_deliveries_recipient_kind_check",
+      sql.raw(`recipient_kind IN (${quoted(RECIPIENT_KINDS)})`),
+    ),
+    check("notification_deliveries_status_check", sql.raw(`status IN (${quoted(DELIVERY_STATUSES)})`)),
+
+    // Each kind has exactly one recipient kind, and its own event fields.
+    check(
+      "notification_deliveries_kind_shape_check",
+      sql.raw(
+        "CASE kind" +
+          " WHEN 'review.requested' THEN recipient_kind = 'client'" +
+          " AND requested_at IS NOT NULL AND note_number IS NULL" +
+          " WHEN 'review.received' THEN recipient_kind = 'studio_inbox'" +
+          " AND requested_at IS NULL AND (note_number IS NULL OR note_number >= 1)" +
+          " ELSE false END",
+      ),
+    ),
+    // A client delivery names its client; the studio inbox names nobody.
+    check(
+      "notification_deliveries_recipient_shape_check",
+      sql.raw(
+        "CASE recipient_kind" +
+          " WHEN 'client' THEN client_identity_id IS NOT NULL" +
+          " WHEN 'studio_inbox' THEN client_identity_id IS NULL" +
+          " ELSE false END",
+      ),
+    ),
+    // What each state carries. Retries move a row between pending and sending
+    // freely; sent, suppressed and failed carry exactly their own evidence.
+    check(
+      "notification_deliveries_status_shape_check",
+      sql.raw(
+        "CASE status" +
+          " WHEN 'pending' THEN next_attempt_at IS NOT NULL AND sent_at IS NULL" +
+          " AND suppressed_reason IS NULL" +
+          " WHEN 'sending' THEN claimed_at IS NOT NULL AND attempts >= 1 AND sent_at IS NULL" +
+          " AND suppressed_reason IS NULL" +
+          " WHEN 'sent' THEN sent_at IS NOT NULL AND attempts >= 1 AND suppressed_reason IS NULL" +
+          " AND last_error IS NULL" +
+          " WHEN 'suppressed' THEN suppressed_reason IS NOT NULL AND sent_at IS NULL" +
+          " WHEN 'failed' THEN last_error IS NOT NULL AND attempts >= 1 AND sent_at IS NULL" +
+          " AND suppressed_reason IS NULL" +
+          " ELSE false END",
+      ),
+    ),
+    check(
+      "notification_deliveries_suppressed_reason_check",
+      sql.raw(
+        `CASE WHEN suppressed_reason IS NULL THEN true ELSE suppressed_reason IN (${quoted(SUPPRESSION_REASONS)}) END`,
+      ),
+    ),
+    check(
+      "notification_deliveries_last_error_check",
+      sql.raw(`CASE WHEN last_error IS NULL THEN true ELSE last_error IN (${quoted(DELIVERY_ERRORS)}) END`),
+    ),
+    check("notification_deliveries_attempts_check", sql.raw("attempts >= 0")),
+    check(
+      "notification_deliveries_dedupe_key_check",
+      sql.raw("char_length(dedupe_key) BETWEEN 1 AND 200"),
+    ),
+    check(
+      "notification_deliveries_provider_message_id_check",
+      sql.raw("CASE WHEN provider_message_id IS NULL THEN true ELSE char_length(provider_message_id) <= 200 END"),
+    ),
+  ],
+);
+

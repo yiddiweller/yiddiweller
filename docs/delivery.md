@@ -3048,6 +3048,102 @@ notification table, no notification email has been sent, there is no
 notification cron on Railway and no notification environment variable.
 Approvals have not started.
 
+### G1 — the durable notification foundation
+
+**Implemented, automated tests pass, not manually accepted.** The outbox and
+everything a dispatcher will need — and **nothing that uses them**. No Review
+action writes a delivery, nothing dispatches, no Stage G email can be sent, no
+Railway cron exists and no Railway variable was changed. G2 has not started;
+Approvals have not started.
+
+- **One operational table, `notification_deliveries`** (migration
+  `0007_notifications.sql`): one row per event × recipient, holding **intent and
+  delivery state only** — kind, Workroom, round, the request episode or the note
+  ordinal, recipient kind and client identity, dedupe key, status, attempts,
+  timing, provider message id, an error class, a suppression reason. **No
+  address, subject, body, rendered mail, title, name, feedback, anchor or URL**:
+  a dispatcher looks up whom it may still reach and renders at send time. The
+  one change to an existing table is `UNIQUE (workroom_id, id)` on
+  `presentation_reviews` — `id` is already its key, so the pair is already
+  unique — the target of the delivery's composite foreign key, so PostgreSQL
+  refuses a delivery whose round lives in another Workroom. Existing Review
+  rows are untouched, checked by checksum before and after on real data.
+- **Two kinds, two recipients, and the database holds the pairing.**
+  `review.requested` is for a `client` and carries its request episode;
+  `review.received` is for the `studio_inbox` — `CONTACT_EMAIL`, read at send
+  time, never a person — and may carry the note's ordinal. Every shape rule is
+  a `CASE`, so a NULL cannot slip through a CHECK. Statuses: `pending`,
+  `sending`, `sent`, `suppressed`, `failed`, each with exactly its own evidence;
+  suppression reasons and error classes are fixed vocabularies
+  (`lib/notifications/vocabulary.ts`), never free text.
+- **Dedupe and idempotency.** `dedupe_key` is unique and built from
+  identifiers and the request moment only (`lib/notifications/dedupe.ts`): one
+  request per episode per client — a re-request after a withdrawal is a new
+  episode and may notify again — and one `review.received` per round. Enqueue
+  is `ON CONFLICT DO NOTHING` and takes the domain transaction, so an action
+  and its notification commit or vanish together. Resend's key is
+  `yw-notification/{delivery id}`: the same row is the same key on every retry.
+- **Claiming** (`lib/db/notifications.ts`). One statement takes due rows with
+  `FOR UPDATE SKIP LOCKED`, marks them `sending` and commits before it returns —
+  no lock is held across a provider call — proven over separate PostgreSQL
+  connections: a held row is skipped, and sixty rows raced by four dispatchers
+  are each claimed exactly once. A claim is the row's id plus its attempt
+  number; only its owner can settle it. A claim abandoned for **ten minutes** is
+  recoverable, and the re-send carries the same provider key; one with no
+  attempts left is failed as `unknown`.
+- **Retries.** After failed attempts 1–5: wait 1 minute, 5, 30, 2 hours, 6
+  hours; six attempts in all, the last about 8 h 36 m after the first — well
+  inside Resend's 24-hour idempotency window. A terminal class (`validation_error`,
+  `invalid_from_address`, `invalid_api_key`, `restricted_api_key`, `quota`) fails
+  at once. A provider error is reduced to its class from its name and status
+  alone; its message is never kept.
+- **The rules G2 will apply** (`lib/notifications/rules.ts`, `recipients.ts`),
+  pure. A request goes to every **eligible** client: active identity with an
+  unarchived contact, active membership, Workroom and Presentation published
+  and unarchived. Immediately before sending it is suppressed if any of that has
+  changed, or the round was withdrawn, closed or superseded, or re-requested
+  since (the episode is compared in SQL at the key's millisecond precision).
+  `review.received` **still sends after supersession** — feedback on Version N
+  stays feedback on Version N, linked to that version — and is suppressed as
+  `retracted` only when the feedback was taken back and nothing remains.
+  **No self-notification**, enforced by recipient derivation.
+- **The renderer** (`lib/notifications/render.ts`), pure, reusing the existing
+  transactional mail's shell. Subjects are exactly *Your thoughts are requested
+  — Yiddi Weller* and *New feedback in a workroom*; a body may name the
+  Presentation and its version (and the client, for the studio), escaped, with
+  one button to the link it is handed and a readable plain-text part — never
+  feedback, an anchor, a file or a signed address. The client's says a reply to
+  the email reaches the studio but is not added to the feedback; the future send
+  sets Reply-To to `CONTACT_EMAIL`.
+- **`MailTransport`**, a recording fake for tests, and a Resend adapter that
+  passes the `Idempotency-Key`, reduces every failure to a class and never logs
+  — the SDK's own logger, which prints the provider's raw error outside
+  production, is silenced on the adapter's instance. **Nothing calls it**: a
+  test scans every product path.
+- **Preview safety** (`lib/notifications/mode.ts`). Production is `live` and
+  never honours `NOTIFICATION_REDIRECT_TO`, which `env:check` refuses there by
+  name, even blank. The preview is `capture` by default; a valid single address
+  makes it `redirect`; a malformed one stays `capture` and `env:check` refuses
+  it. The value is never printed. **Defined, not active**: nothing delivers yet.
+  Sign-in, invitation and contact mail never consult it, and a test holds that.
+- **Logs.** `notification.created / sent / failed / suppressed / captured`, each
+  with a whitelisted set of words — kind, count, delivery id, attempt, reason,
+  error class, recipient role — checked at runtime. Defined, emitted by nothing.
+
+**Audit, Activity and deliveries stay three things.** Audit is the lifecycle
+and security record, Activity the client's timeline, and
+`notification_deliveries` operational delivery state: no delivery status goes
+into Audit, Activity or a Review note, and no Review content goes into a
+delivery row. Neither existing log changed.
+
+Tested against a real PostgreSQL and a local stand-in for Resend
+(`notifications-db`, `-rules`, `-render`, `-transport` and `-env` suites), and
+fourteen mutations — the CHECKs, the composite key and the unique key loosened
+on a live database; `SKIP LOCKED`, the abandoned-claim rule, the provider key,
+the subject, the body, escaping, the preview default, `env:check`'s refusal and
+its silence, and the retry horizon broken in code — each failed the test written
+for it.
+
 ---
 
 ## Authorization

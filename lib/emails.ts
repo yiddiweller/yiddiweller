@@ -1,22 +1,22 @@
-import { site } from "@/lib/site";
+import { site } from "./site.ts";
 
 /** Inline styles and table layout only: email clients strip <style> blocks. */
-const BG = "#000000";
-const WHITE = "#ffffff";
-const MUTED = "#b3b3b3"; // white at 70% over black
-const FAINT = "#6b6b6b";
+export const BG = "#000000";
+export const WHITE = "#ffffff";
+export const MUTED = "#b3b3b3"; // white at 70% over black
+export const FAINT = "#6b6b6b";
 const RULE = "#262626";
-const FONT =
+export const FONT =
   "-apple-system,BlinkMacSystemFont,'Helvetica Neue',Helvetica,Arial,sans-serif";
 
 /** Subject lines must stay a single line: strip control characters and
     collapse whitespace. Resend sends JSON so this cannot inject headers,
     but a multi-line subject renders badly and reads as spoofed. */
-function oneLine(value: string): string {
+export function oneLine(value: string): string {
   return value.replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim();
 }
 
-function escapeHtml(value: string): string {
+export function escapeHtml(value: string): string {
   return value
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
@@ -25,7 +25,7 @@ function escapeHtml(value: string): string {
 }
 
 /** Wraps the body in a black, centred, 560px shell. */
-function shell(inner: string): string {
+export function shell(inner: string): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -48,11 +48,11 @@ ${inner}
 }
 
 /** The wordmark, set as type so it renders even with images blocked. */
-const MARK = `<tr><td style="font-family:${FONT};font-size:12px;letter-spacing:0.3em;color:${MUTED};text-transform:uppercase;padding:0 0 56px;">Yiddi&nbsp;Weller</td></tr>`;
+export const MARK = `<tr><td style="font-family:${FONT};font-size:12px;letter-spacing:0.3em;color:${MUTED};text-transform:uppercase;padding:0 0 56px;">Yiddi&nbsp;Weller</td></tr>`;
 
 /* Grey so the mark holds up whether a client renders on black or forces
    white, and small enough that a blocked image costs nothing. */
-const FOOTER = `<tr><td style="padding:56px 0 0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="height:1px;line-height:1px;font-size:0;background:${RULE};">&nbsp;</td></tr></table></td></tr>
+export const FOOTER = `<tr><td style="padding:56px 0 0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="height:1px;line-height:1px;font-size:0;background:${RULE};">&nbsp;</td></tr></table></td></tr>
 <tr><td style="padding:24px 0 0;"><img src="${site.url}/email-mark.png" width="28" height="10" alt="Yiddi Weller" style="display:block;width:28px;height:10px;border:0;outline:none;text-decoration:none;"></td></tr>
 <tr><td style="font-family:${FONT};font-size:12px;letter-spacing:0.04em;color:${FAINT};padding:16px 0 0;"><a href="${site.url}" style="color:${FAINT};text-decoration:none;">yiddiweller.com</a></td></tr>`;
 

@@ -12,8 +12,11 @@ export type ContactFields = {
 
 export type FieldErrors = Partial<Record<keyof ContactFields, string>>;
 
-/** Deliberately permissive: shape only, delivery is the real test. */
-const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+/**
+ * Deliberately permissive: shape only, delivery is the real test. The
+ * project's one email-address shape — Stage G's preview redirect uses it too.
+ */
+export const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
 export function validate(fields: ContactFields): FieldErrors {
   const errors: FieldErrors = {};

@@ -56,7 +56,18 @@ const OPTIONAL = ["SITE_ENV", "STUDIO_HOST"];
  * printed. The rule for what it may say lives in view-ttl.ts alone; this only
  * decides where it may exist.
  */
-const PREVIEW_ONLY = ["VIEW_TTL_OVERRIDE_SECONDS"];
+const PREVIEW_ONLY = ["VIEW_TTL_OVERRIDE_SECONDS", "NOTIFICATION_REDIRECT_TO"];
+
+/**
+ * Stage G's beta notification redirect (G1). In the preview, absent means
+ * every notification is captured and none is sent; set, it must be one email
+ * address, and every notification goes there instead of to its recipient.
+ * The rule is `lib/notifications/mode.ts`'s, restated here because this runs
+ * as plain JavaScript; a test holds the two to one answer, and this pattern to
+ * `lib/contact.ts`'s. The value is never printed — not here, not anywhere.
+ */
+const REDIRECT = "NOTIFICATION_REDIRECT_TO";
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
 const missing = REQUIRED.filter((key) => !process.env[key]?.trim());
 
@@ -77,9 +88,20 @@ for (const key of OPTIONAL) {
 const isPreview = process.env.SITE_ENV?.trim() === "preview";
 const previewOnlySet = PREVIEW_ONLY.filter((key) => process.env[key] !== undefined);
 
+const AID = {
+  VIEW_TTL_OVERRIDE_SECONDS: "view URLs shortened, 30–900 seconds",
+  NOTIFICATION_REDIRECT_TO: "every notification goes to one address",
+};
+
 for (const key of PREVIEW_ONLY) {
   const set = previewOnlySet.includes(key);
-  console.log(`${set ? "present " : "unset   "} ${key} (beta test aid${set && isPreview ? ": view URLs shortened, 30–900 seconds" : ""})`);
+  console.log(`${set ? "present " : "unset   "} ${key} (beta test aid${set && isPreview ? `: ${AID[key]}` : ""})`);
+}
+
+if (isPreview) {
+  console.log(
+    `\nStage G notifications: ${previewOnlySet.includes(REDIRECT) ? "redirected to one address" : "captured, none sent"} (preview).`,
+  );
 }
 
 if (previewOnlySet.length > 0 && !isPreview) {
@@ -90,6 +112,15 @@ if (previewOnlySet.length > 0 && !isPreview) {
       "never be present in production. Remove it from this service.",
   );
   process.exit(1);
+}
+
+if (isPreview && previewOnlySet.includes(REDIRECT)) {
+  const value = process.env[REDIRECT].trim();
+  if (value.length > 254 || !EMAIL.test(value)) {
+    // Named, never quoted: a malformed value may still be somebody's address.
+    console.error(`\n${REDIRECT} is not a single email address. Notifications stay captured until it is.`);
+    process.exit(1);
+  }
 }
 
 if (storageMissing.length > 0 && storageMissing.length < STORAGE.length) {

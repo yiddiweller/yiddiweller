@@ -135,9 +135,20 @@ magic-link callbacks. **`next` grants nothing**; the page runs its own checks.
 Middleware's `x-yw-return-to` header is always overwritten. Walked on beta
 through the real email: a client came back to the exact Revision, and Studio to
 the exact Revision with `?note=1` and the note open; the unsafe-redirect,
-isolation, access and leak cases rest on the automated suites. **No notification
-is built or sent; G1 and G2 have not started** — no notification table, email,
-cron or environment variable exists.
+isolation, access and leak cases rest on the automated suites. **G1 — the
+durable notification foundation — is implemented, its automated tests pass, and
+it is not manually accepted**: `notification_deliveries` (`0007`) is the outbox,
+holding intent and delivery state only — no address, subject, body, title, name,
+feedback, anchor or URL — with a composite FK to its round, a unique
+`dedupe_key`, `CASE`-shaped CHECKs and fixed vocabularies; `lib/db/notifications.ts`
+claims with `FOR UPDATE SKIP LOCKED` in one committed statement and settles only
+by the claim's own attempt; `lib/notifications/*` holds the pure rules, the
+renderer, the retry schedule (1m, 5m, 30m, 2h, 6h — inside Resend's 24-hour
+idempotency window), `MailTransport` and its Resend adapter, and the preview
+mode — production `live` and refusing `NOTIFICATION_REDIRECT_TO`, the preview
+`capture` by default. **Nothing is wired: no Review action writes a delivery,
+nothing dispatches, no notification email can be sent, no cron exists, no
+Railway variable changed; G2 has not started.**
 Approvals has not begun. Build 005 is **not promoted**: production has no bucket, the sweep is
 unscheduled and there is no per-object backup strategy, so production remains
 Build 004.**

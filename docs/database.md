@@ -361,6 +361,20 @@ publish transaction. No deferral, no chicken and egg. Drizzle cannot express it
 — `foreignKey()` needs its target defined first — so it lives in the migration's
 hand-written tail beside the triggers.
 
+### What `0007_notifications.sql` adds
+
+One operational table, `notification_deliveries` — Stage G's outbox, written by
+nothing yet (G1) — and one key on an existing table: `UNIQUE (workroom_id, id)`
+on `presentation_reviews`, the target of the delivery's composite foreign key.
+`id` is already that table's primary key, so the pair is already unique and the
+constraint cannot fail on any data. It comes **before** the foreign key that
+names it: Drizzle generated the two the other way round, which PostgreSQL
+refuses, and the order was corrected by hand. The client-identity foreign key
+is named by hand too — the generated name ran past PostgreSQL's 63 characters,
+which it truncates silently, leaving schema and database disagreeing about what
+the constraint is called. Every shape rule is a `CASE`, for the reason the next
+section gives. The model is `delivery.md`, *G1*.
+
 ### What `0006_reviews.sql` adds, and the eight columns it drops
 
 The eighth table, `presentation_review_notes`, and a rewrite of

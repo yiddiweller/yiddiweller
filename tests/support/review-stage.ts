@@ -41,6 +41,7 @@ import {
   workroomInvitations,
   workroomMembers,
   workrooms,
+  notificationDeliveries,
 } from "../../lib/db/schema.ts";
 
 /**
@@ -87,6 +88,9 @@ export async function wipe(): Promise<void> {
   await db().execute(sql`TRUNCATE audit_events`);
   await db().execute(sql`ALTER TABLE audit_events ENABLE TRIGGER audit_events_no_truncate`);
 
+  // Notification deliveries point at rounds and client identities with
+  // RESTRICT, so they go first (Stage G1).
+  await db().delete(notificationDeliveries);
   for (const table of GUARDED) {
     await db().execute(sql.raw(`ALTER TABLE ${table} DISABLE TRIGGER USER`));
   }

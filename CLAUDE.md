@@ -99,8 +99,8 @@ lives fifteen minutes through one function, `effectiveViewTtlSeconds()`, which
 `VIEW_TTL_OVERRIDE_SECONDS` can only shorten and only where `SITE_ENV=preview`
 (`env:check` refuses it elsewhere); `media-recovery.ts` holds the rules — one
 refresh per window, never a loop, **always ending paused**. **F6.2 — visible
-audio and video recovery — is implemented, its automated tests pass, and it is
-not manually accepted**: `MediaPlayer` (inside `FileViewer`, same native markup)
+audio and video recovery — is implemented and its automated tests pass**:
+`MediaPlayer` (inside `FileViewer`, same native markup)
 goes back through the same `/view` route with `?refresh=N` — authorized afresh,
 never `currentSrc` — restores the time paused and never calls `play()`, shows
 *This preview couldn't be refreshed. Try again, or download the original.* with
@@ -110,7 +110,15 @@ own time wins and a capture keeps its draft. `file.view_refreshed` logs `{ route
 viewer }` and nothing else. Images and PDFs are untouched; `ResponseCacheControl`
 is still deferred. Chromium reports a lapsed range about thirty seconds after
 the seek (ORB withholds the bucket's XML 403 and the loader retries), so
-recovery starts then. Region capture is not built, and Stage F is not complete.
+recovery starts then. **F6.3 — the real-beta expiry walk — passes manual
+acceptance, and Stage F6 is closed**: with the view lifetime temporarily sixty
+seconds on beta, video recovered in desktop Chrome and iPhone Safari and audio
+in iPhone Safari — after a loading delay, at the position sought, paused, no
+autoplay — and the saved locator *At 0:01* landed at 0:01, paused, after
+expiry; every other rule rests on the automated suites. **The override was
+deleted from Railway beta and beta redeployed: the view URL is fifteen minutes
+(900 seconds) again**, and `VIEW_TTL_OVERRIDE_SECONDS` is set nowhere. Region
+capture is not built, Stage G has not started, and Stage F is not complete.
 Approvals has not begun. Build 005 is **not promoted**: production has no bucket, the sweep is
 unscheduled and there is no per-object backup strategy, so production remains
 Build 004.**

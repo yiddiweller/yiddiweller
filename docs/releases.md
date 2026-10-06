@@ -439,8 +439,21 @@ recorded in [`delivery.md`](./delivery.md) under *Reviews are verified on beta*.
   only. Images and PDFs are unchanged. In Chromium the lapse is reported about
   thirty seconds after the seek that meets it, so that is when recovery
   begins. The real-beta expiry walk (F6.3) is next.
+- **Stage F6.3 — real-beta expiry walk: manual acceptance passes. Stage F6
+  — signed media recovery — is closed.** With the view lifetime shortened to
+  sixty seconds on beta for the walk only, a lapsed address recovered by itself
+  — after a noticeable loading delay, at the position sought, paused, with no
+  autoplay — for video in desktop Chrome and in iPhone Safari and for audio in
+  iPhone Safari, and a saved audio moment, *At 0:01*, pressed after expiry
+  landed at 0:01, paused. The broader rules — one automatic refresh per window,
+  withdrawn access refused, *Try again*, capture and locator edge cases,
+  history, the log and the leak rules — rest on the automated suites. The
+  sixty-second override was then deleted from Railway beta and beta
+  redeployed, so the view URL is back to fifteen minutes. `ResponseCacheControl`
+  hardening stays deferred, outside F6. Record: *F6 is verified on beta* in
+  `docs/delivery.md`.
 - **Still not built:** region capture, and Stage G,
-  notifications.
+  notifications. Stage G has not started.
 
 **Stage A beta acceptance.** Migration `0004` deployed and applied. `npm run
 storage:verify` was run **inside the real beta app container against the real

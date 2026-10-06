@@ -1994,6 +1994,72 @@ it.
 test* and *Video review test* on an iPhone and on desktop. Nothing here set it.
 `ResponseCacheControl` hardening stays **deferred**.
 
+#### F6 is verified on beta
+
+**The environment.** For the walk, Railway beta temporarily carried
+`VIEW_TTL_OVERRIDE_SECONDS=60` beside its permanent `SITE_ENV=preview`, set by
+hand, only so that a real expiry could be reached in a minute rather than
+fifteen. After acceptance the variable was **deleted from Railway beta** and
+beta was **redeployed successfully**, so the view URL is back to its default,
+**900 seconds — fifteen minutes**. The sixty seconds were acceptance
+infrastructure, never a setting; no code or configuration in the repository
+changed for them, and production never had the variable.
+
+Walked by hand on the real Railway beta deployment:
+
+- **Desktop Chrome, *Video review test*.** The page loaded normally and was
+  left open past the sixty-second lifetime; a seek well forward in the video
+  then met the lapsed address. There was a **noticeable loading delay** —
+  consistent with the Chromium retrying measured in F6.2, so recovery is not
+  instant — after which the video **recovered by itself**, landed at the
+  position sought, and **stayed paused**. Nothing played by itself.
+- **iPhone, Safari, *Video review test*.** Loaded normally; once the lifetime
+  had run out, a seek later in the video behaved the same way in general: a
+  loading delay, automatic recovery, the requested position, paused, and no
+  autoplay. This settles the largest question F6.2 left open — how a phone's
+  Safari reports a lapsed range — though not every Safari permutation was
+  walked.
+- **iPhone, Safari, *Audio review test*.** Loaded normally; after expiry a seek
+  later in the recording recovered, the audio came back, the player stayed
+  paused, and nothing played by itself.
+- **A saved feedback reference, after expiry.** On the audio, the client's
+  existing locator *On Schick's Take Home Foods.m4a · At 0:01* was pressed once
+  the signed address had expired: recovery completed, the player landed at
+  **0:01**, and it stayed paused — a saved moment still returns the client to
+  the media it is about after the address it first loaded with has lapsed.
+
+**What the walk proves, and what it does not.** By hand, on real devices
+against the real bucket: expiry recovery for video in desktop Chrome and
+iPhone Safari and for audio in iPhone Safari, the position restored, paused
+after recovery, no autoplay observed, and one saved audio moment locator
+working after expiry. **Not walked by hand**, and proven by the automated
+suites instead: one automatic refresh per window, authorization checked again
+on every refresh, withdrawn access failing closed with no fresh signed URL, a
+persistent failure stopping, *Try again*, a failure before metadata, an open
+capture keeping its draft, stretch locators and the locator race, historical
+Revisions, images and PDFs staying outside recovery, the log's whitelist, the
+signed-URL and secret leak rules, and the F2–F5 regressions.
+
+**Stage F6 — signed media recovery — is closed:** F6.1 the foundation and F6.2
+visible audio and video recovery are implemented and their automated tests
+pass; F6.3, the real-beta walk, passes manual acceptance. What is accepted:
+
+- audio and video only; images, PDFs and download cards stay outside automatic
+  recovery, and *Download original* is authorized afresh on every press;
+- the objects stay private — recovery goes back through the authorized `/view`
+  route, authorization runs again, and a fresh signed address is issued;
+- the intended time is restored and recovery **always ends paused**, with no
+  autoplay;
+- one automatic recovery per retry window, and *Try again* after a failed one;
+- no migration — the Review schema and anchors are unchanged.
+
+**Still deferred:** `ResponseCacheControl: private` on the presigner — an
+optional, separate storage-hardening change, not part of F6 and not needed for
+it.
+
+**Still not built:** regions, frame-region display, PDF precision, Stage G.
+Stage F is not complete.
+
 #### Stretches on a phone
 
 A stretch is kept, and it is harder than a moment: two deliberate presses

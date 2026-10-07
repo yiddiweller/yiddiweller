@@ -543,7 +543,9 @@ Five properties, each load-bearing:
   anything, including this.
 
 **Built as `npm run storage:sweep` (`scripts/sweep-pending.mjs`), and still not
-scheduled** — beta passing its storage verification changed nothing about this. It refuses to run without storage configured, rather than deleting
+scheduled** — beta passing its storage verification changed nothing about this.
+Until G2.1 it could not have run in the deployed image either: the runner did
+not ship the `lib/` modules it imports. It does now, and a test holds that. It refuses to run without storage configured, rather than deleting
 rows whose objects would then be unreachable, and logs counts only — no key, no
 filename, no workroom.
 
@@ -3265,10 +3267,9 @@ note succeed, their rows left to retry.
 bounded pass, a `notification.dispatched` line of counts, exit 0 whenever the
 pass ran — nothing due, rows retried, failed or suppressed included — and exit 1
 only when it has no database or cannot reach it. Safe to run repeatedly and
-concurrently. **Not scheduled**: G3 creates and verifies the Railway job. Note
-for G3: the production image copies `scripts/` but not `lib/`, which this
-command (like `storage:sweep`) imports — G3 decides how the scheduled job runs
-it.
+concurrently. **Not scheduled**: G3 creates and verifies the Railway job. As
+G2 shipped, the command could not run in the deployed image at all — see
+*G2.1*, below.
 
 **Studio's words** (`lib/notifications/request-copy.ts`, pure). The *Ask for
 feedback* dialog no longer says no email is sent. Live: *The client can write on
@@ -3313,6 +3314,85 @@ a provider failure failing *Ask for feedback* — each failed the tests written
 for it, except one: loosening only the "first root note" condition changes
 nothing, because the per-round dedupe key still makes a second insert a no-op.
 That is the second line holding, and loosening both is caught.
+
+### G2.1 — runtime command packaging fix
+
+**Implemented, automated tests pass; the Railway beta command has not been
+re-run.** G2 is **not** manually closed until `npm run env:check` and `npm run
+notifications:dispatch` succeed in the Railway beta console. G3 has not
+started.
+
+**What real beta found.** The web half of G2 worked on beta: *Ask for feedback*
+wrote the client's notification and the drain captured it, the client's first
+feedback saved normally, and no Stage G email left beta. But `npm run
+notifications:dispatch`, run in the Railway console, logged only
+`notification.dispatch_failed`, and `ls lib/notifications` there answered *No
+such file or directory*.
+
+**The cause.** The runner stage of the `Dockerfile` copied `node_modules`,
+`.next`, `public`, `package.json`, `next.config.ts`, `drizzle` and `scripts` —
+and not `lib/`. The Next server never needs `lib/` at runtime, because `.next`
+holds what it compiled. The operational commands do: they are plain scripts
+that import the application's own modules from `lib/` and run them with Node's
+type stripping, outside Next. So the import failed before anything ran, with
+`ERR_MODULE_NOT_FOUND` — reproduced locally in an image built from the unchanged
+`Dockerfile`, exactly as beta reported it. Every host test had passed, because
+a checkout has `lib/`.
+
+**`storage:sweep` had the same defect.** In the same unfixed image it failed
+with *Cannot find module '/app/lib/db/files.ts'*. It had never run in a deployed
+container — it is not scheduled — so nobody had seen it.
+
+**What the commands actually load**, recorded with a module hook rather than
+read from the source (type-only imports are erased and never load):
+
+- `notifications:dispatch` — 21 project files, all under `lib/`: `contact`,
+  `db/{id,index,notifications,schema}`, `emails`, `env`, `log`,
+  `notifications/{dedupe,dispatch,links,log,mode,render,resend-transport,rules,vocabulary}`,
+  `site`, `workrooms/{id,review-locator}`; packages `resend`, `postgres`,
+  `drizzle-orm`.
+- `storage:sweep` — 17 project files, all under `lib/` (`db/*`, `storage/*`,
+  `env`, `log`, `notifications/vocabulary`, `workrooms/id`); packages
+  `@aws-sdk/*`, `postgres`, `drizzle-orm`.
+
+Neither reaches a `@/` alias, `next`, `server-only` or a devDependency, and
+every package either loads is a production dependency the prod-deps stage keeps.
+
+**The fix is one rule, not a list of files: an operational script imports only
+from `scripts/` and `lib/`, and the runner ships both.** One line —
+`COPY --chown=nextjs:nodejs lib ./lib` — with the rule written beside it.
+`lib/` is 79 TypeScript source files and nothing else; the image grows by 856 KB
+(0.12% of `/app`). Tests, docs, `.git`, env files and `CLAUDE.md` stay out, by
+`.dockerignore` and by the runner's `COPY` list. A hand-kept list of the 21
+files was rejected: it would break the day one of them gained an import.
+Bundling the scripts was rejected too: a build step, and a second way the same
+code runs, for no gain. **No product logic changed** — not the matrix, the
+wiring, dedupe, dispatch, retries, templates, modes, idempotency or copy.
+
+**Held by `tests/runtime-image.test.ts`**, in three layers: the runner stage's
+`COPY` lines and `.dockerignore` against every operational script's import graph
+and packages; the real commands run under a load hook, every project file Node
+opens checked against what ships; and, with `RUNTIME_IMAGE` naming an image
+built from this `Dockerfile`, the commands run **inside** it against a test
+database and a local stand-in for Resend — `env:check` reporting *captured,
+none sent (preview)*, the dispatcher exiting 0 with nothing due and again after
+capturing two rows a real *Ask for feedback* wrote, the stand-in hearing nothing,
+no address, title, link or key in the output, exit 1 only for an unreachable
+database, and `storage:sweep` completing against a test bucket. Against the
+unfixed image the container layer fails; with the `COPY` line removed the static
+and traced layers fail without an image at all.
+
+Built locally with Docker from the unchanged `Dockerfile`, preview and
+production flavours: the app still boots through the image's own `CMD`
+(migration, then `next start`); the preview's robots still disallow everything
+and production's still allow. The local base image was a copy of the pinned
+`node:22-slim` that additionally trusts this sandbox's TLS-intercepting proxy —
+a property of the sandbox, not of Railway, and nothing in the repository.
+
+Each run prints Node's `MODULE_TYPELESS_PACKAGE_JSON` notice once — a source
+path, nothing sensitive, as `storage:sweep` always did. Silencing it means
+`"type": "module"` in `package.json`, which changes how everything else loads;
+it is left alone.
 
 ---
 

@@ -490,6 +490,12 @@ recorded in [`delivery.md`](./delivery.md) under *Reviews are verified on beta*.
   emailed, and its confirmation how many. **Beta is capture-only**:
   `NOTIFICATION_REDIRECT_TO` is set nowhere, no deliberate real Stage G email
   has been sent from beta, and **no Railway cron exists**. No new migration.
+- **Stage G2.1 — runtime command packaging fix: implemented, automated tests
+  pass, Railway beta command not yet re-run.** Beta's console showed `npm run
+  notifications:dispatch` failing — the runtime image shipped `scripts/` but not
+  the `lib/` modules they import; `storage:sweep` had the same defect. The
+  runner now ships `lib/` (856 KB of TypeScript source), both commands run in a
+  locally built image, and a test holds the rule. No product behaviour changed.
 - **Not started:** G3 (the scheduled dispatcher on Railway, the redirected
   real-beta email walk), and Approvals. **Build 005 cannot be promoted until G3
   has installed and verified the dispatch schedule.**

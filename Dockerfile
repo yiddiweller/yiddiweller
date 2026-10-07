@@ -95,6 +95,19 @@ COPY --chown=nextjs:nodejs package.json next.config.ts ./
 COPY --chown=nextjs:nodejs drizzle ./drizzle
 COPY --chown=nextjs:nodejs scripts ./scripts
 
+# The operational commands — `npm run notifications:dispatch`, `npm run
+# storage:sweep` — are scripts that import the application's own modules from
+# `lib/` and run them with Node's type stripping, outside Next. The server
+# never reads these files: `.next` already holds everything it compiled.
+#
+# One rule rather than a list of files: **an operational script imports only
+# from `scripts/` and `lib/`, and both ship.** `lib/` is TypeScript source and
+# nothing else — no tests, fixtures, docs or secrets — so the whole directory is
+# the smallest thing that cannot fall out of date the day a module gains an
+# import. Before this line both commands failed in the deployed image with
+# ERR_MODULE_NOT_FOUND. `tests/runtime-image.test.ts` holds the rule.
+COPY --chown=nextjs:nodejs lib ./lib
+
 USER nextjs
 
 # Documentation only. Railway injects PORT and `next start` reads it, so the

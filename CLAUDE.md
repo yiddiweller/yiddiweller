@@ -162,10 +162,15 @@ by the claim — used by the best-effort drain the server actions schedule with
 dialog says who will be emailed, and its confirmation how many — on beta, that
 the email was captured. **Beta is capture-only: `NOTIFICATION_REDIRECT_TO` is
 set nowhere, no deliberate real Stage G email has been sent from beta, no
-Railway cron exists, and G3 has not started.** The runner image copies
-`scripts/` but not `lib/`, which the command imports — G3 settles how the
-schedule runs it. Build 005 cannot be promoted until G3 has installed and
-verified that schedule.
+Railway cron exists, and G3 has not started.** **G2.1 — runtime command
+packaging — is implemented and its automated tests pass**: real beta found
+`notifications:dispatch` failing in the deployed container because the runner
+stage shipped `scripts/` but not the `lib/` they import (`storage:sweep` had
+the same defect). The rule now, in the `Dockerfile` and held by
+`tests/runtime-image.test.ts`: **an operational script imports only from
+`scripts/` and `lib/`, and the runner ships both.** G2 is not manually closed
+until the command is re-run successfully in the Railway beta console. Build 005
+cannot be promoted until G3 has installed and verified the schedule.
 Approvals has not begun. Build 005 is **not promoted**: production has no bucket, the sweep is
 unscheduled and there is no per-object backup strategy, so production remains
 Build 004.**

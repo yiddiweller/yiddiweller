@@ -168,6 +168,79 @@ One Railway service per branch. Both are created the same way.
 > `main`, the preview service mirrors production instead of previewing
 > anything, which looks like it is working and is not.
 
+### Scheduled jobs
+
+Two operational commands run on a schedule, each as its **own Railway cron
+service** built from this repository — the same `Dockerfile`, the same image as
+the web service — that starts, does one bounded pass, and exits. No worker runs
+permanently, and neither job can stop the other.
+
+| Service                  | Start command                    | Cron schedule (UTC) | What it does |
+| ------------------------ | -------------------------------- | ------------------- | ------------ |
+| `notifications-dispatch` | `npm run notifications:dispatch` | `*/5 * * * *`       | Delivers due Stage G notifications, 25 a run |
+| `storage-sweep`          | `npm run storage:sweep`          | `17 8 * * *`        | Removes uploads abandoned for 24 hours, 100 a run |
+
+`*/5` is every five minutes, Railway's shortest interval. `17 8 * * *` is 08:17
+UTC — 4:17 AM in New York in summer, 3:17 AM in winter.
+
+Create each one in an environment — beta first:
+
+1. In the project, switch to the environment (**beta**). **+ Create → GitHub
+   Repo** → this repository. If Railway offers to add the service to other
+   environments too, keep it in this one only.
+2. **Settings → Source → Branch**: `beta` in beta, `main` in production — the
+   same trap as above, and it bites here too.
+3. **Settings → Build**: the builder should read **Dockerfile**.
+4. **Settings → Deploy → Custom Start Command**: the command from the table.
+   It replaces the image's own `CMD`, so a cron run never migrates the
+   database and never starts the web server; migrations stay the web
+   service's job.
+5. **Settings → Deploy → Cron Schedule**: the schedule from the table.
+6. **Settings → Deploy → Restart Policy**: **Never**. A failed run is retried
+   by the next scheduled one, not in a loop.
+7. No health check, no domain, no `PORT`: these services serve nothing.
+8. **Variables** — *references* to the same values the web service uses
+   (`${{…}}`, copied from the web service's raw variable editor), never pasted
+   secrets:
+
+   | Service | beta | production |
+   | --- | --- | --- |
+   | `notifications-dispatch` | `DATABASE_URL`, `SITE_ENV=preview` — **nothing else** | `DATABASE_URL`, `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `CONTACT_EMAIL`, `CLIENT_AUTH_URL`, `APP_URL`, `STUDIO_HOST` |
+   | `storage-sweep` | `DATABASE_URL`, the five `BUCKET_*` | `DATABASE_URL`, the five `BUCKET_*` |
+
+   **The beta dispatcher gets no `RESEND_API_KEY`, deliberately.** With
+   `SITE_ENV=preview` it captures; and if `SITE_ENV` were ever forgotten, a
+   dispatcher with no key cannot send — every row fails as `invalid_api_key`
+   and nobody is emailed. Never give any service `NOTIFICATION_REDIRECT_TO`
+   unless a redirected email walk has been decided, and production never.
+
+A healthy run of either service ends with exactly one line and a clean exit:
+
+```
+{"level":"info","event":"notification.dispatched","claimed":0,"sent":0,"captured":0,"suppressed":0,"retried":0,"failed":0}
+{"level":"info","event":"sweep.complete","examined":0,"objectsDeleted":0,"rowsDeleted":0}
+```
+
+Counts only — no address, title, link, key or connection string. Node prints
+one `MODULE_TYPELESS_PACKAGE_JSON` notice first; it is harmless. A run that
+exits non-zero shows as failed in the service's deployments: for the
+dispatcher that means it could not reach its database, and for the sweep that
+its database or bucket variables are missing.
+
+Overlap is safe by design, not by timing. Railway skips a tick while the
+previous run of the same service is still going; beyond that the dispatcher
+claims rows with `FOR UPDATE SKIP LOCKED`, so a late run, a second run and the
+web app's own after-response drain never take one row twice; and two sweeps
+racing delete an object at most once — a missing object counts as success, and
+a row is deleted only while it is still `pending`.
+
+> **These services must not read `railway.json`.** Railway retires config-as-code
+> on 2026-12-01 and, since 2026-08-28, does not let a service that never used it
+> opt in — so a cron service created now takes its start command, schedule and
+> restart policy from the dashboard alone. If a new service's first run log
+> shows `db:migrate` or `next start` instead of its own command, it is reading
+> the web service's file; stop and fix that before anything else.
+
 ### Custom domain — yiddiweller.com
 
 1. Railway → your service → **Settings → Networking → Custom Domain**.

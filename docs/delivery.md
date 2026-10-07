@@ -545,7 +545,9 @@ Five properties, each load-bearing:
 **Built as `npm run storage:sweep` (`scripts/sweep-pending.mjs`), and still not
 scheduled** — beta passing its storage verification changed nothing about this.
 Until G2.1 it could not have run in the deployed image either: the runner did
-not ship the `lib/` modules it imports. It does now, and a test holds that. It refuses to run without storage configured, rather than deleting
+not ship the `lib/` modules it imports. It does now, and a test holds that. G3
+decides its schedule — a Railway cron service, daily at 08:17 UTC — and
+`README.md` says how to create it; until it exists, it is not scheduled. It refuses to run without storage configured, rather than deleting
 rows whose objects would then be unreachable, and logs counts only — no key, no
 filename, no workroom.
 
@@ -3455,6 +3457,95 @@ where a walk can show them, and the Railway scheduled dispatcher, installed and
 verified. Production promotion stays blocked until the required scheduled
 operational jobs — the dispatcher and the sweep — are installed and verified.
 Approvals has not started.
+
+### G3 — scheduled operations
+
+**Architecture decided and proven against the built image; the Railway cron
+services are not yet created.** G3 is operations only: no product code changed,
+no migration, no new feature. Approvals has not started.
+
+**The redirected real-email walk is skipped, by the user's choice.** No
+`NOTIFICATION_REDIRECT_TO` was ever set and no deliberate Stage G email was
+sent. **Not verified by hand**, therefore: how the final email looks in a real
+inbox, a provider-delivered button actually clicked, and real Reply-To
+behaviour. **Verified by the automated suites**, and green: the renderer's
+content, HTML and plain text, escaping, deep-link construction, redirect
+recipient isolation, live recipient routing, the Reply-To in the provider
+payload, privacy, the provider payload itself through the real Resend adapter
+against a local stand-in, idempotency and duplicate prevention. Stage G is not
+held open for the skipped walk; it is recorded, not hidden.
+
+**Two Railway cron services, one per command, from the same repository and
+image** — `notifications-dispatch` and `storage-sweep` — each starting, making
+one bounded pass and exiting. No permanently running worker, nothing new to
+build: the commands already exit cleanly (G2.1 proved both in the deployed
+image). One combined job was rejected: a failing sweep would hide or stop the
+dispatcher, and two services give each its own schedule, run history and
+failure state. The setup is in `README.md`, *Scheduled jobs*.
+
+- **Dispatcher — every five minutes (`*/5 * * * *`)**, Railway's shortest
+  interval. The best-effort drain normally delivers within seconds; the schedule
+  is the guarantee for what it missed — a crash after commit, a failed drain, a
+  retry coming due — so the worst first-delivery delay is about five minutes,
+  and an abandoned claim (ten minutes) is recovered within fifteen. Retries fall
+  on the next tick after they are due, which lengthens the longest horizon from
+  about 8 h 36 m to about 9 h — still well inside Resend's 24-hour idempotency
+  window. Twenty-five rows a run is three hundred an hour, far beyond this
+  studio's volume, and a run that finds nothing costs a few seconds.
+- **Sweep — once a day, 08:17 UTC (`17 8 * * *`)**, early morning in New York.
+  An upload becomes sweepable only after 24 hours, so a daily pass leaves an
+  abandoned object at most about two days; a hundred a run is a backlog cleared
+  over days, never a burst. The retention rule is unchanged.
+- **Failure isolation.** Each service fails alone and visibly: a non-zero exit
+  — the dispatcher unable to reach its database, the sweep missing its database
+  or bucket — shows as a failed run in that service only, and its next tick
+  tries again. Restart policy **Never**, so nothing loops.
+- **Overlap.** Railway skips a tick while the same service's previous run is
+  still going. Beyond that, the dispatcher's safety is the database's, not
+  Railway's timing: rows are claimed with `FOR UPDATE SKIP LOCKED`, so a late
+  run, a second run and the web app's after-response drain never settle one row
+  twice — raced over separate connections in G1 and through the dispatcher in
+  G2, and two dispatcher containers started together on the built image settled
+  eight rows once each. Two sweeps started together on the built image deleted
+  one stale object and its row once, and both exited 0: a missing object is
+  success, and a row is deleted only while still `pending`. No overlap guard is
+  needed.
+- **Variables are references, never pasted secrets.** On beta the dispatcher
+  gets `DATABASE_URL` and `SITE_ENV=preview` **and nothing else — no
+  `RESEND_API_KEY`**, so even if `SITE_ENV` were forgotten it cannot send: run
+  in the built image exactly so, both rows failed as `invalid_api_key` and a
+  stand-in for the provider heard nothing. With `SITE_ENV=preview` and only
+  those two variables, the same image captured both rows and exited 0. The
+  sweep gets `DATABASE_URL` and the five `BUCKET_*` references. Production's
+  dispatcher, at promotion, gets the mail and link variables the web service
+  has, and never `SITE_ENV` or `NOTIFICATION_REDIRECT_TO`.
+- **Logs.** A run writes counts only — `notification.dispatched`, or
+  `sweep.complete` — plus a per-row `notification.captured` / `.suppressed` /
+  `.sent` / `.failed` line with kind, delivery id and a reason or role. Checked
+  on the built image: no address, title, link, provider key, bucket credential,
+  storage key, endpoint or connection string.
+- **Cron services do not read `railway.json`.** Railway deprecated
+  config-as-code: existing files stop being read on **2026-12-01**, and since
+  2026-08-28 a service that never used it cannot opt in. So the two new
+  services take their start command, schedule and restart policy from the
+  dashboard alone, and the web service's start command, health check and
+  restart policy cannot leak into them. Their custom start command replaces the
+  image's `CMD`, so a cron run never migrates and never serves.
+
+**Found while deciding this, outside G3's scope: the two web services read
+`railway.json` until 2026-12-01.** After that Railway ignores the file. The
+start command survives — the image's own `CMD` is the same — but the health
+check (`/`) and the restart policy (on failure, ten retries) do not, unless they
+are set in each web service's dashboard first. That has to happen, in beta and
+in production, before 2026-12-01.
+
+**Stage G closes when**: the dispatcher works (automated), the deployed command
+works (G2.1, on Railway), the scheduled dispatcher exists on beta and has one
+successful run, the scheduled sweep exists on beta and has one successful run,
+beta stays in capture mode, and no unexpected Stage G email is sent. **Build 005
+is not promoted** until both jobs also exist and are verified in production,
+alongside its other gates: a production bucket, a per-object backup strategy,
+`storage:verify` and `env:check` there.
 
 ---
 

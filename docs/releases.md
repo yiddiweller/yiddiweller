@@ -504,9 +504,17 @@ recorded in [`delivery.md`](./delivery.md) under *Reviews are verified on beta*.
   console completed with `notification.dispatched` (all counts 0 — the web
   drain had already captured the walk's rows). `storage:sweep` is proven in a
   locally built image only, not on Railway, and is still unscheduled.
-- **Not started:** G3 (the redirected real-beta email walk, acceptance of the
-  real template and deep links, and the scheduled dispatcher on Railway), and
-  Approvals. **Build 005 cannot be promoted until G3
+- **Stage G3 — scheduled operations: architecture decided and proven against
+  the built image; the Railway cron services are not yet created.** Two cron
+  services from the same repository and image: `notifications-dispatch` every
+  five minutes and `storage-sweep` daily at 08:17 UTC, each exiting after one
+  bounded pass, restart policy Never. On beta the dispatcher gets only
+  `DATABASE_URL` and `SITE_ENV=preview` — no Resend key — so it cannot send
+  even if misconfigured. No code changed. **The redirected real-email walk was
+  skipped by the user's choice**: the final email in a real inbox, a real click
+  and real Reply-To are not verified by hand; the automated suites cover the
+  rest. Setup: `README.md`, *Scheduled jobs*.
+- **Not started:** Approvals. **Build 005 cannot be promoted until G3
   has installed and verified the dispatch schedule.**
 
 **Stage A beta acceptance.** Migration `0004` deployed and applied. `npm run
@@ -533,9 +541,13 @@ These are the gates between beta and production:
 - **`npm run storage:verify` has not been run in production**, because there is
   nothing there to run it against yet. Beta passing says nothing about a bucket
   that does not exist.
-- **The notification dispatcher is not scheduled.** Until G3 installs and
-  verifies it, a notification whose best-effort drain did not run waits for
+- **The notification dispatcher is not scheduled.** G3 decided how — a Railway
+  cron service every five minutes — but until it exists and has run in
+  production, a notification whose best-effort drain did not run waits for
   somebody to run `npm run notifications:dispatch`.
+- **The web services' health check and restart policy live in `railway.json`,
+  which Railway stops reading on 2026-12-01.** They must be set in each web
+  service's dashboard, beta and production, before then.
 - **`npm run env:check` has not been run against production for Build 005's
   variables.** Beta had `CLIENT_AUTH_SECRE` for a whole round of investigation;
   one command would have found it, and one command is the gate.

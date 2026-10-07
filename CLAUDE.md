@@ -166,7 +166,7 @@ the email was captured. Walked on beta with capture confirmed first by
 member*, the client's first note saved, and no Stage G email arrived; row
 contents rest on the automated suites. **Beta is capture-only:
 `NOTIFICATION_REDIRECT_TO` is set nowhere, no deliberate real Stage G email has
-been sent from beta, no Railway cron exists, and G3 has not started.** **G2.1 —
+been sent from beta, no Railway cron exists yet.** **G2.1 —
 runtime command packaging — is implemented, its automated tests pass, and it
 passes real-Railway manual acceptance**: real beta found `notifications:dispatch`
 failing in the deployed container because the runner stage shipped `scripts/`
@@ -175,8 +175,19 @@ now, in the `Dockerfile` and held by `tests/runtime-image.test.ts`: **an
 operational script imports only from `scripts/` and `lib/`, and the runner
 ships both.** After `4b2a477` reached beta the command completed in the Railway
 console (`notification.dispatched`, all counts 0). `storage:sweep` is proven
-only in a locally built image and is still unscheduled. Build 005 cannot be
-promoted until G3 has installed and verified the schedule.
+only in a locally built image and is still unscheduled. **G3 — scheduled
+operations — is decided and proven against the built image, and its Railway
+cron services are not yet created**: two cron services from this repository and
+image, `notifications-dispatch` every five minutes and `storage-sweep` daily at
+08:17 UTC, restart policy Never, set up as `README.md` *Scheduled jobs*
+describes; on beta the dispatcher gets only `DATABASE_URL` and `SITE_ENV=preview`
+— no Resend key, so it cannot send even if misconfigured. **The redirected
+real-email walk was skipped by the user's choice** and is recorded, not hidden.
+Railway stops reading `railway.json` on 2026-12-01; new cron services never
+read it, and the web services' health check and restart policy must be set in
+their dashboards before then. Stage G closes once both jobs have a successful
+beta run; Build 005 is not promoted until they exist and are verified in
+production too.
 Approvals has not begun. Build 005 is **not promoted**: production has no bucket, the sweep is
 unscheduled and there is no per-object backup strategy, so production remains
 Build 004.**

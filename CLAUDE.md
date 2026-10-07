@@ -147,7 +147,8 @@ renderer, the retry schedule (1m, 5m, 30m, 2h, 6h — inside Resend's 24-hour
 idempotency window), `MailTransport` and its Resend adapter, and the preview
 mode — production `live` and refusing `NOTIFICATION_REDIRECT_TO`, the preview
 `capture` by default. **G2 — domain wiring and the dispatcher — is
-implemented, its automated tests pass, and it is not manually accepted**:
+implemented, its automated tests pass, and its real-beta capture-mode smoke
+passes**:
 `requestReview` (a new round, or a withdrawal asked again — also through
 `reopenReview`) writes one `review.requested` per eligible client member, and a
 round's first root note one `review.received` naming that note, **inside the
@@ -160,17 +161,22 @@ by the claim — used by the best-effort drain the server actions schedule with
 `after()` (speed only, never awaited) and by `npm run notifications:dispatch`
 (25 a run). Links are the exact immutable Revision. Studio's *Ask for feedback*
 dialog says who will be emailed, and its confirmation how many — on beta, that
-the email was captured. **Beta is capture-only: `NOTIFICATION_REDIRECT_TO` is
-set nowhere, no deliberate real Stage G email has been sent from beta, no
-Railway cron exists, and G3 has not started.** **G2.1 — runtime command
-packaging — is implemented and its automated tests pass**: real beta found
-`notifications:dispatch` failing in the deployed container because the runner
-stage shipped `scripts/` but not the `lib/` they import (`storage:sweep` had
-the same defect). The rule now, in the `Dockerfile` and held by
-`tests/runtime-image.test.ts`: **an operational script imports only from
-`scripts/` and `lib/`, and the runner ships both.** G2 is not manually closed
-until the command is re-run successfully in the Railway beta console. Build 005
-cannot be promoted until G3 has installed and verified the schedule.
+the email was captured. Walked on beta with capture confirmed first by
+`env:check`: *Ask for feedback* said *Beta captured the email for 1 client
+member*, the client's first note saved, and no Stage G email arrived; row
+contents rest on the automated suites. **Beta is capture-only:
+`NOTIFICATION_REDIRECT_TO` is set nowhere, no deliberate real Stage G email has
+been sent from beta, no Railway cron exists, and G3 has not started.** **G2.1 —
+runtime command packaging — is implemented, its automated tests pass, and it
+passes real-Railway manual acceptance**: real beta found `notifications:dispatch`
+failing in the deployed container because the runner stage shipped `scripts/`
+but not the `lib/` they import (`storage:sweep` had the same defect). The rule
+now, in the `Dockerfile` and held by `tests/runtime-image.test.ts`: **an
+operational script imports only from `scripts/` and `lib/`, and the runner
+ships both.** After `4b2a477` reached beta the command completed in the Railway
+console (`notification.dispatched`, all counts 0). `storage:sweep` is proven
+only in a locally built image and is still unscheduled. Build 005 cannot be
+promoted until G3 has installed and verified the schedule.
 Approvals has not begun. Build 005 is **not promoted**: production has no bucket, the sweep is
 unscheduled and there is no per-object backup strategy, so production remains
 Build 004.**

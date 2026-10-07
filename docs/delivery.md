@@ -3148,7 +3148,8 @@ for it.
 
 ### G2 — domain wiring and the dispatcher
 
-**Implemented, automated tests pass, not manually accepted.** The Review actions
+**Implemented, automated tests pass, real-beta capture-mode smoke passes**
+(see *G2 and G2.1 are verified on beta*, below). The Review actions
 now write their notifications, and one dispatcher delivers them. **Beta stays
 capture-only**: `NOTIFICATION_REDIRECT_TO` is not set anywhere, no deliberate
 real Stage G email has been sent from beta, **no Railway cron exists** — the
@@ -3317,9 +3318,10 @@ That is the second line holding, and loosening both is caught.
 
 ### G2.1 — runtime command packaging fix
 
-**Implemented, automated tests pass; the Railway beta command has not been
-re-run.** G2 is **not** manually closed until `npm run env:check` and `npm run
-notifications:dispatch` succeed in the Railway beta console. G3 has not
+**Implemented, automated tests pass, real-Railway manual acceptance passes**
+for `notifications:dispatch` (see *G2 and G2.1 are verified on beta*, below).
+`storage:sweep`'s share of the fix is proven in the automated suite and inside
+a locally built image only; it has not been run on Railway. G3 has not
 started.
 
 **What real beta found.** The web half of G2 worked on beta: *Ask for feedback*
@@ -3393,6 +3395,66 @@ Each run prints Node's `MODULE_TYPELESS_PACKAGE_JSON` notice once — a source
 path, nothing sensitive, as `storage:sweep` always did. Silencing it means
 `"type": "module"` in `package.json`, which changes how everything else loads;
 it is left alone.
+
+#### G2 and G2.1 are verified on beta
+
+Walked by hand on the real Railway beta deployment, in capture mode throughout.
+No Review notification was triggered before capture was confirmed.
+
+- **Capture confirmed first.** In the Railway beta console, `npm run env:check`
+  reported *Stage G notifications: captured, none sent (preview).*, and
+  `NOTIFICATION_REDIRECT_TO` was unset.
+- **`review.requested` — capture-mode smoke passes.** A fresh Presentation,
+  *Notification test*, holding words only, was published as Version 1. Studio
+  pressed *Ask for feedback*: the round opened, and Studio said *Beta captured
+  the email for 1 client member; no client email was sent.* No Stage G email
+  arrived.
+- **`review.received` — capture-mode smoke passes.** Signed in as the real beta
+  client, the client opened *Notification test* and wrote a short first root
+  note. It saved and appeared as the first feedback point. No Stage G email
+  arrived.
+- **No email escaped beta.** The inbox was checked after both actions, and no
+  Stage G notification arrived.
+- **The dispatcher command failed first — which is what G2.1 is.** Before G2.1,
+  `npm run notifications:dispatch` in the Railway console logged only
+  `notification.dispatch_failed`, and `ls lib/notifications` there answered *No
+  such file or directory*: the runtime image did not ship `lib/`. The failed run
+  is kept here because it is the reason G2.1 exists.
+- **After G2.1 (`4b2a477`) was deployed to beta**, the console was re-tested:
+  `npm run env:check` again reported *captured, none sent (preview)*, and `npm
+  run notifications:dispatch` completed, returned to the shell, and wrote one
+  `notification.dispatched` line — `claimed 0, sent 0, captured 0, suppressed 0,
+  retried 0, failed 0`. Zero claimed is expected: the best-effort drain after
+  each web action had already captured the walk's rows. Node's
+  `MODULE_TYPELESS_PACKAGE_JSON` notice appeared and did not affect the run.
+
+**What the walk proves, and what it does not.** By hand: *Ask for feedback* and a
+round's first root note work on the deployed beta; Studio's capture wording is
+accurate; the deployed runtime is in capture mode; no Stage G email left beta
+during the walk; and the dispatcher command runs in the deployed image. **The
+database rows were not inspected by hand.** The automated suites remain the
+evidence for transactional atomicity, the exact `requested_at` equality, the
+exact `note_number`, recipient isolation, the zero-recipient case, asking again,
+the non-notifying actions, stale-access suppression, supersession, immutable
+links, retry and backoff, provider idempotency, concurrency, crash recovery,
+preview redirect mode, live mode, and every leak and security rule — none of
+which was walked. The walk shows no email escaped in capture mode; it is not
+proof of every failure mode.
+
+**G2 — domain wiring and the dispatcher: implemented, automated tests pass,
+real-beta capture-mode smoke passes. G2.1 — runtime command packaging:
+implemented, automated tests pass, real-Railway manual acceptance passes** for
+`notifications:dispatch`; the missing-`lib/` defect is closed for it.
+`storage:sweep` is fixed by the same line and proven inside a locally built
+image, but it has not been run on Railway, and it is still unscheduled.
+
+**What Stage G still needs — G3, not started:** a deliberate redirected email
+walk on beta through `NOTIFICATION_REDIRECT_TO`, acceptance of the real email —
+its template and its deep links — and of no-self and no-duplicate behaviour
+where a walk can show them, and the Railway scheduled dispatcher, installed and
+verified. Production promotion stays blocked until the required scheduled
+operational jobs — the dispatcher and the sweep — are installed and verified.
+Approvals has not started.
 
 ---
 

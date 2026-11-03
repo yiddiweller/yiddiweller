@@ -49,8 +49,9 @@ over an open round, superseding it into read-only history in both worlds → a n
 current version with no round. The walk found three defects — the item locator,
 the tombstone and the publish consequence — each fixed at its cause and retested
 on beta; the record is *Reviews are verified on beta* in `docs/delivery.md`.
-**Stage C is not complete**: Stage F, precise feedback and return to context,
-is now closed (below), and Stage G, notifications, is under way (below). Stage
+**Stage C's two outstanding parts are both closed** — Stage F, precise feedback
+and return to context (below), and Stage G, notifications, complete for Build
+005 beta (below) — though Stage C itself has not been declared complete. Stage
 F's architecture is locked in `docs/delivery.md` — image point, video and audio
 moment and stretch, return to context; no migration; regions, frame anchors and
 PDF anchors deferred. **F1, its foundation, is built and nothing visible is**:
@@ -136,8 +137,8 @@ Middleware's `x-yw-return-to` header is always overwritten. Walked on beta
 through the real email: a client came back to the exact Revision, and Studio to
 the exact Revision with `?note=1` and the note open; the unsafe-redirect,
 isolation, access and leak cases rest on the automated suites. **G1 — the
-durable notification foundation — is implemented, its automated tests pass, and
-it is not manually accepted**: `notification_deliveries` (`0007`) is the outbox,
+durable notification foundation — is closed** (no walk of its own; the real-beta
+G2 and G3 runs exercise it): `notification_deliveries` (`0007`) is the outbox,
 holding intent and delivery state only — no address, subject, body, title, name,
 feedback, anchor or URL — with a composite FK to its round, a unique
 `dedupe_key`, `CASE`-shaped CHECKs and fixed vocabularies; `lib/db/notifications.ts`
@@ -147,8 +148,7 @@ renderer, the retry schedule (1m, 5m, 30m, 2h, 6h — inside Resend's 24-hour
 idempotency window), `MailTransport` and its Resend adapter, and the preview
 mode — production `live` and refusing `NOTIFICATION_REDIRECT_TO`, the preview
 `capture` by default. **G2 — domain wiring and the dispatcher — is
-implemented, its automated tests pass, and its real-beta capture-mode smoke
-passes**:
+closed**, its real-beta capture-mode smoke passed:
 `requestReview` (a new round, or a withdrawal asked again — also through
 `reopenReview`) writes one `review.requested` per eligible client member, and a
 round's first root note one `review.received` naming that note, **inside the
@@ -165,32 +165,35 @@ the email was captured. Walked on beta with capture confirmed first by
 `env:check`: *Ask for feedback* said *Beta captured the email for 1 client
 member*, the client's first note saved, and no Stage G email arrived; row
 contents rest on the automated suites. **Beta is capture-only:
-`NOTIFICATION_REDIRECT_TO` is set nowhere, no deliberate real Stage G email has
-been sent from beta, no Railway cron exists yet.** **G2.1 —
-runtime command packaging — is implemented, its automated tests pass, and it
-passes real-Railway manual acceptance**: real beta found `notifications:dispatch`
+`NOTIFICATION_REDIRECT_TO` is set nowhere and no deliberate real Stage G email
+has been sent from beta.** **G2.1 —
+runtime command packaging — is closed**, accepted on real Railway: real beta found `notifications:dispatch`
 failing in the deployed container because the runner stage shipped `scripts/`
 but not the `lib/` they import (`storage:sweep` had the same defect). The rule
 now, in the `Dockerfile` and held by `tests/runtime-image.test.ts`: **an
 operational script imports only from `scripts/` and `lib/`, and the runner
 ships both.** After `4b2a477` reached beta the command completed in the Railway
-console (`notification.dispatched`, all counts 0). `storage:sweep` is proven
-only in a locally built image and is still unscheduled. **G3 — scheduled
-operations — is decided and proven against the built image, and its Railway
-cron services are not yet created**: two cron services from this repository and
-image, `notifications-dispatch` every five minutes and `storage-sweep` daily at
-08:17 UTC, restart policy Never, set up as `README.md` *Scheduled jobs*
-describes; on beta the dispatcher gets only `DATABASE_URL` and `SITE_ENV=preview`
-— no Resend key, so it cannot send even if misconfigured. **The redirected
-real-email walk was skipped by the user's choice** and is recorded, not hidden.
-Railway stops reading `railway.json` on 2026-12-01; new cron services never
-read it, and the web services' health check and restart policy must be set in
-their dashboards before then. Stage G closes once both jobs have a successful
-beta run; Build 005 is not promoted until they exist and are verified in
-production too.
-Approvals has not begun. Build 005 is **not promoted**: production has no bucket, the sweep is
-unscheduled and there is no per-object backup strategy, so production remains
-Build 004.**
+console (`notification.dispatched`, all counts 0). `storage:sweep` shared
+the defect and the fix, and now runs on Railway beta too. **G3 — scheduled
+operations — is closed and accepted on real Railway beta**: two cron services
+from this repository and image, `notifications-dispatch` every five minutes and
+`storage-sweep` daily at 08:17 UTC, set up as `README.md` *Scheduled jobs*
+describes and verified on beta exactly so — the dispatcher's only variables are
+`DATABASE_URL` and `SITE_ENV=preview` (no Resend key, so it cannot send even if
+misconfigured), the sweep's `DATABASE_URL` and the five `BUCKET_*` references;
+repeated successful dispatcher runs, and one manual *Run now* of the sweep
+(`sweep.complete`, nothing to clean). Railway shows a cron service's restart
+policy as Never and notes it is not active. **The redirected real-email walk was
+skipped by the user's choice** and is recorded, not hidden: a real inbox, a real
+click and real Reply-To are not verified by hand, and the automated suites are
+the evidence for the email path. Railway stops reading `railway.json` on
+2026-12-01; new cron services never read it, and the web services' health check
+and restart policy must be set in their dashboards before then. **Stage G —
+review notifications — is complete for Build 005 beta.** Build 005 is not
+promoted until both jobs also exist and are verified in production.
+Approvals has not begun, and it is Build 005's remaining product work. Build 005
+is **not promoted**: production has no bucket, no scheduled jobs and no
+per-object backup strategy, so production remains Build 004.**
 These are facts about the running system, not proposals. Changing any of them is
 a deliberate decision, not a cleanup.
 
@@ -498,7 +501,8 @@ a deliberate decision, not a cleanup.
   configuration and no native snapshots** — so overwrite is defended by
   architecture, deletion is not defended at all, and abandoned uploads are swept
   by the application rather than expired by the bucket — and **that sweep is
-  built but not scheduled**, so until it is, abandoned uploads accumulate. A
+  scheduled on beta (daily, G3) and not yet in production**, so wherever it is
+  not scheduled, abandoned uploads accumulate. A
   per-object backup strategy is open, not solved, and is **required before
   Build 005 reaches production**: `docs/restore-rehearsal.md`.
 - **`npm run storage:verify` is run per environment, by hand, before trusting

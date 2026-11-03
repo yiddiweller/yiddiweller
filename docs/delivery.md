@@ -542,22 +542,22 @@ Five properties, each load-bearing:
   line of defence: a file that any revision references cannot be deleted by
   anything, including this.
 
-**Built as `npm run storage:sweep` (`scripts/sweep-pending.mjs`), and still not
-scheduled** — beta passing its storage verification changed nothing about this.
-Until G2.1 it could not have run in the deployed image either: the runner did
-not ship the `lib/` modules it imports. It does now, and a test holds that. G3
-decides its schedule — a Railway cron service, daily at 08:17 UTC — and
-`README.md` says how to create it; until it exists, it is not scheduled. It refuses to run without storage configured, rather than deleting
-rows whose objects would then be unreachable, and logs counts only — no key, no
-filename, no workroom.
+**Built as `npm run storage:sweep` (`scripts/sweep-pending.mjs`), and scheduled on
+beta since G3** — a Railway cron service, daily at 08:17 UTC, set up as
+`README.md` describes and verified on beta; production does not have it yet.
+Until G2.1 it could not have run in the deployed image at all: the runner did
+not ship the `lib/` modules it imports. It does now, and a test holds that. It
+refuses to run without storage configured, rather than deleting rows whose
+objects would then be unreachable, and logs counts only — no key, no filename,
+no workroom.
 
 The recommended scheduling mechanism is **a separate Railway cron service in the
 same environment**, sharing the variable references, running
 `npm run storage:sweep` daily. Not an invocation beside the migration: that
 couples cleanup to deploy frequency, so a quiet fortnight means no sweep at all,
-and a deploy is the worst moment to start deleting things. **Until it is
-scheduled, abandoned uploads accumulate** — a cost measured in pennies, and a
-fact stated rather than assumed away.
+and a deploy is the worst moment to start deleting things. **Wherever it is
+not scheduled, abandoned uploads accumulate** — a cost measured in pennies, and
+a fact stated rather than assumed away.
 
 Object tagging is available and is not used. The `pending/` prefix plus the
 database row already answer every question the sweep asks, and a tag would be a
@@ -1101,7 +1101,9 @@ a round is open is still a separate decision, made by a person.
 the visible surfaces, end to end. Three defects were found by that walk, fixed at
 their cause and retested there; the record is *Reviews are verified on beta*,
 below. Stage F (precise annotation interaction) and Stage G (notifications) are
-not built, so Stage C as a whole is not complete.
+not built, so Stage C as a whole is not complete. *(Both have since closed —
+Stage F below, Stage G under* Notifications *— and Stage C itself has not been
+declared complete.)*
 
 **A Review is one round of client feedback on one published Revision, at the
 studio's invitation.** Not a chat, not a ticket queue, not a second Presentation
@@ -2935,8 +2937,9 @@ These are transactional messages to people who were deliberately invited.
 ### Stage G — the V1 decisions
 
 The architecture recon is approved and these V1 decisions are locked. When they
-were locked nothing existed yet; G0, G1 and G2 below build them, and beta stays
-capture-only until G3.
+were locked nothing existed yet; G0 to G3 below build them. Beta stays
+capture-only: the redirected email walk G3 could have used was skipped by
+choice.
 
 1. Replies never send notification email in V1.
 2. Studio-bound notifications go to `CONTACT_EMAIL`, the studio inbox.
@@ -3054,7 +3057,8 @@ Approvals had not started. *(G1 and G2 follow below.)*
 
 ### G1 — the durable notification foundation
 
-**Implemented, automated tests pass, not manually accepted.** The outbox and
+**Closed.** Implemented and tested; it has no walk of its own — the real-beta G2
+and G3 runs are what exercise its outbox, claim and settle. The outbox and
 everything a dispatcher needs. **As G1 shipped, nothing used them**: no Review
 action wrote a delivery, nothing dispatched, no Stage G email could be sent, no
 Railway cron existed and no Railway variable was changed. G2 wires them —
@@ -3150,14 +3154,12 @@ for it.
 
 ### G2 — domain wiring and the dispatcher
 
-**Implemented, automated tests pass, real-beta capture-mode smoke passes**
-(see *G2 and G2.1 are verified on beta*, below). The Review actions
+**Closed: implemented, automated tests pass, real-beta capture-mode smoke
+passes** (see *G2 and G2.1 are verified on beta*, below). The Review actions
 now write their notifications, and one dispatcher delivers them. **Beta stays
-capture-only**: `NOTIFICATION_REDIRECT_TO` is not set anywhere, no deliberate
-real Stage G email has been sent from beta, **no Railway cron exists** — the
-scheduled reliability job is G3's — and G3 and Approvals have not started.
-**Build 005 cannot be promoted until G3 has installed and verified that
-schedule.**
+capture-only**: `NOTIFICATION_REDIRECT_TO` is not set anywhere and no deliberate
+real Stage G email has been sent from beta. The scheduled reliability job is
+G3's, below. Approvals has not started.
 
 **What writes a notification — and the reliability model.** Two events, and
 nothing else:
@@ -3320,11 +3322,11 @@ That is the second line holding, and loosening both is caught.
 
 ### G2.1 — runtime command packaging fix
 
-**Implemented, automated tests pass, real-Railway manual acceptance passes**
-for `notifications:dispatch` (see *G2 and G2.1 are verified on beta*, below).
-`storage:sweep`'s share of the fix is proven in the automated suite and inside
-a locally built image only; it has not been run on Railway. G3 has not
-started.
+**Closed: implemented, automated tests pass, real-Railway manual acceptance
+passes** for `notifications:dispatch` (see *G2 and G2.1 are verified on beta*,
+below). `storage:sweep`'s share of the fix was proven in the automated suite and
+inside a locally built image, and it has since run on Railway beta — on its
+schedule, and once by hand (*G3 is verified on beta*, below).
 
 **What real beta found.** The web half of G2 worked on beta: *Ask for feedback*
 wrote the client's notification and the drain captured it, the client's first
@@ -3458,11 +3460,15 @@ verified. Production promotion stays blocked until the required scheduled
 operational jobs — the dispatcher and the sweep — are installed and verified.
 Approvals has not started.
 
+*(That was the state when G2 and G2.1 closed. Since then G3, below, has scheduled
+both jobs on beta and run the sweep there; the redirected walk was skipped by
+choice.)*
+
 ### G3 — scheduled operations
 
-**Architecture decided and proven against the built image; the Railway cron
-services are not yet created.** G3 is operations only: no product code changed,
-no migration, no new feature. Approvals has not started.
+**Closed — accepted on the real Railway beta environment** (see *G3 is verified
+on beta*, below). G3 is operations only: no product code changed, no migration,
+no new feature. Approvals has not started.
 
 **The redirected real-email walk is skipped, by the user's choice.** No
 `NOTIFICATION_REDIRECT_TO` was ever set and no deliberate Stage G email was
@@ -3546,6 +3552,72 @@ beta stays in capture mode, and no unexpected Stage G email is sent. **Build 005
 is not promoted** until both jobs also exist and are verified in production,
 alongside its other gates: a production bucket, a per-object backup strategy,
 `storage:verify` and `env:check` there.
+
+#### G3 is verified on beta
+
+Checked independently on the real Railway beta environment, in the dashboard,
+against exactly the settings `README.md` gives. Beta only; production has
+neither service.
+
+- **`notifications-dispatch` — real-beta scheduled-operation acceptance
+  passes.** Source branch `beta`; start command `npm run
+  notifications:dispatch`; cron `*/5 * * * *`, shown as every five minutes. Its
+  only variables are `DATABASE_URL`, a reference to beta's Postgres, and
+  `SITE_ENV=preview` — no `RESEND_API_KEY`, no other Resend variable and no
+  `NOTIFICATION_REDIRECT_TO`. Railway's cron history shows repeated successful
+  runs, several of them on November 2, 2026; the one timed finished in four
+  seconds. Railway counts a run successful on a clean exit, and the command
+  exits cleanly only after writing its counts-only `notification.dispatched`
+  line; those counts were not read during the check.
+- **`storage-sweep` — real-beta schedule-configuration acceptance passes.**
+  Source branch `beta`; start command `npm run storage:sweep`; cron
+  `17 8 * * *`, shown as daily at 08:17 UTC. Its only variables are
+  `DATABASE_URL`, a reference to beta's Postgres, and the five `BUCKET_*`, each a
+  reference to the beta bucket service, `balanced-bin` — no Resend variable and
+  no `NOTIFICATION_REDIRECT_TO`.
+- **`storage-sweep` — real-Railway manual execution passes.** One *Run now*,
+  on November 2, 2026 at about 8:20 PM New York time: it succeeded in about four
+  seconds, Railway showed *Last run succeeded*, and the log was `sweep.complete`
+  with nothing examined, no object deleted and no row deleted — there were simply
+  no stale pending uploads on beta. **Deleting a real stale beta object was not
+  tested by hand**; the automated suite and the in-container runs on the built
+  image remain the evidence for that.
+- **Restart policy.** Railway shows **Never** for both services and notes that
+  a cron service has no active restart policy, so the control is disabled: a
+  failed run waits for the next tick, as intended.
+
+**A historical observation, not a current failure.** One `storage-sweep` run on
+October 22, 2026 reportedly took about 14 minutes 35 seconds rather than the
+usual few seconds. Every later run — the scheduled one on November 2 and the
+manual one — was normal. Nothing was changed for it; if slow runs recur, they
+are investigated then, starting from that run's log.
+
+**The redirected real-email walk stays skipped, by the user's choice** (see
+*G3*, above). Not verified by hand: the final email's appearance in a real
+inbox, a provider-delivered button actually clicked, real Reply-To behaviour.
+The automated suites remain the acceptance evidence for the renderer, HTML and
+plain text, escaping, deep links, redirect isolation, live routing, the
+Reply-To payload, the provider payload, privacy and leak rules, idempotency and
+duplicate prevention.
+
+**Stage G — review notifications — is complete for Build 005 beta.**
+
+| Part | Status |
+| --- | --- |
+| G0 — return to the exact page after signing in | Closed |
+| G1 — the durable notification foundation | Closed |
+| G2 — domain wiring and the dispatcher | Closed |
+| G2.1 — runtime command packaging | Closed |
+| G3 — scheduled operations | Closed — real-beta accepted |
+
+The skipped redirected-email walk does not hold it open. **Build 005 is not
+complete**: Approvals is its remaining product work, and has not started.
+**Production remains Build 004**, and promotion still waits on every gate
+recorded in `releases.md`: a production storage bucket; a per-object backup or
+replication strategy; `storage:verify` and `env:check` in production; both
+scheduled jobs created and verified in production; and the web services'
+health check and restart policy set in their dashboards before Railway stops
+reading `railway.json` on 2026-12-01.
 
 ---
 

@@ -471,15 +471,15 @@ recorded in [`delivery.md`](./delivery.md) under *Reviews are verified on beta*.
   asked for, and Studio to the exact Revision with `?note=1` intact and the note
   open. The unsafe-redirect, isolation, access and leak cases rest on the
   automated suites. Record: *G0 is verified on beta* in `docs/delivery.md`.
-- **Stage G1 — the durable notification foundation: implemented, automated
-  tests pass, not manually accepted.** Migration `0007_notifications.sql` adds
+- **Stage G1 — the durable notification foundation: closed.** It has no walk
+  of its own; the real-beta G2 and G3 runs exercise it. Migration `0007_notifications.sql` adds
   `notification_deliveries`, Stage G's outbox — intent and delivery state only,
   never an address or a word of anybody's feedback — with the rules, renderer,
   claim-and-retry primitives, transport and preview capture a dispatcher will
   need. As G1 shipped nothing used any of it; G2 wires it. The migration only
   adds; existing Review rows are untouched.
-- **Stage G2 — Review notifications wired, and the dispatcher: implemented,
-  automated tests pass, real-beta capture-mode smoke passes.** *Ask for feedback* (and asking
+- **Stage G2 — Review notifications wired, and the dispatcher: closed —
+  real-beta capture-mode smoke passes.** *Ask for feedback* (and asking
   again after a withdrawal) writes one delivery per eligible client member, and
   a round's first root feedback note writes one to the studio inbox naming that
   note — each in the action's own transaction, sharing the request's one
@@ -489,33 +489,41 @@ recorded in [`delivery.md`](./delivery.md) under *Reviews are verified on beta*.
   links name the exact immutable Revision. Studio's dialog now says who will be
   emailed, and its confirmation how many. **Beta is capture-only**:
   `NOTIFICATION_REDIRECT_TO` is set nowhere, no deliberate real Stage G email
-  has been sent from beta, and **no Railway cron exists**. No new migration.
+  has been sent from beta. No new migration.
   Walked on beta in capture mode, confirmed first by `env:check`: *Ask for
   feedback* on a fresh *Notification test* said *Beta captured the email for 1
   client member; no client email was sent.*, the client's first note saved, and
   no Stage G email arrived. Row contents rest on the automated suites.
-- **Stage G2.1 — runtime command packaging fix: implemented, automated tests
-  pass, real-Railway manual acceptance passes.** Beta's console showed `npm run
+- **Stage G2.1 — runtime command packaging fix: closed — real-Railway manual
+  acceptance passes.** Beta's console showed `npm run
   notifications:dispatch` failing — the runtime image shipped `scripts/` but not
   the `lib/` modules they import; `storage:sweep` had the same defect. The
   runner now ships `lib/` (856 KB of TypeScript source), both commands run in a
   locally built image, and a test holds the rule. No product behaviour changed.
   After `4b2a477` reached beta, `npm run notifications:dispatch` in the Railway
   console completed with `notification.dispatched` (all counts 0 — the web
-  drain had already captured the walk's rows). `storage:sweep` is proven in a
-  locally built image only, not on Railway, and is still unscheduled.
-- **Stage G3 — scheduled operations: architecture decided and proven against
-  the built image; the Railway cron services are not yet created.** Two cron
-  services from the same repository and image: `notifications-dispatch` every
+  drain had already captured the walk's rows). `storage:sweep` shared the fix,
+  and has since run on Railway beta (G3).
+- **Stage G3 — scheduled operations: closed — accepted on real Railway beta.**
+  Two cron services from the same repository and image: `notifications-dispatch` every
   five minutes and `storage-sweep` daily at 08:17 UTC, each exiting after one
   bounded pass, restart policy Never. On beta the dispatcher gets only
   `DATABASE_URL` and `SITE_ENV=preview` — no Resend key — so it cannot send
   even if misconfigured. No code changed. **The redirected real-email walk was
   skipped by the user's choice**: the final email in a real inbox, a real click
   and real Reply-To are not verified by hand; the automated suites cover the
-  rest. Setup: `README.md`, *Scheduled jobs*.
-- **Not started:** Approvals. **Build 005 cannot be promoted until G3
-  has installed and verified the dispatch schedule.**
+  rest. Setup: `README.md`, *Scheduled jobs*. Verified on beta exactly as set
+  up — branch, start command, schedule, and only the listed variables, the
+  dispatcher's being `DATABASE_URL` and `SITE_ENV=preview` — with repeated
+  successful dispatcher runs on November 2, 2026, and one manual *Run now* of
+  the sweep: `sweep.complete`, nothing to clean. One sweep on October 22 took
+  about 14½ minutes; later runs were normal, and it is noted, not changed.
+  Record: *G3 is verified on beta* in `docs/delivery.md`.
+- **Stage G — review notifications — is complete for Build 005 beta**: G0, G1,
+  G2, G2.1 and G3 are closed. The redirected real-email walk was skipped by the
+  user's choice and does not hold it open.
+- **Not started:** Approvals — Build 005's remaining product work. **Build 005
+  is not complete**, and is not promoted until the gates below are closed.
 
 **Stage A beta acceptance.** Migration `0004` deployed and applied. `npm run
 storage:verify` was run **inside the real beta app container against the real
@@ -535,16 +543,17 @@ component keeping the Preview and the real client overview aligned.
 These are the gates between beta and production:
 
 - **No production bucket exists**, and none is created until promotion.
-- **The sweep is not scheduled.** Until it is, abandoned uploads accumulate.
+- **The sweep is scheduled on beta only.** Production needs its own
+  `storage-sweep` cron service, created and verified at promotion.
 - **No per-object backup or replication strategy**, which is required before
   Build 005 reaches production — see [`restore-rehearsal.md`](./restore-rehearsal.md).
 - **`npm run storage:verify` has not been run in production**, because there is
   nothing there to run it against yet. Beta passing says nothing about a bucket
   that does not exist.
-- **The notification dispatcher is not scheduled.** G3 decided how — a Railway
-  cron service every five minutes — but until it exists and has run in
-  production, a notification whose best-effort drain did not run waits for
-  somebody to run `npm run notifications:dispatch`.
+- **The notification dispatcher is scheduled on beta only.** Production needs
+  its own `notifications-dispatch` cron service — with production's mail and
+  link variables, and never `SITE_ENV` or `NOTIFICATION_REDIRECT_TO` — created
+  and verified at promotion.
 - **The web services' health check and restart policy live in `railway.json`,
   which Railway stops reading on 2026-12-01.** They must be set in each web
   service's dashboard, beta and production, before then.
@@ -552,9 +561,10 @@ These are the gates between beta and production:
   variables.** Beta had `CLIENT_AUTH_SECRE` for a whole round of investigation;
   one command would have found it, and one command is the gate.
 
-Separately from those gates, and not claimed either way as a gate: **Stage C is
-not complete** — Stage F is closed, but Stage G is not (G3 has not started) — and
-**Approvals has not begun**, and is read or written by no code.
+Separately from those gates, and not claimed either way as a gate: **Stage F and
+Stage G are both closed** — the two parts Stage C was waiting on, though Stage C
+itself has not been declared complete — and **Approvals has not begun**, and is
+read or written by no code.
 
 The viewer, Stage B and Stage C's Review surfaces were all on this list and are
 no longer: the viewer was accepted on beta by hand — image, PDF, MP4 and video

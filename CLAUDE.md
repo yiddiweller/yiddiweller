@@ -49,9 +49,10 @@ over an open round, superseding it into read-only history in both worlds → a n
 current version with no round. The walk found three defects — the item locator,
 the tombstone and the publish consequence — each fixed at its cause and retested
 on beta; the record is *Reviews are verified on beta* in `docs/delivery.md`.
-**Stage C's two outstanding parts are both closed** — Stage F, precise feedback
-and return to context (below), and Stage G, notifications, complete for Build
-005 beta (below) — though Stage C itself has not been declared complete. Stage
+**Stage C — Reviews — is complete**: Implementations A to E were accepted on
+beta, and its two remaining parts are closed — Stage F, precise feedback and
+return to context (below), and Stage G, notifications, complete for Build 005
+beta (below). Approvals was never part of Stage C. Stage
 F's architecture is locked in `docs/delivery.md` — image point, video and audio
 moment and stretch, return to context; no migration; regions, frame anchors and
 PDF anchors deferred. **F1, its foundation, is built and nothing visible is**:

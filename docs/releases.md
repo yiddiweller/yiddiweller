@@ -23,7 +23,8 @@ tooling, nothing to keep in sync.
 promoted on 2026-09-16 by fast-forward and is what production runs. Build 005 —
 Delivery: Stages A and B, and Stage C's visible Review surfaces (Implementation
 D/E) — is on beta, has passed manual acceptance there, and is **not promoted**:
-the gates below have to close first, and Stage C itself is not complete.
+the gates below have to close first. Stage C is now complete (Stages F and G
+closed, below); Approvals has not begun.
 
 **The commits above are the last ones that changed anything**, which is not
 always where the branch now points. A documentation commit changes nothing about
@@ -184,6 +185,7 @@ A (schema), B (domain and concurrency), C (authorization and projection) and D/E
 (the surfaces) are accepted. **Stage F**, drawing precise anchors, and **Stage
 G**, notifications, are not built. The journey and its three defects are
 recorded in [`delivery.md`](./delivery.md) under *Reviews are verified on beta*.
+*(Since then Stage F and Stage G have both closed, so **Stage C is complete**.)*
 
 - **Every write goes through one module, and every mutation opens by locking
   the Review row** — the round's serialization point. The order is
@@ -561,9 +563,9 @@ These are the gates between beta and production:
   variables.** Beta had `CLIENT_AUTH_SECRE` for a whole round of investigation;
   one command would have found it, and one command is the gate.
 
-Separately from those gates, and not claimed either way as a gate: **Stage F and
-Stage G are both closed** — the two parts Stage C was waiting on, though Stage C
-itself has not been declared complete — and **Approvals has not begun**, and is
+Separately from those gates, and not claimed either way as a gate: **Stage C is
+complete** — Implementations A to E accepted, and Stage F and Stage G, the two
+parts it was waiting on, both closed — and **Approvals has not begun**, and is
 read or written by no code.
 
 The viewer, Stage B and Stage C's Review surfaces were all on this list and are

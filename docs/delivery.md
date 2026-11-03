@@ -1102,8 +1102,8 @@ the visible surfaces, end to end. Three defects were found by that walk, fixed a
 their cause and retested there; the record is *Reviews are verified on beta*,
 below. Stage F (precise annotation interaction) and Stage G (notifications) are
 not built, so Stage C as a whole is not complete. *(Both have since closed —
-Stage F below, Stage G under* Notifications *— and Stage C itself has not been
-declared complete.)*
+Stage F below, Stage G under* Notifications *— so **Stage C is complete**.
+Approvals was never part of it.)*
 
 **A Review is one round of client feedback on one published Revision, at the
 studio's invitation.** Not a chat, not a ticket queue, not a second Presentation

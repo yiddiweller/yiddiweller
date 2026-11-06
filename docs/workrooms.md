@@ -113,9 +113,17 @@ the person's access to Workroom B, and does not sign them out.
 
 There are no member roles. A client is an authorized participant. Reviewer,
 Approver and the rest were left as Build 005's problem, if Build 005 actually
-needed them — **and it does not.** Any active member may review and approve, and
-the record carries who did. A permissions system for client teams of three
-people is machinery serving nobody; revisit when a client asks, not before.
+needed them — **and it does not.** Any active member may review, and the record
+carries who did. A permissions system for client teams of three people is
+machinery serving nobody; revisit when a client asks, not before.
+
+**Approval is the one thing asked of named people — superseded by H0/H1.** This
+section once read *"any active member may review and approve"*. Stage H0's
+architecture, confirmed for H1, replaces the approval half: Studio names one or
+more eligible members **on each request**, and only they decide it. That is
+still not a role — nobody is an approver of a Workroom, only of one request, and
+membership itself stays role-free. See *Approvals* in
+[`delivery.md`](./delivery.md).
 
 ---
 
@@ -282,7 +290,7 @@ and switching off a person's identity everywhere at once.
 | **Archived Project** | Refused while its Workroom is published. |
 | **Completed project, client still needs access** | Nothing closes. Project status is a word on the overview; access is a separate decision. |
 | **Build 005 files** | Attach to `workrooms.id`, as planned. Membership already answers "may this person see it". See [`delivery.md`](./delivery.md). |
-| **Build 005 approvals** | No capability was needed. Build 005 adds **no member roles**: any active member may review and approve, and who did it is on the record. |
+| **Build 005 approvals** | No capability was needed. Build 005 adds **no member roles**. Approval is asked of named members per request (H0/H1, superseding *"any active member may … approve"*); any active member may review. |
 | **Build 006 billing** | References `clients.id` and `projects.id`, as Build 003 locked. Nothing financial is squatting here. |
 | **Build 007 communications** | References `contacts.id` and `workrooms.id`. Activity stays a system timeline and does not become a message list. |
 

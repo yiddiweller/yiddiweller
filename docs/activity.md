@@ -72,7 +72,7 @@ Build 004 writes five kinds:
 | `workroom.access_ended` | *Sam Fox's access ended* | A membership is revoked. |
 | `project.status_changed` | *Status changed to Active* | A Project with a live Workroom changes status. |
 
-Build 005 adds seven, specified in [`delivery.md`](./delivery.md) and **not
+Build 005 adds eight, specified in [`delivery.md`](./delivery.md) and **not
 written until Build 005 is built** — there is no placeholder for them:
 
 | `kind` | Reads as |
@@ -83,7 +83,8 @@ written until Build 005 is built** — there is no placeholder for them:
 | `review.requested` | *Your thoughts were requested on Identity concepts* |
 | `review.received` | *Ana Alder sent feedback* |
 | `approval.requested` | *Approval was requested for Identity concepts* |
-| `approval.decided` | *Ana Alder approved Identity concepts* |
+| `approval.approved` | *Ana Alder approved Identity concepts* — *Identity concepts was approved* when several were asked |
+| `approval.changes_requested` | *Ana Alder asked for changes to Identity concepts* |
 
 **The two review kinds are written once each per round, and that is the whole
 of it.** `review.requested` when the round is first opened — a later withdrawal
@@ -95,9 +96,16 @@ reopen, not a close. A row per reply would flood a timeline built to be calm,
 and there is a test that counts.
 
 `subject` carries a File's `display_name` or a Presentation's `title` — both
-already client-facing fields, never internal ones. **`approval.decided` is one
-kind, not two**: the verb comes from the approval record, and a decline is not a
-separate species of event.
+already client-facing fields, never internal ones.
+
+**One approval kind per outcome** — `approval.approved` and
+`approval.changes_requested`, which `0008` (Stage H1) put in place of the
+dormant `approval.decided`. That earlier rule, *"one kind, not two: the verb
+comes from the approval record"*, is **superseded by H0/H1**: a row here carries
+no reference to any record, by design, so one kind could never say yes from no.
+Nothing had ever written `approval.decided`, and `0008` refuses to run if
+anything has. Partial approvals, withdrawals and supersessions write nothing
+here. H1 writes no Activity at all; H2 writes these.
 
 **`presentation.viewed` is deliberately absent.** `architecture.md` once gave it
 as an example of business activity. It is not built, here or in `audit_events`:

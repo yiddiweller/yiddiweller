@@ -192,7 +192,20 @@ the evidence for the email path. Railway stops reading `railway.json` on
 and restart policy must be set in their dashboards before then. **Stage G —
 review notifications — is complete for Build 005 beta.** Build 005 is not
 promoted until both jobs also exist and are verified in production.
-Approvals has not begun, and it is Build 005's remaining product work. Build 005
+**Approvals is Build 005's remaining product work, and H1 — its schema
+foundation — is built and its automated tests pass; nothing is visible.**
+The H0 architecture with the user's decisions: approval is asked of **named**
+client members per request (Studio names one or more; at least one), with no
+mandatory reason to ask for changes; all named approve → `approved`, the first
+request for changes → `changes_requested`, else `requested`; a withdrawn request
+keeps its partial decisions; Activity's dormant `approval.decided` is replaced by
+`approval.approved` and `approval.changes_requested`; Studio's wording will be
+*Ask for approval*. Corrective `0008_approvals.sql` refuses to run over any
+approval row or `approval.decided` row, reshapes `presentation_approvals` into
+the request and adds `presentation_approval_approvers`; the pure rules are
+`lib/workrooms/approval-rules.ts`. **No approval domain module, route, action,
+surface, Activity or Audit write or notification exists yet** — that is H2
+onward. Build 005
 is **not promoted**: production has no bucket, no scheduled jobs and no
 per-object backup strategy, so production remains Build 004.**
 These are facts about the running system, not proposals. Changing any of them is
@@ -294,7 +307,9 @@ a deliberate decision, not a cleanup.
   `docs/activity.md`.
 - **Workroom access is explicit, per person, per Workroom.** Being a Contact at
   the Client grants nothing, and revocation takes effect on the next request.
-  There are **no member roles**: any active member may review and approve.
+  There are **no member roles**: any active member may review. **Approval is
+  asked of named members, per request** (H0/H1, superseding "any active member
+  may … approve") — a person approves one request, never a Workroom.
 - **Client-facing routes are nested under `/workrooms/...`, never at the root.**
   The blueprint once reserved `/files/...` and `/approve/...` as root
   namespaces; that is revised. `middleware.ts` scopes the private cache headers
@@ -308,6 +323,19 @@ a deliberate decision, not a cleanup.
 - **An approval names a Presentation Revision, never a Presentation.** Revisions
   and their items are immutable; a terminal approval refuses UPDATE, DELETE and
   TRUNCATE. A new decision about changed work requires a new Revision.
+- **An approval request is asked of named approvers and PostgreSQL holds its
+  rules (`0008`).** `requested → approved | changes_requested | withdrawn |
+  superseded`, once; **at most one request per Revision that is not
+  `withdrawn`** (`presentation_approvals_one_standing_idx`), so a withdrawn
+  request may be asked again and nothing else may. Approvers are named in the
+  request's own transaction, must hold active access to that Workroom, are never
+  removed or moved, and decide once, only while it is `requested`. A **deferred
+  constraint trigger** refuses any commit where the request disagrees with its
+  approvers — so the domain decides an approver, then moves the request, in one
+  transaction, **after locking the request row** (`presentations →
+  presentation_reviews → presentation_approvals →
+  presentation_approval_approvers`). Who withdrew and who was asked are
+  `ON DELETE restrict`. The model is *Approvals* in `docs/delivery.md`.
 - **A published Revision holds one Review round, ever, and the row cannot be
   deleted.** `UNIQUE (presentation_revision_id)` plus a trigger refusing DELETE
   and TRUNCATE — a unique constraint somebody can delete their way around is

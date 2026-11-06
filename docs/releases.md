@@ -24,7 +24,8 @@ promoted on 2026-09-16 by fast-forward and is what production runs. Build 005 �
 Delivery: Stages A and B, and Stage C's visible Review surfaces (Implementation
 D/E) — is on beta, has passed manual acceptance there, and is **not promoted**:
 the gates below have to close first. Stage C is now complete (Stages F and G
-closed, below); Approvals has not begun.
+closed, below); Approvals has begun with its foundation, H1 — schema, triggers
+and pure rules, nothing visible.
 
 **The commits above are the last ones that changed anything**, which is not
 always where the branch now points. A documentation commit changes nothing about
@@ -524,8 +525,24 @@ recorded in [`delivery.md`](./delivery.md) under *Reviews are verified on beta*.
 - **Stage G — review notifications — is complete for Build 005 beta**: G0, G1,
   G2, G2.1 and G3 are closed. The redirected real-email walk was skipped by the
   user's choice and does not hold it open.
-- **Not started:** Approvals — Build 005's remaining product work. **Build 005
-  is not complete**, and is not promoted until the gates below are closed.
+- **Stage H1 — the Approvals foundation: built, automated tests pass; nothing
+  visible, so nothing to accept by hand.** The H0 architecture, with the user's
+  five decisions: approval is asked of **named** client members per request
+  (not "any active member"), with no mandatory reason to ask for changes; a
+  withdrawn request keeps its partial decisions as history; Activity's dormant
+  `approval.decided` becomes `approval.approved` and
+  `approval.changes_requested`; Studio's wording will be *Ask for approval*.
+  Migration `0008_approvals.sql` is corrective and refuses to run over any
+  approval row or `approval.decided` Activity row; it reshapes
+  `presentation_approvals` into a request and adds
+  `presentation_approval_approvers`, with PostgreSQL holding every transition,
+  shape, immutability and tenancy rule and — at commit — the agreement between a
+  request and its approvers' decisions. `lib/workrooms/approval-rules.ts` holds
+  the same rules, pure. **No domain module, route, action, surface, Activity or
+  Audit write, or notification exists yet**: that is H2 onward. Beta applies
+  `0008` on its next deploy, as every migration does.
+- **Approvals is Build 005's remaining product work. Build 005 is not
+  complete**, and is not promoted until the gates below are closed.
 
 **Stage A beta acceptance.** Migration `0004` deployed and applied. `npm run
 storage:verify` was run **inside the real beta app container against the real
@@ -565,8 +582,9 @@ These are the gates between beta and production:
 
 Separately from those gates, and not claimed either way as a gate: **Stage C is
 complete** — Implementations A to E accepted, and Stage F and Stage G, the two
-parts it was waiting on, both closed — and **Approvals has not begun**, and is
-read or written by no code.
+parts it was waiting on, both closed — and **Approvals has its schema
+foundation (H1)** and is read or written by no product code yet. Production
+will apply `0004` through `0008` together at promotion.
 
 The viewer, Stage B and Stage C's Review surfaces were all on this list and are
 no longer: the viewer was accepted on beta by hand — image, PDF, MP4 and video

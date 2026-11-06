@@ -23,6 +23,7 @@ import {
   clientSession,
   clients,
   contacts,
+  presentationApprovalApprovers,
   presentationApprovals,
   presentationItems,
   presentationRevisionItems,
@@ -98,6 +99,7 @@ async function wipe(): Promise<void> {
   const guarded = [
     "presentation_review_notes",
     "presentation_reviews",
+    "presentation_approval_approvers",
     "presentation_approvals",
     "presentation_revision_items",
     "presentation_revisions",
@@ -108,6 +110,7 @@ async function wipe(): Promise<void> {
   await db().delete(presentationReviewNotes);
   await db().delete(notificationDeliveries);
   await db().delete(presentationReviews);
+  await db().delete(presentationApprovalApprovers);
   await db().delete(presentationApprovals);
   await db().delete(presentationRevisionItems);
   await db().update(presentations).set({ currentRevisionId: null, status: "draft" });

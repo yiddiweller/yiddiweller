@@ -62,9 +62,16 @@ existed and is corrected there.
 
 **No member roles.** `workrooms.md` left this open — *"Reviewer, Approver and
 the rest are Build 005's problem, if Build 005 actually needs them."* It does
-not. Any active member may review and approve; who did it is recorded on the
-record. A permissions system for client teams of three people is machinery
-serving nobody. Revisit when a client asks, not before.
+not. Any active member may review; who wrote what is recorded on the record. A
+permissions system for client teams of three people is machinery serving
+nobody. Revisit when a client asks, not before.
+
+**Approval is asked of named people, per request** — the H0 architecture,
+confirmed for H1, revising the original *"any active member may review and
+approve"*. Studio names one or more eligible members on each request, and only
+they decide that request. That is not a role: nobody is an approver of a
+Workroom, only of one request, and the next request names whoever Studio names.
+See *Approvals* below.
 
 ---
 
@@ -2626,49 +2633,131 @@ G**. Approvals has not begun. None of the three is implied by the table above.
 
 ## Approvals
 
-A **business decision**, recorded once and never edited. Not a status field on a
-Presentation, and not an audit event.
+*Locked by H0 and built as a foundation in **H1** (`drizzle/0008_approvals.sql`,
+`lib/workrooms/approval-rules.ts`). The dormant design `0004` shipped — one
+decider, any active member, a mandatory decline reason, `granted` / `declined`,
+one generic `approval.decided` Activity kind — never had a row written against
+it, and is **superseded**; what it said is kept at the end of this section,
+labelled as history.*
 
-It answers, by construction:
+A **business decision**, asked of named people, recorded once and never edited.
+Not a status field on a Presentation, not a Review, and not an audit event.
+
+### Who decides — named approvers, per request
+
+Studio names **one or more** of the Workroom's eligible client members on each
+request, and only they decide it. **At least one is required.** There are still
+no member roles and no Workroom-level approver setting: a person is an approver
+of one request, never of a Workroom. Where exactly one member is eligible, the
+interface may preselect them (H3). Studio cannot decide on a client's behalf.
+
+### The request and its outcome
+
+```
+requested ──▶ approved            every named approver approved
+          ──▶ changes_requested   the first named approver to ask for changes
+          ──▶ withdrawn           Studio took it back while it was awaiting
+          ──▶ superseded          a newer Revision was published while awaiting
+```
+
+Each named approver moves once, `pending → approved | changes_requested`, and
+never again. The request's outcome follows from those decisions alone:
+
+- **every** named approver approved → `approved`. A partial approval is not an
+  approval;
+- the **first** request for changes → `changes_requested`, and anyone still
+  pending never needs to decide;
+- otherwise it is still `requested`;
+- zero approvers is not a request.
+
+No quorum, no weighting, no sequence, no stages, no conditional approval.
+**No reason is required to ask for changes** — the explanation belongs in the
+Review conversation, which an approval never opens, closes or depends on.
+
+Every terminal status is final. **After `withdrawn`, the same Revision may be
+asked again**, as a new request. After `approved`, `changes_requested` or
+`superseded` it may not: a new decision about the work needs a new Revision, and
+publishing never refuses unchanged content, so that is always available.
+
+**A withdrawn request keeps whatever was decided on it.** Decisions already
+submitted stay as immutable history; if nobody had decided, the client surface
+may treat the request as absent (H4). The data is the same either way.
+
+### What it answers, by construction
 
 | Question | Answered by |
 | --- | --- |
-| What was approved? | `presentation_revision_id` |
-| Which exact version? | The Revision **is** the version |
+| What was asked about? | `presentation_revision_id` — the Revision **is** the version |
 | Which physical files? | `presentation_revision_items.file_id` |
-| Who? | `decided_by_identity_id` + `decided_by_name` snapshot |
-| When? | `decided_at` |
-| Superseded? | A later Revision of the same Presentation exists |
-| Requested, or spontaneous? | `requested_at` / `requested_by` are nullable |
-| What were they shown? | The Revision's items and snapshot |
+| What were they shown? | The Revision's items and snapshot; `content_hash` is the tripwire |
+| Who asked, and when? | `requested_by`, `requested_at` |
+| Who was asked? | `presentation_approval_approvers` — `client_identity_id` plus a `display_name` snapshot |
+| Who decided what, and when? | Each approver's `decision` and `decided_at` |
+| Withdrawn — when, by whom? | `closed_at`, `closed_by_user_id` |
+| Superseded — by what? | `closed_at`, `closed_by_revision_id` |
 
-**Declining requires a short reason.** `decline_reason` is `NOT NULL` when
-`status = 'declined'`, enforced by CHECK. A decline with no reason is a dead end
-for both sides, and the reason is the most useful sentence in the whole record.
+### What PostgreSQL holds — invariant
 
-### Transitions — invariant, enforced in PostgreSQL
+`0008` is corrective, like `0006`: it refuses to run unless
+`presentation_approvals` is empty **and** no Activity row says
+`approval.decided`, then reshapes the table rather than migrating anything.
 
-```
-requested ──▶ granted     terminal
-          ──▶ declined    terminal
-          ──▶ withdrawn   terminal
-```
+**`presentation_approvals`** — the request: `id`, `workroom_id`,
+`presentation_revision_id`, `status`, `requested_at` (NOT NULL), `requested_by`,
+`content_hash` (NOT NULL), `closed_at`, `closed_by_user_id`,
+`closed_by_revision_id`, `created_at`, and `UNIQUE (workroom_id, id)` as the
+approvers' foreign-key target.
 
-**Once granted, declined or withdrawn: no UPDATE, no DELETE.** A `BEFORE UPDATE`
-trigger refuses any row whose old status is terminal, and refuses any transition
-that is not one of the three above. A `BEFORE DELETE` trigger refuses outright. A
-statement-level `BEFORE TRUNCATE` trigger refuses that too — the same three-way
-protection `audit_events` carries, for the same reason: business history that can
-be truncated is not history.
+**`presentation_approval_approvers`** — the named people: `id`, `workroom_id`,
+`presentation_approval_id`, `client_identity_id`, `display_name`, `decision`,
+`decided_at`, `created_at`.
 
-**A new decision about changed work requires a new Revision.** There is no path
-that rewrites a terminal one, and that is the point of the whole design.
+| Rule | Held by |
+| --- | --- |
+| **One standing request per Revision** — any number of `withdrawn` rows, at most one that is anything else | `presentation_approvals_one_standing_idx`: `UNIQUE (presentation_revision_id) WHERE status <> 'withdrawn'` |
+| Each status carries exactly its own closure: `requested` none; `withdrawn` `closed_at` + `closed_by_user_id`; `superseded` `closed_at` + `closed_by_revision_id`; `approved` / `changes_requested` `closed_at` only | `presentation_approvals_closure_shape_check`, a `CASE … ELSE false` |
+| A closure never precedes its request; a request is never superseded by its own Revision; the hash is 64 characters | three more CHECKs |
+| Born `requested`, at the transaction's own `now()`, carrying its Revision's own `content_hash` | `presentation_approvals_insert_guard` |
+| Moves once, `requested` → one terminal status; a terminal row's status and closure never change | `presentation_approvals_guard` |
+| Never repointed — `id`, Workroom, Revision, `content_hash`, `requested_at`, `created_at` fixed; the requester may only fall to NULL through `ON DELETE set null` | `presentation_approvals_guard` |
+| A supersession names a **newer** Revision of the **same** Presentation, in the same Workroom | the guard, and a composite foreign key |
+| Approvers are named **in the transaction that makes the request**, undecided, once each, and never added after | `presentation_approval_approvers_guard`, `UNIQUE (presentation_approval_id, client_identity_id)` |
+| An approver is somebody with **active access to that Workroom** — an active identity with an active membership — when named | the approver guard. A tenancy floor: *eligibility* is the domain's |
+| An approver is never removed, moved to another request or Workroom, or renamed | the approver guard |
+| A decision is set once, with its time, only while the request is `requested`, never before the request, and never changed, reversed or cleared | the approver guard and two CHECKs |
+| **At commit, the request agrees with its approvers**: `approved` ⇔ all approved; `changes_requested` ⇔ exactly one asked for changes; `requested` / `withdrawn` / `superseded` ⇔ nobody asked for changes and not everybody approved; never zero approvers | `presentation_approvals_agree`, a deferred constraint trigger on both tables |
+| No DELETE and no TRUNCATE, on either table | both guards |
+| Who withdrew, and who was asked, are kept | `closed_by_user_id` and `client_identity_id` are `ON DELETE restrict` |
+| Cross-Workroom links are refused | composite foreign keys `(workroom_id, presentation_revision_id)`, `(workroom_id, closed_by_revision_id)`, `(workroom_id, presentation_approval_id)` |
 
-**Double approval is impossible** — a partial unique index over
-`presentation_revision_id WHERE status IN ('requested','granted','declined')`.
-Two tabs pressing Approve produce one approval and one clean refusal, decided by
-the database rather than by a read both of them passed. The same mechanism as
-`workroom_invitations_one_open_idx`, which has already survived a real race test.
+The agreement rule is the same sentence `agreesWithApprovers` states in
+`approval-rules.ts`. It is deferred so the domain can write in the natural order
+— the approver's decision, then the request's outcome — and it sees committed
+rows and its own, **which is why the domain must lock the request row before
+deciding**: two deciders who did not serialise on it could each commit a state
+the other's decision contradicts.
+
+### What the domain holds — H2
+
+Who may ask (staff) and who may decide (a named approver, still pending, still
+eligible); that the Revision is its Presentation's current published one; which
+members are eligible; re-checking the content hash at each decision;
+superseding inside the publish transaction; Activity and Audit; the client-safe
+projection. Lock order: `presentations → presentation_reviews →
+presentation_approvals → presentation_approval_approvers`, never upward. **H1
+writes none of this**: there is no approval domain module, route, action,
+surface, Activity or Audit write, or notification yet.
+
+### History — the `0004` design, superseded by H0/H1
+
+`0004` shipped a one-row decision: `requested → granted | declined | withdrawn`,
+decided by any one active member (`decided_by_identity_id`, `decided_by_name`),
+with `decline_reason` mandatory at 3–2,000 characters, a
+`content_hash_at_decision` tripwire, a live-approval index over `requested`,
+`granted` and `declined`, and Activity's single `approval.decided`. **None of it
+holds any more.** Its columns, CHECKs and index were dropped by `0008`; its guard
+function was rewritten for the new vocabulary; its Activity kind was removed.
+Nothing had ever written to any of it.
 
 ---
 
@@ -2695,8 +2784,9 @@ client**, in any projection, in any response.
 
 ## A decided Revision stays reachable — invariant
 
-Once a Revision carries a terminal approval decision, it is part of the
-Workroom's business history.
+Once a Revision carries an approval decision — a request that ended
+`approved` or `changes_requested` — it is part of the Workroom's business
+history.
 
 **Staff may:**
 
@@ -2708,7 +2798,7 @@ Workroom's business history.
 
 - mutate the decided Revision or any of its items
 - replace the files it references
-- erase, edit or withdraw the approval
+- erase or edit a decision, or withdraw a request once it is decided
 - unpublish or archive the Presentation in a way that makes the decided
   Revision disappear
 
@@ -2717,6 +2807,11 @@ decided Revision is refused**, naming the decision — the same shape as the
 Build 003 refusal that blocks archiving a Project whose Workroom is open, and
 for the same reason: it would take something away from a client without anyone
 deciding to. Unpublishing before any decision is ordinary and allowed.
+
+*Open for H2:* H0's edge-case table instead proposed that unpublishing after a
+decision keeps the history, visible to Studio only. The two disagree, H1 builds
+neither — no domain code exists yet — and H2 decides which holds before writing
+`unpublishPresentation`'s approval check.
 
 **Archiving a Presentation with a decided Revision is refused** for staff, and
 **archiving a Workroom holding one is refused** as well. Archive is the studio
@@ -2747,6 +2842,9 @@ presentation_review_notes   FK (workroom_id, presentation_review_id,
 presentation_review_notes   FK (workroom_id, presentation_revision_id,
                                 revision_item_id)                      →  presentation_revision_items
 presentation_approvals      FK (workroom_id, presentation_revision_id) →  presentation_revisions
+presentation_approvals      FK (workroom_id, closed_by_revision_id)    →  presentation_revisions
+presentation_approval_approvers
+                            FK (workroom_id, presentation_approval_id) →  presentation_approvals
 ```
 
 A Revision in Workroom A cannot reference a File in Workroom B. Not "should
@@ -2779,7 +2877,8 @@ ClientRevisionRef   { number, publishedAt, current }
 ClientRevisionItem  { id, kind, caption, body?, file? }
 ClientReview        { status, requestedAt, canWrite, closedNote?, notes[] }
 ClientReviewNote    { n, author, at, body?, removed, edited, anchor?, resolved, replies[] }
-ClientApproval      { id, status, requestedAt, decidedAt?, decidedBy?, declineReason? }
+ClientApproval      H2 — lib/workrooms/approval-view.ts: no database ids, no reason
+                    field; the 0004-era { decidedBy?, declineReason? } is superseded
 ```
 
 **Deliberately absent, and never fetched on a client request:** `storage_key`,
@@ -2802,7 +2901,7 @@ review.
 
 ## Activity vocabulary
 
-Seven additions, keeping the shape exactly: a fixed `kind`, an `actor_label`, a
+Eight additions, keeping the shape exactly: a fixed `kind`, an `actor_label`, a
 `subject` that is one safe label. **There is no `metadata` column and there is
 not going to be one.**
 
@@ -2813,17 +2912,23 @@ not going to be one.**
 | `presentation.revised` | *Identity concepts was updated* | A later Revision is published |
 | `review.requested` | *Your thoughts were requested on Identity concepts* | Staff request a review |
 | `review.received` | *Ana Alder sent feedback* | A client responds |
-| `approval.requested` | *Approval was requested for Identity concepts* | Staff request approval |
-| `approval.decided` | *Ana Alder approved Identity concepts* | A client grants or declines |
+| `approval.requested` | *Approval was requested for Identity concepts* | Staff ask for approval |
+| `approval.approved` | *Ana Alder approved Identity concepts* — or *Identity concepts was approved* when several were asked | The request becomes `approved` (H2) |
+| `approval.changes_requested` | *Ana Alder asked for changes to Identity concepts* | The request becomes `changes_requested` (H2) |
 
 `subject` carries a File's `display_name` or a Presentation's `title` — both
 already client-facing fields, never internal ones.
 
-**`approval.decided` is one kind, not two.** The verb comes from the approval
-record the reader already holds; a decline is not a separate species of event.
-`architecture.md` gave `approval.submitted` as an illustration; "decided"
-describes what the business record now holds rather than which button was
-pressed, and still satisfies `noun.verb_past_tense`.
+**One kind per outcome — `approval.approved` and `approval.changes_requested`
+(H0/H1).** This supersedes the original *"`approval.decided` is one kind, not
+two"*, whose premise was that the verb would come from the approval record the
+reader holds. An Activity row holds no reference to any record — `kind`,
+`actor_label`, `subject`, nothing else, deliberately — so a single kind could
+only ever render *"Ana Alder decided on …"*, unable to say yes from no. `0008`
+removed `approval.decided` from the CHECK (nothing had written one, and the
+migration refuses to run if anything has) and added the two. Partial approvals,
+withdrawals and supersessions write no Activity. **H1 writes no Activity row**;
+H2 does.
 
 **`presentation.revised` is separate from `presentation.published`**, because
 "we updated this" and "here is something new" are different messages, and
@@ -2861,18 +2966,23 @@ file.archived  file.restored
 presentation.created  presentation.updated  presentation.published
 presentation.unpublished  presentation.archived  presentation.restored
 review.requested  review.responded  review.resolved  review.withdrawn
-approval.requested  approval.granted  approval.declined  approval.withdrawn
+approval.requested  approval.withdrawn  approval.superseded
+approval.approved  approval.changes_requested
 ```
 
-Client-caused actions — `review.responded`, `approval.granted`,
-`approval.declined` — are written with `actor_type = 'client_user'` and
+The approval actions are H0's, planned for H2 and **not written by anything
+yet**; they replace the `0004`-era `approval.granted` / `approval.declined`.
+`approval.approved` and `approval.changes_requested` are one per decision, by
+the approver. Client-caused actions — `review.responded`,
+`approval.approved`, `approval.changes_requested` — are written with
+`actor_type = 'client_user'` and
 `client_actor_id` set. The `audit_events_actor_shape_check` makes it
 structurally impossible to file a client under the staff foreign key.
 
 **`metadata` carries field names and ids only, never values.**
 `{ "fields": ["display_name"] }`, `{ "revision": 3 }`. Never a caption, never a
-review body, never a filename, never a storage key, never a decline reason,
-never a presigned URL. `entity_label` carries a name or a title and nothing else.
+review body, never a filename, never a storage key, never an approver's name in
+metadata, never a presigned URL. `entity_label` carries a name or a title and nothing else.
 
 **Approval history lives in `presentation_approvals`, not here.** Audit records
 *that* an approval happened; the approval record *is* the business fact.
@@ -2919,9 +3029,9 @@ teaches clients to ignore its emails.
 | --- | --- | --- |
 | Publish & notify | Active members | **No** — a distinct button |
 | Request review | Active members | No — the request is the action |
-| Request approval | Active members | No — same |
+| Ask for approval | The named approvers | **Not in V1** — Stage H sends no email |
 | Review answered | `CONTACT_EMAIL` | Yes. Rare and consequential |
-| Approval decided | `CONTACT_EMAIL` | Yes. Rare and consequential |
+| Approval decided | `CONTACT_EMAIL` | **Not in V1** — a future kind, needing its own outbox migration |
 
 Everything else — a file shared, a Presentation revised, a review resolved —
 appears in Activity only.
@@ -3611,7 +3721,8 @@ duplicate prevention.
 | G3 — scheduled operations | Closed — real-beta accepted |
 
 The skipped redirected-email walk does not hold it open. **Build 005 is not
-complete**: Approvals is its remaining product work, and has not started.
+complete**: Approvals is its remaining product work. Its foundation, **H1**, is
+built — schema, triggers and pure rules, nothing visible; see *Approvals* above.
 **Production remains Build 004**, and promotion still waits on every gate
 recorded in `releases.md`: a production storage bucket; a per-object backup or
 replication strategy; `storage:verify` and `env:check` in production; both
@@ -3645,9 +3756,9 @@ Enforced server-side in the domain module, re-checked in every server action.
 | Resolve or reopen **any** feedback item | ✓ | ✓ | — | — | — |
 | Resolve or reopen **their own** | ✓ | ✓ | ✓ | — | — |
 | Edit or remove **their own**, inside the window | ✓ | ✓ | ✓ | — | — |
-| Request approval | ✓ | ✓ | — | — | — |
-| **Grant / decline approval** | — | — | **✓** | — | — |
-| Withdraw approval request | ✓ | ✓ | — | — | — |
+| Ask for approval, naming the approvers | ✓ | ✓ | — | — | — |
+| **Approve / request changes** — a named approver, once | — | — | **✓** | — | — |
+| Withdraw an approval request while it awaits | ✓ | ✓ | — | — | — |
 | See archived delivery content | ✓ | ✓ read-only | — | — | — |
 
 Three rows deserve naming.
@@ -3691,10 +3802,11 @@ boundary above a guarded page turns a refusal into a 200. Measured; see
 | Revoked membership | Membership read per request; next download is a 404 |
 | Unpublished Presentation | `status = 'published'` is in the query, not a filter afterwards |
 | Cross-tenant anything | Composite foreign keys. The database refuses it |
-| Forged approval | Requires an active client session **and** membership **and** the Revision resolving to that Workroom |
-| Double approval | Partial unique index |
+| Forged approval | Requires an active client session **and** membership **and** being a named approver on that request **and** the Revision resolving to that Workroom |
+| Double approval | One standing request per Revision by partial unique index; one decision per approver, by trigger |
 | Stale approval | Approvals anchor to Revisions; a new Revision cannot inherit an old decision |
-| Rewritten approval | Terminal rows refuse UPDATE, DELETE and TRUNCATE, by trigger |
+| Rewritten approval | Terminal requests and made decisions refuse UPDATE; both tables refuse DELETE and TRUNCATE, by trigger |
+| Approval that disagrees with its approvers | A deferred constraint trigger refuses the commit |
 | File replaced after approval | Permanent keys are never upload targets; replacement creates a new File |
 | Archived content | `archived_at IS NULL` in every client query |
 | Metadata / RSC leak | Static titles on every new route — `"Presentation"`, never the title. Whole-response leak tests |
@@ -3767,6 +3879,34 @@ that is recorded rather than glossed: see below.
 
 PostgreSQL has no way to widen a CHECK, so both are `DROP CONSTRAINT` then
 `ADD CONSTRAINT` — the pattern `0003` used and documented.
+
+### `0008_approvals.sql` — corrective, the same window as `0006`
+
+**Two guards first**, in one `DO` block, before anything changes:
+`presentation_approvals` must be empty, and no `workroom_activity` row may say
+`approval.decided`. Either refusal raises `restrict_violation` and — because the
+migrator applies every pending migration in one transaction — leaves the
+database exactly at `0007`. Nothing is migrated silently, because nothing is
+migrated at all: beta's table has never held a row, and production has never
+had the table.
+
+Then it drops `0004`'s five decision columns (`decided_at`,
+`decided_by_identity_id`, `decided_by_name`, `decline_reason`,
+`content_hash_at_decision`), their CHECKs, the identity foreign key and the
+hand-written `presentation_approvals_one_live_idx`; makes `requested_at`
+`NOT NULL DEFAULT now()`; adds `content_hash`, `closed_at`,
+`closed_by_user_id` and `closed_by_revision_id` with their foreign keys;
+creates `presentation_approval_approvers`; and replaces the Activity kind CHECK.
+`UNIQUE (workroom_id, id)` on the request comes first, because the approvers'
+composite foreign key names it. The partial unique index is declared in
+`schema.ts` this time, so drizzle-kit knows it and reports no drift.
+
+The hand-written half: `presentation_approvals_guard` rewritten in place (its
+two `0004` triggers already call it), an insert guard, the approver guard on
+INSERT, UPDATE, DELETE and TRUNCATE, and the deferred agreement trigger on both
+tables. Proved by `tests/approvals-migration.test.ts`: a fresh database to
+`0008`; a database at `0007` taking `0008` while empty; and refusal, leaving
+`0007` intact, for a legacy approval row and for an `approval.decided` row.
 
 ### `0006_reviews.sql` — corrective, and the window that made it free
 

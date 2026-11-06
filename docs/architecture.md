@@ -215,7 +215,7 @@ unbuilt, and this table is why it will not collide with either.
 | Purpose | Human-readable timeline | Accountability record |
 | Shown to | Team, and sometimes the client | Nobody, in normal use |
 | Mutable | Can be filtered, softened, hidden | Never edited or deleted |
-| Examples | `presentation.published`, `approval.decided`, `review.received` | `auth.login_failed`, `approval.granted`, `client_identity.disabled` |
+| Examples | `presentation.published`, `approval.approved`, `review.received` | `auth.login_failed`, `approval.changes_requested`, `client_identity.disabled` |
 | Retention | Product decision | Compliance decision |
 
 Conflating them produces either a feed full of security noise or an audit trail

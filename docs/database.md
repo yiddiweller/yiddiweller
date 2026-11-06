@@ -315,8 +315,10 @@ Stage A reads and writes `workroom_files`. Stage B reads and writes
 `presentations`, `presentation_items`, `presentation_revisions` and
 `presentation_revision_items`. Stage C reads and writes `presentation_reviews`
 and `presentation_review_notes`, **only ever through `lib/db/reviews.ts`**, and
-its surfaces are manually accepted on beta. **`presentation_approvals` is read
-and written by nothing**: Approvals has not begun.
+its surfaces are manually accepted on beta. **`presentation_approvals` and
+`presentation_approval_approvers` are read and written by nothing yet**:
+Approvals' foundation (H1) reshaped the first and added the second in `0008`,
+and its domain module is H2.
 
 Three conventions they introduce, recorded here because they are new to this
 schema and the next table that needs one should copy rather than reinvent:
@@ -332,7 +334,8 @@ schema and the next table that needs one should copy rather than reinvent:
   `presentation_revision_items` refuse `UPDATE` and `DELETE` by trigger, as
   `audit_events` has since Build 003. `presentation_approvals` adds a
   transition trigger: a row whose status is already terminal refuses every
-  write, and `BEFORE TRUNCATE` refuses that too.
+  write, and `BEFORE TRUNCATE` refuses that too. (Its `0004` vocabulary was
+  replaced by `0008`; see below.)
 - **Partial unique indexes over a nullable column need two indexes, not one.** A
   conventional unique index treats NULLs as distinct, so
   `(revision_id, item_id)` would permit unlimited revision-level reviews.
@@ -360,6 +363,41 @@ Revision is inserted against it, and the `UPDATE` closes the loop inside the
 publish transaction. No deferral, no chicken and egg. Drizzle cannot express it
 — `foreignKey()` needs its target defined first — so it lives in the migration's
 hand-written tail beside the triggers.
+
+### What `0008_approvals.sql` adds, and the five columns it drops
+
+Stage H1, and the third corrective migration after `0006`: the dormant
+one-decider `presentation_approvals` from `0004` is reshaped into a **request**,
+and `presentation_approval_approvers` holds the **named people** asked on it,
+one row each, each deciding once. It opens with two guards in one `DO` block —
+the table must be empty, and no Activity row may say `approval.decided` — and
+the migrator's single transaction means either refusal leaves the database
+exactly at `0007`. The model, and the full list of what PostgreSQL holds, is
+*Approvals* in [`delivery.md`](./delivery.md).
+
+Four things in it are worth copying rather than rediscovering:
+
+- **A partial unique index can live in `schema.ts`.** `0004` wrote its
+  live-approval index by hand, so drizzle-kit never knew it existed. `0008`
+  declares `presentation_approvals_one_standing_idx` with
+  `uniqueIndex(…).on(…).where(…)`, so the snapshot holds it and
+  `drizzle-kit generate` reports no drift; the old hand-written index is dropped
+  by hand, because the snapshot never knew it either.
+- **A cross-row rule at commit is a deferred constraint trigger.** "The request
+  agrees with its approvers" spans two tables and holds only once both writes
+  are in, so `presentation_approvals_agree` is `DEFERRABLE INITIALLY DEFERRED`
+  on both. It reads committed rows and its own, so it is not a substitute for
+  the domain's row lock.
+- **"In the same transaction" without trusting the caller.** An approver may
+  only be named in the transaction that made the request: the request must say
+  `requested_at = now()`, and `now()` is the transaction's start time.
+- **Constraint names are written by hand where generation would truncate**, as
+  `0007` found: `presentation_approval_approvers_identity_fk` rather than the
+  64-character generated one.
+
+**Test wipes delete `presentation_approval_approvers` before
+`presentation_approvals`** and list both among the guarded tables whose user
+triggers come off for the wipe.
 
 ### What `0007_notifications.sql` adds
 

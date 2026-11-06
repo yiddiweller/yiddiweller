@@ -15,7 +15,7 @@ This distinction is permanent and the two must never become one table.
 | Answers | Who changed what, when? | What happened around this Client or Project? |
 | Read by | Owners, rarely, deliberately | The team, and sometimes the client |
 | Mutable | **Never.** Append-only. | Filtered, softened, hidden |
-| Examples | `client.archived`, `lead.converted`, `staff.deactivated` | `workroom.opened`, `presentation.published`, `approval.decided` |
+| Examples | `client.archived`, `lead.converted`, `staff.deactivated` | `workroom.opened`, `presentation.published`, `approval.approved` |
 | Retention | A compliance decision | A product decision |
 
 The Activity column read "later" and gave *a presentation viewed, an approval
@@ -198,8 +198,8 @@ way.
 ## What Build 005 adds
 
 Planned in [`delivery.md`](./delivery.md). The file, presentation and review
-actions are **written**; the approval ones are not, because Approvals has not
-begun. Entity types `workroom_file`, `presentation`, `presentation_revision`,
+actions are **written**; the approval ones are not — Approvals' foundation (H1)
+is schema only, and its domain module, which will write them, is H2. Entity types `workroom_file`, `presentation`, `presentation_revision`,
 `presentation_review` and `presentation_approval`, and these actions:
 
 ```
@@ -210,12 +210,15 @@ presentation.unpublished  presentation.archived  presentation.restored
 review.requested  review.reopened  review.closed  review.withdrawn
 review.responded  review.replied  review.edited  review.removed
 review.resolved  review.unresolved
-approval.requested  approval.granted  approval.declined  approval.withdrawn
+approval.requested  approval.withdrawn  approval.superseded
+approval.approved  approval.changes_requested
 ```
 
-Client-caused ones — `review.responded`, `review.replied`, `review.edited`,
-`review.removed`, `review.resolved`, `review.unresolved`, `approval.granted`,
-`approval.declined` — carry `actor_type = 'client_user'` with `client_actor_id`
+The approval actions are H0's, replacing the `0004`-era `approval.granted` and
+`approval.declined`, which nothing ever wrote. Client-caused ones —
+`review.responded`, `review.replied`, `review.edited`, `review.removed`,
+`review.resolved`, `review.unresolved`, `approval.approved`,
+`approval.changes_requested` — carry `actor_type = 'client_user'` with `client_actor_id`
 set. The shape CHECK makes it structurally impossible to file a client under the
 staff foreign key.
 
@@ -237,7 +240,8 @@ it.
 would be tempted to keep a copy, and `delivery.md` is explicit that the stored
 text is reachable only by an Owner querying the database deliberately.
 
-**The approval record itself is not audit.** `presentation_approvals` is a
-business record whose *content* matters: which revision, which person, what
-reason. Audit says an approval happened; it never says what it said. That is
+**The approval record itself is not audit.** `presentation_approvals` and its
+`presentation_approval_approvers` are a business record whose *content*
+matters: which revision, which people were asked, what each decided. (There is
+no reason field any more — H1 dropped `0004`'s mandatory decline reason.) Audit says an approval happened; it never says what it said. That is
 this document's whole rule, applied to the first object that tests it.

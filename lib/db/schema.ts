@@ -28,6 +28,12 @@ import {
   type RecipientKind,
   type SuppressionReason,
 } from "../notifications/vocabulary.ts";
+import {
+  APPROVAL_STATUSES,
+  APPROVER_DECISIONS,
+  type ApprovalStatus,
+  type ApproverDecision,
+} from "../workrooms/approval-rules.ts";
 
 /**
  * Schema conventions for every table added from Phase 1 onward. The reasoning
@@ -985,8 +991,8 @@ export const workroomInvitations = pgTable(
 /* -------------------------------------------------------------- activity */
 
 /**
- * What the client sees has happened. Twelve values: five from Build 004 and
- * seven from Build 005. The whole vocabulary is here so no page can invent one.
+ * What the client sees has happened. Thirteen values: five from Build 004 and
+ * eight from Build 005. The whole vocabulary is here so no page can invent one.
  */
 export const ACTIVITY_KINDS = [
   "workroom.opened",
@@ -1000,8 +1006,11 @@ export const ACTIVITY_KINDS = [
   "presentation.revised",
   "review.requested",
   "review.received",
+  // Stage H1 replaced 0004's dormant single "decided" kind with one kind per
+  // outcome, so the sentence never has to be guessed from another table.
   "approval.requested",
-  "approval.decided",
+  "approval.approved",
+  "approval.changes_requested",
 ] as const;
 export type ActivityKind = (typeof ACTIVITY_KINDS)[number];
 
@@ -1855,20 +1864,33 @@ export const presentationReviewNotes = pgTable(
   ],
 );
 
-export const APPROVAL_STATUSES = ["requested", "granted", "declined", "withdrawn"] as const;
-export type ApprovalStatus = (typeof APPROVAL_STATUSES)[number];
+/* ---------------------------------------------------- Stage H: approvals */
 
 /**
- * A business decision, recorded once and never edited.
+ * One request for a business decision about one exact published Revision,
+ * asked of **named** client members (Stage H1). Not "any active member": Studio
+ * names one or more people for this request, and only they decide.
  *
- * No `version` and no `updated_at`: nothing about a decided approval is
- * editable. The migration adds triggers that refuse UPDATE on a terminal row,
- * refuse any transition but `requested` → one terminal state, refuse DELETE
- * outright and refuse TRUNCATE — the same three-way protection `audit_events`
- * carries, because business history that can be truncated is not history.
+ * Corrected by `0008`, which replaced the dormant one-decider shape of `0004`
+ * before anything wrote to it. The decisions themselves are
+ * `presentation_approval_approvers`, one row per named person; this row is the
+ * request and its outcome, and the database proves the two agree at commit:
  *
- * Declining requires a reason. A decline with no reason is a dead end for both
- * sides, and the reason is the most useful sentence in the record.
+ *     requested --> approved           every named approver approved
+ *               --> changes_requested  one named approver asked for changes
+ *               --> withdrawn          Studio took it back
+ *               --> superseded         a newer Revision was published
+ *
+ * Every terminal status is final. A request is never deleted, truncated,
+ * repointed or reopened; a changed decision about changed work needs a new
+ * Revision, and a withdrawn request is asked again as a new row.
+ *
+ * **At most one request per Revision that is not `withdrawn`** — the partial
+ * unique index below. So one request at a time; a fresh one after a
+ * withdrawal; never a second after approved, changes_requested or superseded.
+ *
+ * No `version` and no `updated_at`: the only update a row ever takes is its one
+ * transition, made under the request's row lock by the domain (H2).
  */
 export const presentationApprovals = pgTable(
   "presentation_approvals",
@@ -1882,23 +1904,26 @@ export const presentationApprovals = pgTable(
 
     status: text("status").notNull().default("requested").$type<ApprovalStatus>(),
 
-    requestedAt: timestamp("requested_at", { withTimezone: true }),
+    requestedAt: timestamp("requested_at", { withTimezone: true }).notNull().defaultNow(),
     requestedBy: text("requested_by").references(() => user.id, { onDelete: "set null" }),
 
-    decidedAt: timestamp("decided_at", { withTimezone: true }),
-    decidedByIdentityId: text("decided_by_identity_id").references(() => clientIdentity.id, {
-      onDelete: "set null",
-    }),
-    /** Snapshot. The record still reads after an identity is disabled. */
-    decidedByName: text("decided_by_name"),
-    declineReason: text("decline_reason"),
-
     /**
-     * The revision's hash as it was at the moment of the decision. A tripwire:
-     * if this ever disagrees with the revision's own hash, something mutated a
-     * supposedly immutable row and the system should say so loudly.
+     * The Revision's `content_hash` when the request was made, checked against
+     * it on insert. A tripwire: Revisions are immutable, so if this ever
+     * disagrees with the Revision's own hash, something rewrote a row that
+     * cannot be rewritten and the system should say so loudly.
      */
-    contentHashAtDecision: text("content_hash_at_decision"),
+    contentHash: text("content_hash").notNull(),
+
+    closedAt: timestamp("closed_at", { withTimezone: true }),
+    /**
+     * Who withdrew it. Required for a withdrawal, so `ON DELETE restrict`:
+     * a staff account is deactivated, never deleted, and a withdrawal that
+     * lost its author would no longer say what happened.
+     */
+    closedByUserId: text("closed_by_user_id"),
+    /** The newer Revision whose publication superseded it. Never its own. */
+    closedByRevisionId: uuid("closed_by_revision_id"),
 
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -1908,26 +1933,134 @@ export const presentationApprovals = pgTable(
       foreignColumns: [presentationRevisions.workroomId, presentationRevisions.id],
       name: "presentation_approvals_revision_fk",
     }).onDelete("restrict"),
+    foreignKey({
+      columns: [table.workroomId, table.closedByRevisionId],
+      foreignColumns: [presentationRevisions.workroomId, presentationRevisions.id],
+      name: "presentation_approvals_closed_by_revision_fk",
+    }).onDelete("restrict"),
+    foreignKey({
+      columns: [table.closedByUserId],
+      foreignColumns: [user.id],
+      name: "presentation_approvals_closed_by_user_fk",
+    }).onDelete("restrict"),
+
+    // A named approver's FK target: an approver names its Workroom and its
+    // request together, so PostgreSQL refuses one whose request lives in
+    // another Workroom. `id` is already unique, so this only states a pair.
+    unique("presentation_approvals_workroom_id_id_key").on(table.workroomId, table.id),
+
+    // One standing request per Revision: any number of withdrawn rows, and at
+    // most one that is anything else — requested, approved, changes_requested
+    // or superseded. That single sentence is the whole uniqueness rule.
+    uniqueIndex("presentation_approvals_one_standing_idx")
+      .on(table.presentationRevisionId)
+      .where(sql.raw("status <> 'withdrawn'")),
 
     index("presentation_approvals_workroom_idx").on(table.workroomId, table.status),
     index("presentation_approvals_revision_idx").on(table.presentationRevisionId),
 
     check("presentation_approvals_status_check", sql.raw(`status IN (${quoted(APPROVAL_STATUSES)})`)),
+    // What each status carries, and nothing else. A CASE, never an OR of ANDs:
+    // a CHECK passes when its expression is NULL.
     check(
-      "presentation_approvals_decided_shape_check",
+      "presentation_approvals_closure_shape_check",
       sql.raw(
-        "(status IN ('requested', 'withdrawn') AND decided_at IS NULL)" +
-          " OR (status IN ('granted', 'declined') AND decided_at IS NOT NULL)",
+        "CASE status" +
+          " WHEN 'requested' THEN closed_at IS NULL" +
+          " AND closed_by_user_id IS NULL AND closed_by_revision_id IS NULL" +
+          " WHEN 'withdrawn' THEN closed_at IS NOT NULL" +
+          " AND closed_by_user_id IS NOT NULL AND closed_by_revision_id IS NULL" +
+          " WHEN 'superseded' THEN closed_at IS NOT NULL" +
+          " AND closed_by_revision_id IS NOT NULL AND closed_by_user_id IS NULL" +
+          " WHEN 'approved' THEN closed_at IS NOT NULL" +
+          " AND closed_by_user_id IS NULL AND closed_by_revision_id IS NULL" +
+          " WHEN 'changes_requested' THEN closed_at IS NOT NULL" +
+          " AND closed_by_user_id IS NULL AND closed_by_revision_id IS NULL" +
+          " ELSE false END",
       ),
     ),
-    // A decline says why. Nothing else may carry a reason.
     check(
-      "presentation_approvals_decline_reason_check",
+      "presentation_approvals_closed_after_request_check",
+      sql.raw("CASE WHEN closed_at IS NULL THEN true ELSE closed_at >= requested_at END"),
+    ),
+    // A request cannot be superseded by the Revision it asks about.
+    check(
+      "presentation_approvals_superseded_by_other_check",
       sql.raw(
-        "(status = 'declined' AND decline_reason IS NOT NULL" +
-          " AND char_length(decline_reason) BETWEEN 3 AND 2000)" +
-          " OR (status <> 'declined' AND decline_reason IS NULL)",
+        "CASE WHEN closed_by_revision_id IS NULL THEN true" +
+          " ELSE closed_by_revision_id <> presentation_revision_id END",
       ),
+    ),
+    check("presentation_approvals_hash_length_check", sql.raw("char_length(content_hash) = 64")),
+  ],
+);
+
+/**
+ * One named approver on one request, and their one decision (Stage H1).
+ *
+ * Named when the request is made, in the same transaction, and never after;
+ * never removed, never moved to another request or Workroom. A decision is
+ * written once — `null` to `approved` or `changes_requested`, with its time —
+ * only while the request is `requested`, and is never changed or cleared. A
+ * withdrawn or superseded request keeps whatever partial decisions it held, as
+ * history.
+ *
+ * `client_identity_id` is `ON DELETE restrict`: who was asked, and who
+ * decided, is the record. `display_name` is the person's name as it was when
+ * they were named, so the record still reads after an identity is switched
+ * off or a Contact renamed.
+ */
+export const presentationApprovalApprovers = pgTable(
+  "presentation_approval_approvers",
+  {
+    id: uuid("id").primaryKey(),
+
+    workroomId: uuid("workroom_id")
+      .notNull()
+      .references(() => workrooms.id, { onDelete: "restrict" }),
+    presentationApprovalId: uuid("presentation_approval_id").notNull(),
+    clientIdentityId: text("client_identity_id").notNull(),
+
+    /** Snapshot, written once. */
+    displayName: text("display_name").notNull(),
+
+    decision: text("decision").$type<ApproverDecision>(),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.workroomId, table.presentationApprovalId],
+      foreignColumns: [presentationApprovals.workroomId, presentationApprovals.id],
+      name: "presentation_approval_approvers_approval_fk",
+    }).onDelete("restrict"),
+    // Named by hand: the generated name runs past PostgreSQL's 63 characters.
+    foreignKey({
+      columns: [table.clientIdentityId],
+      foreignColumns: [clientIdentity.id],
+      name: "presentation_approval_approvers_identity_fk",
+    }).onDelete("restrict"),
+
+    // One row per person per request.
+    unique("presentation_approval_approvers_identity_key").on(
+      table.presentationApprovalId,
+      table.clientIdentityId,
+    ),
+    index("presentation_approval_approvers_identity_idx").on(table.clientIdentityId),
+
+    check(
+      "presentation_approval_approvers_decision_check",
+      sql.raw(`CASE WHEN decision IS NULL THEN true ELSE decision IN (${quoted(APPROVER_DECISIONS)}) END`),
+    ),
+    // A decision and its time arrive together, or neither exists.
+    check(
+      "presentation_approval_approvers_decided_shape_check",
+      sql.raw("(decision IS NULL) = (decided_at IS NULL)"),
+    ),
+    check(
+      "presentation_approval_approvers_display_name_check",
+      sql.raw("char_length(display_name) BETWEEN 1 AND 160"),
     ),
   ],
 );

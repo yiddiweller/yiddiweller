@@ -105,7 +105,12 @@ function sentence(row: ActivityRow): string {
       return `${row.actorLabel ?? "Someone"} sent feedback`;
     case "approval.requested":
       return `Approval was requested for ${row.subject ?? "a presentation"}`;
-    case "approval.decided":
-      return `${row.actorLabel ?? "Someone"} decided on ${row.subject ?? "a presentation"}`;
+    case "approval.approved":
+      // One approver is named; several make it the request's outcome, not a person's.
+      return row.actorLabel
+        ? `${row.actorLabel} approved ${row.subject ?? "a presentation"}`
+        : `${row.subject ?? "A presentation"} was approved`;
+    case "approval.changes_requested":
+      return `${row.actorLabel ?? "Someone"} asked for changes to ${row.subject ?? "a presentation"}`;
   }
 }

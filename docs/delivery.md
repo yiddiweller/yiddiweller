@@ -2683,6 +2683,21 @@ publishing never refuses unchanged content, so that is always available.
 submitted stay as immutable history; if nobody had decided, the client surface
 may treat the request as absent (H4). The data is the same either way.
 
+### What an approval always is
+
+- **It belongs to exactly one immutable Revision** — never a Presentation's
+  mutable draft, a Workroom, a folder, a loose file, or "the latest version"
+  resolved at read time. `presentation_revision_id` is fixed by trigger.
+- **A new Revision inherits nothing.** No request, approver or decision
+  carries forward. Publishing supersedes a request still awaiting on the
+  outgoing Revision (H2) and leaves decided ones exactly as they are; the new
+  Revision starts with no request.
+- **Decisions are immutable.** Each named approver's one decision, and the
+  request's one outcome, are never changed, reversed or cleared.
+- **Review and Approval are independent.** Review is the conversation;
+  Approval is the formal decision. A Revision may have both, and neither
+  creates, closes, reopens or otherwise changes the other's lifecycle.
+
 ### What it answers, by construction
 
 | Question | Answered by |

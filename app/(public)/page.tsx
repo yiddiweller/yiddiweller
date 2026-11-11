@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { site } from "@/lib/site";
 
 import styles from "./page.module.css";
@@ -9,6 +11,9 @@ export default function Home() {
         <h1 className={styles.title}>
           <span className={styles.name}>{site.name}</span>
         </h1>
+        <Link href="/contact" className={styles.contact}>
+          Contact
+        </Link>
       </section>
 
       <div className="page">

@@ -7,6 +7,3 @@ export const site = {
   /* Snippet text under the Google result: the name alone. */
   description: "Yiddi Weller",
 } as const;
-
-/** The header carries Contact only. */
-export const nav = [{ href: "/contact", label: "Contact" }] as const;

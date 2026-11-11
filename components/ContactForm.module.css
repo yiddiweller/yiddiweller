@@ -92,6 +92,8 @@
   font-size: var(--fs-ui);
   color: var(--white);
   border: 1px solid var(--rule);
+  /* Fully rounded: a pill, never a box. */
+  border-radius: 999px;
   cursor: pointer;
   transition:
     background-color var(--dur) var(--ease),
@@ -168,6 +170,13 @@
   color: var(--w-45);
   cursor: pointer;
   transition: color var(--dur) var(--ease);
+}
+
+/* A finger-sized target, drawn by nothing. */
+.again::before {
+  content: "";
+  position: absolute;
+  inset: -12px -10px;
 }
 
 .again::after {

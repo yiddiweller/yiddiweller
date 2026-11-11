@@ -23,12 +23,20 @@
 }
 
 .home {
+  position: relative;
   display: inline-flex;
   align-items: baseline;
   gap: 0.6em;
   font-size: var(--fs-ui);
   color: var(--w-72);
   transition: color var(--dur) var(--ease);
+}
+
+/* A finger-sized target, drawn by nothing. */
+.home::before {
+  content: "";
+  position: absolute;
+  inset: -12px -10px;
 }
 
 .home:hover {

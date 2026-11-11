@@ -20,6 +20,7 @@
 }
 
 .brand {
+  position: relative;
   display: block;
   /* Keeps the mark optically flush with the page gutter. */
   margin-left: -2px;
@@ -30,6 +31,13 @@
   height: auto;
   opacity: 0.92;
   transition: opacity var(--dur) var(--ease);
+}
+
+/* A finger-sized target around a mark that is only ~18px tall. */
+.brand::before {
+  content: "";
+  position: absolute;
+  inset: -14px -10px;
 }
 
 .brand:hover .mark {

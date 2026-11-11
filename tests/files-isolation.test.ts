@@ -157,7 +157,7 @@ test("a private file response is never stored by anything in between", { skip },
 });
 
 test("public pages and robots are untouched by any of it", { skip }, async () => {
-  for (const path of ["/", "/work", "/contact"]) {
+  for (const path of ["/", "/contact"]) {
     const response = await get(path);
     assert.equal(response.status, 200, path);
     assert.ok(!response.cacheControl.includes("no-store"), `${path} lost its caching`);

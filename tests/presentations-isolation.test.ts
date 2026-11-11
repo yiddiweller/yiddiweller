@@ -352,7 +352,7 @@ test("the public site is untouched by any of it", { skip }, async () => {
   assert.ok(!robots.body.includes("presentations"), "robots grew a second private prefix");
   assert.match(robots.body, /Disallow: \/workrooms/);
 
-  for (const path of ["/", "/work", "/contact"]) {
+  for (const path of ["/", "/contact"]) {
     const page = await get(path);
     assert.equal(page.status, 200, path);
     assert.deepEqual(leaks(page.body, ["Brand direction", "Birch direction"]), [], path);

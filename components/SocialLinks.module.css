@@ -6,6 +6,7 @@
 }
 
 .link {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -31,6 +32,38 @@
   height: 13px;
 }
 
+/* Each target is 44px tall and reaches into the gap on either side without
+   meeting its neighbour's, so nothing visible changes. Insets are measured
+   from inside the 1px border, hence one pixel more than the arithmetic on
+   the visible circle suggests. */
+.link::before {
+  content: "";
+  position: absolute;
+  inset: -8px -5px;
+}
+
+/* The narrowest phones (320px) have 280px of measure, and eight 30px icons
+   need 303px: the last one wrapped onto a line of its own. */
+@media (max-width: 359px) {
+  .list {
+    gap: 6px;
+  }
+
+  .link {
+    width: 28px;
+    height: 28px;
+  }
+
+  .link::before {
+    inset: -9px -3px;
+  }
+
+  .icon {
+    width: 12px;
+    height: 12px;
+  }
+}
+
 @media (min-width: 640px) {
   .list {
     gap: 12px;
@@ -39,6 +72,10 @@
   .link {
     width: 34px;
     height: 34px;
+  }
+
+  .link::before {
+    inset: -6px -6px;
   }
 
   .icon {

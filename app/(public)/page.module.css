@@ -37,6 +37,14 @@
   transition: color var(--dur) var(--ease);
 }
 
+/* A target a finger can find: about 44px tall at phone sizes, drawn by
+   nothing. */
+.contact::before {
+  content: "";
+  position: absolute;
+  inset: -12px -10px;
+}
+
 /* Underline grows from the left rather than fading in, as the header's
    links always have. */
 .contact::after {
@@ -57,7 +65,8 @@
   color: var(--white);
 }
 
-.contact:hover::after,
-.contact:focus-visible::after {
+/* Hover only: keyboard focus already draws the site-wide outline, and an
+   underline inside it read as two indicators for one link. */
+.contact:hover::after {
   transform: scaleX(1);
 }

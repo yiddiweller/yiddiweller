@@ -315,10 +315,10 @@ Stage A reads and writes `workroom_files`. Stage B reads and writes
 `presentations`, `presentation_items`, `presentation_revisions` and
 `presentation_revision_items`. Stage C reads and writes `presentation_reviews`
 and `presentation_review_notes`, **only ever through `lib/db/reviews.ts`**, and
-its surfaces are manually accepted on beta. **`presentation_approvals` and
-`presentation_approval_approvers` are read and written by nothing yet**:
-Approvals' foundation (H1) reshaped the first and added the second in `0008`,
-and its domain module is H2.
+its surfaces are manually accepted on beta. `presentation_approvals` and
+`presentation_approval_approvers` — reshaped and added by `0008` (H1) — are
+read and written **only through `lib/db/approvals.ts`** (H2), including the
+supersession `publishPresentation` performs; no surface renders them yet.
 
 Three conventions they introduce, recorded here because they are new to this
 schema and the next table that needs one should copy rather than reinvent:

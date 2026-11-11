@@ -161,6 +161,22 @@ async function supersede(request: string, by: Revision): Promise<void> {
   `);
 }
 
+/**
+ * Since H2, publishing a newer Revision supersedes a pending request itself,
+ * inside the publish transaction (`supersedeApprovalsOnPublish`). Where a test
+ * here used to publish and then supersede by hand, it now checks the publish
+ * did it, naming exactly that Revision. The hand-written supersession, and
+ * every rule the trigger holds about it, stays covered by the test that builds
+ * its Revisions before asking.
+ */
+async function supersededByPublish(request: string, by: Revision): Promise<void> {
+  const [row] = (await db().execute(sql`
+    SELECT status, closed_by_revision_id AS "by" FROM presentation_approvals WHERE id = ${request}::uuid
+  `)) as unknown as Array<{ status: string; by: string | null }>;
+  assert.equal(row!.status, "superseded");
+  assert.equal(row!.by, by.id);
+}
+
 async function statusOf(request: string): Promise<ApprovalStatus> {
   const rows = await db().select({ status: presentationApprovals.status }).from(presentationApprovals)
     .where(eq(presentationApprovals.id, request));
@@ -230,6 +246,13 @@ after(async () => {
 test("a request is accepted in every status, each in its own shape", async () => {
   const requested = await ask({ workroomId: a.workroomId, revision: await publishAgain(a), identities: [a.ana.identityId] });
   assert.equal(await statusOf(requested.id), "requested");
+  // The defaults are the model's: born requested, at the transaction's time.
+  // Checked now, because the publishes below supersede it (H2).
+  const row = (await db().select().from(presentationApprovals).where(eq(presentationApprovals.id, requested.id)))[0]!;
+  assert.equal(row.closedAt, null);
+  assert.equal(row.closedByUserId, null);
+  assert.equal(row.closedByRevisionId, null);
+  assert.equal(row.requestedBy, owner.id);
 
   const approved = await ask({ workroomId: a.workroomId, revision: await publishAgain(a), identities: [a.ana.identityId] });
   await decide(approved.id, approved.approvers[0]!, "approved", "approved");
@@ -245,17 +268,11 @@ test("a request is accepted in every status, each in its own shape", async () =>
 
   const old = await publishAgain(a);
   const superseded = await ask({ workroomId: a.workroomId, revision: old, identities: [a.ana.identityId] });
-  await supersede(superseded.id, await publishAgain(a));
+  await supersededByPublish(superseded.id, await publishAgain(a));
   assert.equal(await statusOf(superseded.id), "superseded");
 
   for (const request of [requested, approved, changes, withdrawn, superseded]) await agrees(request.id);
 
-  // The defaults are the model's: born requested, at the transaction's time.
-  const row = (await db().select().from(presentationApprovals).where(eq(presentationApprovals.id, requested.id)))[0]!;
-  assert.equal(row.closedAt, null);
-  assert.equal(row.closedByUserId, null);
-  assert.equal(row.closedByRevisionId, null);
-  assert.equal(row.requestedBy, owner.id);
 });
 
 /* --------------------------------------------- request: malformed shapes */
@@ -474,7 +491,7 @@ test("a Revision is never asked again after approved, changes_requested or super
 
   const superseded = await publishAgain(a);
   const r3 = await ask({ workroomId: a.workroomId, revision: superseded, identities: [a.ana.identityId] });
-  await supersede(r3.id, await publishAgain(a));
+  await supersededByPublish(r3.id, await publishAgain(a));
 
   for (const revision of [approved, changes, superseded]) {
     await refused(
@@ -675,7 +692,7 @@ test("a terminal request is final: no reopening, no second outcome, no rewritten
   await withdraw(withdrawn.id);
   const superseded = await ask({ workroomId: a.workroomId, revision: await publishAgain(a), identities: [a.ana.identityId] });
   const by = await publishAgain(a);
-  await supersede(superseded.id, by);
+  await supersededByPublish(superseded.id, by);
   const later = await publishAgain(a);
 
   const final = /is already (approved|changes_requested|withdrawn|superseded), and that is final/;
@@ -780,7 +797,7 @@ test("a decision is made only while the request is requested", async () => {
   await withdraw(withdrawn.id);
   // Superseded with nobody decided.
   const superseded = await ask({ workroomId: a.workroomId, revision: await publishAgain(a), identities: [a.ana.identityId, a.ben.identityId] });
-  await supersede(superseded.id, await publishAgain(a));
+  await supersededByPublish(superseded.id, await publishAgain(a));
 
   for (const [r, status] of [[changes, "changes_requested"], [withdrawn, "withdrawn"], [superseded, "superseded"]] as const) {
     for (const decision of APPROVER_DECISIONS) {

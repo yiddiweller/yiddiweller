@@ -8,6 +8,7 @@ import { type WorkroomFileRow } from "./files.ts";
 import { db, type Tx } from "./index.ts";
 import { uuidv7 } from "./id.ts";
 import { CONFLICT_MESSAGE, ok, refuse, expectUnchanged, type Outcome } from "./outcome.ts";
+import { supersedeApprovalsOnPublish } from "./approvals.ts";
 import { supersedeReviewOnPublish } from "./reviews.ts";
 import {
   presentationItems,
@@ -1120,6 +1121,12 @@ export async function publishPresentation(
         presentation.title,
         revisionNumber,
       );
+
+      // And any approval request still awaiting a decision on an older
+      // Revision — third in the lock order, after the Presentation and the
+      // Review round. Decided requests are history and are not touched; the
+      // new Revision starts with no request. See lib/db/approvals.ts.
+      await supersedeApprovalsOnPublish(tx, actor, id, revisionId, revisionNumber, presentation.title);
 
       await recordActivity(tx, presentation.workroomId, {
         kind: firstPublication ? "presentation.published" : "presentation.revised",

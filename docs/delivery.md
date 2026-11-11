@@ -2752,16 +2752,79 @@ rows and its own, **which is why the domain must lock the request row before
 deciding**: two deciders who did not serialise on it could each commit a state
 the other's decision contradicts.
 
-### What the domain holds — H2
+### What the domain holds — H2, implemented
 
-Who may ask (staff) and who may decide (a named approver, still pending, still
-eligible); that the Revision is its Presentation's current published one; which
-members are eligible; re-checking the content hash at each decision;
-superseding inside the publish transaction; Activity and Audit; the client-safe
-projection. Lock order: `presentations → presentation_reviews →
-presentation_approvals → presentation_approval_approvers`, never upward. **H1
-writes none of this**: there is no approval domain module, route, action,
-surface, Activity or Audit write, or notification yet.
+**Every write to both approval tables goes through `lib/db/approvals.ts`.** No
+route, action or component touches them. H2 is the domain only: **there is no
+Approval screen, route, server action or email yet** — Studio's surface is H3
+and the client's H4.
+
+| Function | What it does |
+| --- | --- |
+| `askForApproval(staff, { workroomId, presentationId, version }, memberIds)` | Asks named members about the **current published** Revision. `version` is the number Studio was looking at; a newer one published since refuses rather than moving the request. Every member id is re-resolved inside that Workroom under lock — active sign-in, unarchived Contact, active access — and one that is not (another Workroom's, revoked, switched off, a guess) refuses the whole request; nobody is quietly dropped. Zero people and duplicates are refused first. One transaction: request (`requested_at` the database's own `now()`), approvers, Audit, Activity. |
+| `withdrawApproval(staff, ref)` | Only while `requested`. Closes it `withdrawn`, by that person; every approver row and every partial decision stays. A second press is a calm `already_done`; a decided or superseded request is refused. Audit only. |
+| `decideApproval(client, { room, presentation, version }, decision)` | A named approver says `approved` or `changes_requested`, once, no reason. Public handles only, resolved through an active membership of a live Workroom and Presentation. Under lock: request still `requested`, Revision still current, Presentation published, actor named and undecided, membership/sign-in/Contact still standing, **content hash still the Revision's** — then the decision, the request's outcome from every approver's (`overallApprovalState`), Audit, and Activity only when it ends. |
+| `supersedeApprovalsOnPublish(tx, …)` | Called inside `publishPresentation`, after the outgoing Review round. Every request still `requested` on an older Revision becomes `superseded` by the new one; decisions stay; decided, withdrawn and already-superseded requests are untouched. The new Revision starts with no request. |
+| `approvalPanelForViewer`, `approvalPanelForStaff`, `approvalHistoryForStaff`, `eligibleApprovers`, `pendingApprovalOnCurrentRevision` | The reads H3 and H4 will render, so no page writes its own SQL. |
+
+**Lock order**, never acquired upward:
+
+```
+presentations → presentation_reviews → presentation_approvals
+              → presentation_approval_approvers → workroom_members
+```
+
+- **ask** takes `presentations` FOR UPDATE — the publish lock, so an ask and a
+  publish of one Presentation serialize — then the chosen members FOR SHARE.
+- **decide** takes `presentations` FOR SHARE, then the request FOR UPDATE, then
+  the decider's membership FOR SHARE. Decision vs publish and decision vs
+  unpublish each have one winner, because both of those write the Presentation
+  row; two decisions on one request serialize on the request; and **decision vs
+  revoke** is decided by the membership lock: a revoke that committed first is
+  seen and the decision is refused, a revoke that comes second waits, and the
+  decision already made stands.
+- **withdraw** takes `presentations` FOR SHARE, then the request FOR UPDATE.
+- **publish** holds `presentations` FOR UPDATE, closes the Review round, then
+  supersedes pending requests FOR UPDATE.
+
+**Refusals.** A client is told the same thing — *That approval request is not
+available.* — for every reason outside their reach: another Workroom, mixed
+handles, a hidden or unpublished Presentation, a revoked membership, a
+switched-off sign-in, an archived Contact. Their own state gets its own calm
+sentence: already decided, withdrawn, closed by a newer version, not asked. A
+Studio session is nobody on the client path, and a client actor is nobody on
+Studio's — checked at runtime, because a type is not a guard.
+
+**The content hash is a tripwire, not a repair.** Each decision compares the
+request's recorded hash with its immutable Revision's; a mismatch refuses the
+decision, writes nothing, and logs `approval.hash_mismatch` (the version number
+only).
+
+**What a client sees** (`lib/workrooms/approval-view.ts`): the state, the
+version number, each approver's name, decision and time, the closing version
+for a supersession, and two facts about the reader — named, decided. No
+database id, identity, user, Workroom or Revision id, and no hash. A withdrawn
+request nobody answered is null, exactly as if never made; one somebody
+answered stays visible as history. `canDecide` is a server-computed sidecar.
+
+**What Studio sees** (`lib/workrooms/approval-lifecycle.ts`): the client's
+projection plus a lifecycle — `none`, `awaiting` (with progress and a
+`partial` flag), `approved`, `changes_requested`, `withdrawn`, `superseded` —
+with names, counts, earlier withdrawals, `canAsk`, `canWithdraw`, and
+**`lostAccess`**: pending approvers who can no longer decide. Such a request
+stays as it is — never auto-withdrawn, nobody removed, nothing approved around
+them — until Studio withdraws it and asks again.
+
+### Unpublish — locked by H2
+
+Studio **may** unpublish a Presentation after an approval decision. Unpublishing
+never erases, revokes, rewrites or invalidates a decision, and never carries it
+to another Revision; the record stays immutable and Studio-visible, and the
+client stops seeing it under the existing unpublished-Presentation rules. A
+request still awaiting a decision **cannot be decided while the Presentation is
+unpublished** — there is no new status for that — and the next publish creates
+a new Revision and supersedes it in the ordinary way. The new Revision starts
+with no request.
 
 ### History — the `0004` design, superseded by H0/H1
 
@@ -2814,23 +2877,16 @@ history.
 - mutate the decided Revision or any of its items
 - replace the files it references
 - erase or edit a decision, or withdraw a request once it is decided
-- unpublish or archive the Presentation in a way that makes the decided
-  Revision disappear
 
-The last one has a precise meaning. **Unpublishing a Presentation that has a
-decided Revision is refused**, naming the decision — the same shape as the
-Build 003 refusal that blocks archiving a Project whose Workroom is open, and
-for the same reason: it would take something away from a client without anyone
-deciding to. Unpublishing before any decision is ordinary and allowed.
-
-*Open for H2:* H0's edge-case table instead proposed that unpublishing after a
-decision keeps the history, visible to Studio only. The two disagree, H1 builds
-neither — no domain code exists yet — and H2 decides which holds before writing
-`unpublishPresentation`'s approval check.
-
-**Archiving a Presentation with a decided Revision is refused** for staff, and
-**archiving a Workroom holding one is refused** as well. Archive is the studio
-tidying up; it is not a way to make a signature disappear.
+**Unpublishing and archiving follow the existing rules, and erase nothing**
+(H2, locked). Studio may unpublish a Presentation after a decision; the
+decision stays immutable and Studio-visible, and the client stops seeing it
+under the ordinary unpublished-Presentation rules. Archiving still requires the
+Presentation to be unpublished first, as it always has, and is not a deletion.
+*Superseded by H2:* this section once said unpublishing a Presentation with a
+decided Revision, and archiving one, would be refused. Neither was ever built,
+and H2 chose the other answer: the record is what must not disappear, and it
+does not.
 
 ---
 
@@ -2927,9 +2983,9 @@ not going to be one.**
 | `presentation.revised` | *Identity concepts was updated* | A later Revision is published |
 | `review.requested` | *Your thoughts were requested on Identity concepts* | Staff request a review |
 | `review.received` | *Ana Alder sent feedback* | A client responds |
-| `approval.requested` | *Approval was requested for Identity concepts* | Staff ask for approval |
-| `approval.approved` | *Ana Alder approved Identity concepts* — or *Identity concepts was approved* when several were asked | The request becomes `approved` (H2) |
-| `approval.changes_requested` | *Ana Alder asked for changes to Identity concepts* | The request becomes `changes_requested` (H2) |
+| `approval.requested` | *Approval was requested for Identity concepts, Version 3* | Staff first ask for approval on a version — once per version; asking again after a withdrawal writes no second line |
+| `approval.approved` | *Ana Alder approved Identity concepts, Version 3* — or *Identity concepts, Version 3 was approved* when several were asked | The request becomes `approved` |
+| `approval.changes_requested` | *Ana Alder asked for changes to Identity concepts, Version 3* | The request becomes `changes_requested` |
 
 `subject` carries a File's `display_name` or a Presentation's `title` — both
 already client-facing fields, never internal ones.
@@ -2985,8 +3041,11 @@ approval.requested  approval.withdrawn  approval.superseded
 approval.approved  approval.changes_requested
 ```
 
-The approval actions are H0's, planned for H2 and **not written by anything
-yet**; they replace the `0004`-era `approval.granted` / `approval.declined`.
+The approval actions are H0's, **written since H2 by `lib/db/approvals.ts`**;
+they replace the `0004`-era `approval.granted` / `approval.declined`.
+`approval.requested` and `approval.withdrawn` are the studio's,
+`approval.superseded` is the publisher's, and their metadata is
+`workroom_id`, the version number, and counts or the outcome — never a name.
 `approval.approved` and `approval.changes_requested` are one per decision, by
 the approver. Client-caused actions — `review.responded`,
 `approval.approved`, `approval.changes_requested` — are written with
@@ -3020,7 +3079,7 @@ data nonsensical — the business-core rule, unchanged.
 | *Unshare* a file in a Revision of a `published` Presentation | **Refused**, naming the Presentation. Not archive, but the same reason | n/a |
 | Draft Presentation | Owner | No |
 | Presentation with any Revision | Owner | No |
-| Presentation with a decided Revision | **Refused**, naming the decision | No |
+| Presentation with an approval decision | Owner, once unpublished — the ordinary rule; the approval record stays (H2, superseding a planned refusal that was never built) | No |
 | Revision, revision item | Never. Immutable | Never |
 | Review round, review note | Never. **Refused by trigger**, as is TRUNCATE | Never |
 | Approval | Never | Never |

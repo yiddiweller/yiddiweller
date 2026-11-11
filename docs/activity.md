@@ -82,9 +82,9 @@ written until Build 005 is built** — there is no placeholder for them:
 | `presentation.revised` | *Identity concepts was updated* |
 | `review.requested` | *Your thoughts were requested on Identity concepts* |
 | `review.received` | *Ana Alder sent feedback* |
-| `approval.requested` | *Approval was requested for Identity concepts* |
-| `approval.approved` | *Ana Alder approved Identity concepts* — *Identity concepts was approved* when several were asked |
-| `approval.changes_requested` | *Ana Alder asked for changes to Identity concepts* |
+| `approval.requested` | *Approval was requested for Identity concepts, Version 3* |
+| `approval.approved` | *Ana Alder approved Identity concepts, Version 3* — *Identity concepts, Version 3 was approved* when several were asked |
+| `approval.changes_requested` | *Ana Alder asked for changes to Identity concepts, Version 3* |
 
 **The two review kinds are written once each per round, and that is the whole
 of it.** `review.requested` when the round is first opened — a later withdrawal
@@ -104,8 +104,14 @@ dormant `approval.decided`. That earlier rule, *"one kind, not two: the verb
 comes from the approval record"*, is **superseded by H0/H1**: a row here carries
 no reference to any record, by design, so one kind could never say yes from no.
 Nothing had ever written `approval.decided`, and `0008` refuses to run if
-anything has. Partial approvals, withdrawals and supersessions write nothing
-here. H1 writes no Activity at all; H2 writes these.
+anything has. **Since H2, `lib/db/approvals.ts` writes them**, in the same
+transaction as the change: `approval.requested` once per version, when it is
+first asked about (a re-ask after a withdrawal writes no second line, the
+Reviews rule); `approval.approved` and `approval.changes_requested` once, when
+the request ends. The subject always names the version — *Brand Direction,
+Version 3* — shortened at the title, never at the number, to fit the
+160-character column. Partial approvals, withdrawals and supersessions write
+nothing here.
 
 **`presentation.viewed` is deliberately absent.** `architecture.md` once gave it
 as an example of business activity. It is not built, here or in `audit_events`:

@@ -192,8 +192,11 @@ the evidence for the email path. Railway stops reading `railway.json` on
 and restart policy must be set in their dashboards before then. **Stage G —
 review notifications — is complete for Build 005 beta.** Build 005 is not
 promoted until both jobs also exist and are verified in production.
-**Approvals is Build 005's remaining product work, and H1 — its schema
-foundation — is built and its automated tests pass; nothing is visible.**
+**Approvals is Build 005's remaining product work. H1 — its schema
+foundation — is accepted on real Railway beta (the deployment ran
+`migrate.complete` with no guard refusal; Railway does not log migration
+filenames), and H2 — its domain — is built and its automated tests pass;
+nothing is visible yet.**
 The H0 architecture with the user's decisions: approval is asked of **named**
 client members per request (Studio names one or more; at least one), with no
 mandatory reason to ask for changes; all named approve → `approved`, the first
@@ -203,9 +206,12 @@ keeps its partial decisions; Activity's dormant `approval.decided` is replaced b
 *Ask for approval*. Corrective `0008_approvals.sql` refuses to run over any
 approval row or `approval.decided` row, reshapes `presentation_approvals` into
 the request and adds `presentation_approval_approvers`; the pure rules are
-`lib/workrooms/approval-rules.ts`. **No approval domain module, route, action,
-surface, Activity or Audit write or notification exists yet** — that is H2
-onward. Build 005
+`lib/workrooms/approval-rules.ts`. **H2's `lib/db/approvals.ts` is the only
+writer** — ask, withdraw, decide, and supersession inside the publish
+transaction — with Audit for every action, Activity only when a request is
+asked about or ends, the client view `lib/workrooms/approval-view.ts` (no ids)
+and Studio's `lib/workrooms/approval-lifecycle.ts`. **No Approval UI, route,
+server action or email exists yet** — H3 is Studio, H4 the client. Build 005
 is **not promoted**: production has no bucket, no scheduled jobs and no
 per-object backup strategy, so production remains Build 004.**
 These are facts about the running system, not proposals. Changing any of them is
@@ -336,6 +342,17 @@ a deliberate decision, not a cleanup.
   presentation_reviews → presentation_approvals →
   presentation_approval_approvers`). Who withdrew and who was asked are
   `ON DELETE restrict`. The model is *Approvals* in `docs/delivery.md`.
+- **Every write to the approval tables goes through `lib/db/approvals.ts`, and
+  a decision is made under three locks:** the Presentation FOR SHARE, the
+  request FOR UPDATE, the decider's membership FOR SHARE. So decision vs
+  publish, vs unpublish, vs withdraw and vs revoke each have one deterministic
+  winner, and a decision re-checks the content hash against its immutable
+  Revision and refuses — never repairs — a mismatch. **Unpublishing after a
+  decision is allowed and erases nothing** (H2, locked): the record stays
+  immutable and Studio-visible; a pending request cannot be decided while
+  unpublished, and the next publish supersedes it. A client is told the same
+  *That approval request is not available.* for everything outside their
+  reach.
 - **A published Revision holds one Review round, ever, and the row cannot be
   deleted.** `UNIQUE (presentation_revision_id)` plus a trigger refusing DELETE
   and TRUNCATE — a unique constraint somebody can delete their way around is

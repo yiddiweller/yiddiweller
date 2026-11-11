@@ -197,9 +197,11 @@ way.
 
 ## What Build 005 adds
 
-Planned in [`delivery.md`](./delivery.md). The file, presentation and review
-actions are **written**; the approval ones are not — Approvals' foundation (H1)
-is schema only, and its domain module, which will write them, is H2. Entity types `workroom_file`, `presentation`, `presentation_revision`,
+Planned in [`delivery.md`](./delivery.md). The file, presentation, review and
+approval actions are all **written** — the approval ones since H2, by
+`lib/db/approvals.ts`, in the same transaction as each change. Their metadata
+is `workroom_id`, the version number, and counts or the request's outcome;
+never a name, a reason (there is none) or anything a person wrote. Entity types `workroom_file`, `presentation`, `presentation_revision`,
 `presentation_review` and `presentation_approval`, and these actions:
 
 ```

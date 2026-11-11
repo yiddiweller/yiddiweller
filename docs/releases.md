@@ -16,7 +16,7 @@ tooling, nothing to keep in sync.
 
 | Environment | Build | Last commit that changed the running system |
 | --- | --- | --- |
-| Production | **Build 004** | `6b4ca20` |
+| Production | **Build 004**, with public-site edits | `7590a0e` |
 | Beta | **Build 005** | `4af8c0c` |
 
 **Beta is ahead, which is the normal state during testing.** Build 004 was
@@ -24,8 +24,17 @@ promoted on 2026-09-16 by fast-forward and is what production runs. Build 005 �
 Delivery: Stages A and B, and Stage C's visible Review surfaces (Implementation
 D/E) — is on beta, has passed manual acceptance there, and is **not promoted**:
 the gates below have to close first. Stage C is now complete (Stages F and G
-closed, below); Approvals has begun with its foundation, H1 — schema, triggers
-and pure rules, nothing visible.
+closed, below); Approvals has its foundation (H1, accepted on beta) and its
+domain (H2) — nothing visible yet.
+
+**Production also carries public-site edits made on 2026-11-11**, outside
+Build 005 and claiming no build number: the homepage shows the name alone with
+Contact beneath it, the Work page and its project pages are removed (`/work`
+answers 404), the header is the signature mark alone, the footer reads *Follow
+@yiddiweller*, Send message is a pill, and small links have 44px tap targets
+(`c92dab4`, `205793a`, `c3f505f`, `7590a0e`, each reached `main` by
+fast-forward). Each was merged into beta, which therefore still contains `main`.
+Nothing from Build 005 went with them.
 
 **The commits above are the last ones that changed anything**, which is not
 always where the branch now points. A documentation commit changes nothing about
@@ -538,9 +547,24 @@ recorded in [`delivery.md`](./delivery.md) under *Reviews are verified on beta*.
   `presentation_approval_approvers`, with PostgreSQL holding every transition,
   shape, immutability and tenancy rule and — at commit — the agreement between a
   request and its approvers' decisions. `lib/workrooms/approval-rules.ts` holds
-  the same rules, pure. **No domain module, route, action, surface, Activity or
-  Audit write, or notification exists yet**: that is H2 onward. Beta applies
-  `0008` on its next deploy, as every migration does.
+  the same rules, pure. **Accepted on real Railway beta**: the implementation
+  (`6b7cbe7`) and its docs follow-up (`0d8673b`) deployed, startup ran
+  `db:migrate` → `migrate.complete` → `next start` → Ready, with no migration
+  refusal, no legacy-row guard failure and no startup error, and beta loads
+  normally. (Railway does not log migration filenames individually, so this
+  records the deployment succeeding, not a line naming `0008`.)
+- **Stage H2 — the Approvals domain: built, automated tests pass; nothing
+  visible, so no manual acceptance.** `lib/db/approvals.ts` is the only writer:
+  ask (named members, re-resolved inside the Workroom; only the current
+  published version), withdraw (partial decisions kept), decide (once, no
+  reason; under the request's lock, with eligibility and the content hash
+  re-checked), and supersession inside the publish transaction. Unpublishing
+  after a decision is **allowed and erases nothing**; a pending request cannot
+  be decided while unpublished, and the next publish supersedes it. Audit for
+  every action, Activity only when a request is asked about or ends, a
+  client-safe view with no ids, server-computed `canDecide`, and Studio's
+  lifecycle with lost-access warnings. **No Approval UI, route, action or
+  email exists yet** — H3 (Studio) and H4 (client).
 - **Approvals is Build 005's remaining product work. Build 005 is not
   complete**, and is not promoted until the gates below are closed.
 

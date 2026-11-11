@@ -1,5 +1,3 @@
-/* Hero claims whatever height the header and footer leave, so the name always
-   sits on the fold regardless of viewport. */
 /* Exactly the viewport less the header, so the name always lands on the fold
    and the rule below closes the first screen. */
 .hero {
@@ -20,68 +18,8 @@
   letter-spacing: var(--track-tight);
 }
 
-/* Optical alignment: each line overhangs by a fraction of its own size, so
-   the small caption is not dragged left by the display line's correction. */
+/* Optical alignment: the display line overhangs by a fraction of its size. */
 .name {
   display: block;
   margin-left: -0.045em;
-}
-
-.role {
-  display: block;
-  /* A quiet caption under the name rather than a second display line. */
-  margin-top: clamp(14px, 1.6vw, 22px);
-  margin-left: -0.03em;
-  font-size: clamp(1.125rem, 2.3vw, 2rem);
-  line-height: 1.1;
-  letter-spacing: 0.005em;
-  color: var(--w-45);
-}
-
-.statement {
-  padding-block: clamp(96px, 20vh, 220px);
-  display: flex;
-  flex-direction: column;
-  gap: clamp(48px, 9vh, 96px);
-  align-items: flex-start;
-}
-
-.disciplines {
-  display: flex;
-  flex-direction: column;
-  font-size: var(--fs-statement);
-  font-weight: 300;
-  line-height: 1.06;
-  letter-spacing: var(--track-tight);
-  margin-left: -0.035em;
-}
-
-.cta {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 0.6em;
-  font-size: var(--fs-ui);
-  color: var(--w-72);
-  transition: color var(--dur) var(--ease);
-}
-
-.cta:hover {
-  color: var(--white);
-}
-
-.arrow {
-  display: inline-block;
-  transition: transform var(--dur) var(--ease);
-}
-
-.cta:hover .arrow {
-  transform: translateX(6px);
-}
-
-/* Below the fold the disciplines read better on one line at wider sizes. */
-@media (min-width: 900px) {
-  .disciplines {
-    flex-direction: row;
-    gap: 0.4em;
-  }
 }

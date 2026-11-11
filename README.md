@@ -1,6 +1,6 @@
 # yiddiweller.com
 
-Personal site for Yiddi Weller — Designer.
+Personal site for Yiddi Weller.
 
 Next.js (App Router) · TypeScript · CSS Modules · Resend · deployed on Railway.
 
@@ -258,44 +258,6 @@ a row is deleted only while it is still `pending`.
 
 ---
 
-## Adding portfolio projects
-
-Everything is driven by one array: **`data/projects.ts`**. Add an entry and the
-index row, the detail page at `/work/<slug>`, the static params and the sitemap
-all follow. No other file needs editing.
-
-```ts
-export const projects: Project[] = [
-  {
-    slug: "atwe",
-    title: "Atwe",
-    year: "2025",
-    category: "Identity",
-    description: "One or two sentences.",
-    client: "Optional",
-    location: "Optional",
-    cover: {
-      src: "/work/atwe/cover.jpg",
-      alt: "Describe the image.",
-      width: 2400,
-      height: 1600,
-    },
-    gallery: [
-      { src: "/work/atwe/01.jpg", alt: "…", width: 2400, height: 1600 },
-    ],
-  },
-];
-```
-
-Put images under `public/work/<slug>/`. `width` and `height` must be the real
-pixel dimensions — `next/image` uses them to reserve space and avoid layout
-shift.
-
-The work index switches from the "coming soon" state to the editorial row list
-(title · discipline · year) as soon as the array is non-empty.
-
----
-
 ## Structure
 
 ```
@@ -303,9 +265,7 @@ middleware.ts           Host routing: which world a request belongs to
 app/
   layout.tsx            The document: metadata, tokens. No chrome.
   (public)/             The public site, with its header, footer and cursor
-    page.tsx            Home
-    work/page.tsx       Work index
-    work/[slug]/page.tsx  Project detail
+    page.tsx            Home: the name, nothing else
     contact/page.tsx    Contact
   studio/               Studio: sign in, accept invitation, and the signed-in shell
   not-found.tsx         404
@@ -314,11 +274,10 @@ app/
   robots.ts  sitemap.ts  manifest.ts
   globals.css           Reset + design tokens
   favicon.ico  opengraph-image.png
-components/             Header, Footer, Cursor, ContactForm, ProjectList,
-                        Reveal, SignatureMark, PublicFrame
+components/             Header, Footer, Cursor, ContactForm, Reveal,
+                        SignatureMark, PublicFrame
 components/studio/      Studio's own components. Nothing is shared but tokens.
-data/projects.ts        The only file to edit when adding work
-lib/site.ts             Name, role, canonical URL, description
+lib/site.ts             Name, canonical URL, description
 lib/contact.ts          Validation shared by the form and the API route
 lib/hosts.ts            Public, Studio or internal, decided by Host
 lib/auth/               Access rule, route guards, Better Auth configuration

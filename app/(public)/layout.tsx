@@ -11,7 +11,7 @@ import { site } from "@/lib/site";
  * different world and must not inherit any of it. Before this group existed,
  * the Studio shell rendered inside the public header, footer and custom
  * cursor, and its `<main>` sat nested inside the public one. A route group
- * keeps the URLs exactly as they were — `/`, `/work`, `/contact` — while
+ * keeps the URLs exactly as they were — `/` and `/contact` — while
  * giving each world its own frame.
  */
 
@@ -46,7 +46,6 @@ const personSchema = {
   "@type": "Person",
   name: site.name,
   url: site.url,
-  jobTitle: site.role,
   description: site.description,
   image: `${site.url}/icon-512.png`,
 };
